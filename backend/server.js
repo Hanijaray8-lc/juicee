@@ -40,7 +40,7 @@ const server = http.createServer(app);
 // Setup Socket.IO server
 const io = new Server(server, {
   cors: {
-    origin: ['http://localhost:3000'], // Your frontend URL
+    origin: ['https://juicee-lc.netlify.app'], // Your frontend URL
     methods: ['GET', 'POST'],
     credentials: true
   },
