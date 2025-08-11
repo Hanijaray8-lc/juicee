@@ -20,7 +20,7 @@ import Profile from './Profile';
 import AnimatedTitle from './AnimatedTitle';
 import Settings from './Settings';
 import SearchPage from './SearchPage';
-import Picker from '@emoji-mart/react';
+import { Picker } from 'emoji-mart';
 import data from '@emoji-mart/data';
 import InsertEmoticonIcon from '@mui/icons-material/InsertEmoticon';
 import UserProfile from './UserProfile';
