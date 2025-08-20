@@ -146,7 +146,7 @@ export default function SignUpPage() {
       });
       formData.append('profileImage', profileImage);
 
-      const response = await fetch('http://localhost:5000/api/signup', {
+      const response = await fetch('https://juicee-30ie.onrender.com/api/signup', {
         method: 'POST',
         body: formData,
       });

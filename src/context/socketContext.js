@@ -8,7 +8,7 @@ export const SocketProvider = ({ children }) => {
  
   useEffect(() => {
     // Connect to socket server
-    const newSocket = io('http://localhost:5000', {
+    const newSocket = io('https://juicee-30ie.onrender.com', {
       withCredentials: true,
       autoConnect: false
     });

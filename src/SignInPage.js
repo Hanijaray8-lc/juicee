@@ -91,7 +91,7 @@ function SignInPage() {
     const email = data.get("email");
 
     try {
-      const response = await fetch('http://localhost:5000/api/login', {
+      const response = await fetch('https://juicee-30ie.onrender.com/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -130,7 +130,7 @@ function SignInPage() {
       setForgotStatus("processing");
       try {
         // Send both username/email and mobile to backend
-        const response = await fetch("http://localhost:5000/api/forgot-password/request", {
+        const response = await fetch("https://juicee-30ie.onrender.com/api/forgot-password/request", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -167,7 +167,7 @@ function SignInPage() {
       const usernameOrEmail = document.getElementById("email")?.value || "";
       try {
         // Send username/email, mobile, and new password to backend
-        const response = await fetch("http://localhost:5000/api/forgot-password/reset", {
+        const response = await fetch("https://juicee-30ie.onrender.com/api/forgot-password/reset", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

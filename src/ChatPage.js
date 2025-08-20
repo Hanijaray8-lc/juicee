@@ -86,7 +86,7 @@ const ChatPage = () => {
   useEffect(() => {
     const userId = localStorage.getItem('userId');
     if (userId) {
-      fetch(`http://localhost:5000/api/user/${userId}`)
+      fetch(`https://juicee-30ie.onrender.com/api/user/${userId}`)
         .then(res => res.json())
         .then(data => setUser(data));
     }
@@ -95,7 +95,7 @@ const ChatPage = () => {
   useEffect(() => {
     const currentUserId = localStorage.getItem('userId');
     if (currentUserId) {
-      fetch(`http://localhost:5000/api/user/${currentUserId}/friends`)
+      fetch(`https://juicee-30ie.onrender.com/api/user/${currentUserId}/friends`)
         .then(res => res.json())
         .then(data => setDbFriends(data));
     }
@@ -109,7 +109,7 @@ const ChatPage = () => {
   useEffect(() => {
     const userId = localStorage.getItem('userId');
     if (userId) {
-      fetch(`http://localhost:5000/api/user/${userId}/friendRequests`)
+      fetch(`https://juicee-30ie.onrender.com/api/user/${userId}/friendRequests`)
         .then(res => res.json())
         .then(data => setFriendRequestsList(data));
     }
@@ -117,15 +117,15 @@ const ChatPage = () => {
 
   const handleAcceptFriend = async (req) => {
     const userId = localStorage.getItem('userId');
-    await fetch(`http://localhost:5000/api/friendRequests/${req.senderId}/accept`, {
+    await fetch(`https://juicee-30ie.onrender.com/api/friendRequests/${req.senderId}/accept`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ receiverId: userId }),
     });
-    fetch(`http://localhost:5000/api/user/${userId}/friendRequests`)
+    fetch(`https://juicee-30ie.onrender.com/api/user/${userId}/friendRequests`)
       .then(res => res.json())
       .then(data => setFriendRequestsList(data));
-    fetch(`http://localhost:5000/api/user/${userId}/friends`)
+    fetch(`https://juicee-30ie.onrender.com/api/user/${userId}/friends`)
       .then(res => res.json())
       .then(data => setDbFriends(data));
   };
@@ -333,7 +333,7 @@ const ChatPage = () => {
   };
 
   useEffect(() => {
-    const newSocket = io('http://localhost:5000');
+    const newSocket = io('https://juicee-30ie.onrender.com');
     setSocket(newSocket);
 
     newSocket.on('connect', () => {

@@ -64,15 +64,15 @@ const UserProfile = ({ friendRequestsList = [], onAcceptFriend }) => {
   const userId = localStorage.getItem('userId');
   if (userId) {
     // Fetch user info
-    fetch(`http://localhost:5000/api/user/${userId}`)
+    fetch(`https://juicee-30ie.onrender.com/api/user/${userId}`)
       .then(res => res.json())
       .then(data => setUser(data));
     // Fetch friends
-    fetch(`http://localhost:5000/api/user/${userId}/friends`)
+    fetch(`https://juicee-30ie.onrender.com/api/user/${userId}/friends`)
       .then(res => res.json())
       .then(data => setFriends(data));
     // Fetch friend requests from backend
-    fetch(`http://localhost:5000/api/user/${userId}/friendRequests`)
+    fetch(`https://juicee-30ie.onrender.com/api/user/${userId}/friendRequests`)
       .then(res => res.json())
       .then(data => setPendingRequests(data)); // <-- This sets friendRequests from backend
   }
@@ -83,7 +83,7 @@ useEffect(() => {
     const filtered = friendRequestsList.filter(req => req.receiverId === (user && user._id));
     const requestsWithImages = await Promise.all(filtered.map(async req => {
       // Fetch sender's profile to get profileImage and username
-      const res = await fetch(`http://localhost:5000/api/user/${req.senderId}`);
+      const res = await fetch(`https://juicee-30ie.onrender.com/api/user/${req.senderId}`);
       const sender = await res.json();
       return {
         name: sender.name, // Use sender's name from DB
@@ -118,23 +118,23 @@ useEffect(() => {
   const userId = user && user._id;
   if (!userId) return;
   if (action === 'accept') {
-    await fetch(`http://localhost:5000/api/friendRequests/${req.senderId}/accept`, {
+    await fetch(`https://juicee-30ie.onrender.com/api/friendRequests/${req.senderId}/accept`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ receiverId: userId }),
     });
   } else if (action === 'reject') {
-    await fetch(`http://localhost:5000/api/friendRequests/${req.senderId}/reject`, {
+    await fetch(`https://juicee-30ie.onrender.com/api/friendRequests/${req.senderId}/reject`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ receiverId: userId }),
     });
   }
   // Re-fetch lists
-  fetch(`http://localhost:5000/api/user/${userId}/friends`)
+  fetch(`https://juicee-30ie.onrender.com/api/user/${userId}/friends`)
     .then(res => res.json())
     .then(data => setFriends(data));
-  fetch(`http://localhost:5000/api/user/${userId}/friendRequests`)
+  fetch(`https://juicee-30ie.onrender.com/api/user/${userId}/friendRequests`)
     .then(res => res.json())
     .then(data => setPendingRequests(data));
 };
@@ -144,7 +144,7 @@ useEffect(() => {
     try {
       const userId = user && user._id;
       if (userId && friendId) {
-        await fetch(`http://localhost:5000/api/user/${userId}/remove-friend`, {
+        await fetch(`https://juicee-30ie.onrender.com/api/user/${userId}/remove-friend`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ friendId }),
@@ -157,7 +157,7 @@ useEffect(() => {
 
   const handleRemoveProfileImage = async () => {
     const userId = localStorage.getItem('userId');
-    await fetch(`http://localhost:5000/api/user/${userId}/profile-image`, {
+    await fetch(`https://juicee-30ie.onrender.com/api/user/${userId}/profile-image`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ profileImage: '' }),
@@ -170,7 +170,7 @@ useEffect(() => {
     setDeleting(true);
     const userId = localStorage.getItem('userId');
     try {
-      const res = await fetch(`http://localhost:5000/api/user/${userId}`, {
+      const res = await fetch(`https://juicee-30ie.onrender.com/api/user/${userId}`, {
         method: 'DELETE',
       });
       if (res.ok) {
@@ -196,7 +196,7 @@ useEffect(() => {
   // Fetch blocked users on mount
   useEffect(() => {
     const userId = localStorage.getItem('userId');
-    fetch(`http://localhost:5000/api/user/${userId}/blocked`)
+    fetch(`https://juicee-30ie.onrender.com/api/user/${userId}/blocked`)
       .then(res => res.json())
       .then(data => setBlockedUsers(data.map(u => u.userId)));
   }, []);
@@ -362,7 +362,7 @@ useEffect(() => {
                       return;
                     }
                     const userId = user && user._id;
-                    await fetch(`http://localhost:5000/api/user/${userId}/about`, {
+                    await fetch(`https://juicee-30ie.onrender.com/api/user/${userId}/about`, {
                       method: 'PUT',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ about }),
@@ -679,7 +679,7 @@ useEffect(() => {
               const croppedImage = await getCroppedImg(selectedImage, croppedAreaPixels);
               // Now upload croppedImage (as base64)
               const userId = localStorage.getItem('userId');
-              await fetch(`http://localhost:5000/api/user/${userId}/profile-image`, {
+              await fetch(`https://juicee-30ie.onrender.com/api/user/${userId}/profile-image`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ profileImage: croppedImage }),
@@ -779,7 +779,7 @@ useEffect(() => {
               } else if (confirmDialog.action === 'block') {
                 const userId = user && user._id;
                 if (userId && confirmDialog.friend._id) {
-                  await fetch(`http://localhost:5000/api/user/${userId}/block`, {
+                  await fetch(`https://juicee-30ie.onrender.com/api/user/${userId}/block`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ blockUserId: confirmDialog.friend._id }),

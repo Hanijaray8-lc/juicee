@@ -11,7 +11,7 @@ const BlockedUsersPage = () => {
   const navigate = useNavigate();
 
   React.useEffect(() => {
-    fetch(`http://localhost:5000/api/user/${userId}/blocked`)
+    fetch(`https://juicee-30ie.onrender.com/api/user/${userId}/blocked`)
       .then(res => res.json())
       .then(data => setBlockedUsers(data));
   }, [userId]);
@@ -23,7 +23,7 @@ const BlockedUsersPage = () => {
 
   const handleUnblockConfirm = async () => {
     if (!selectedUser) return;
-    await fetch(`http://localhost:5000/api/user/${userId}/unblock`, {
+    await fetch(`https://juicee-30ie.onrender.com/api/user/${userId}/unblock`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ unblockUserId: selectedUser.userId }),

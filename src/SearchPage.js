@@ -59,7 +59,7 @@ const SearchPage = () => {
       const currentProfileImage = localStorage.getItem('profileImage');
 
       try {
-        await fetch('http://localhost:5000/api/friendRequests', {
+        await fetch('https://juicee-30ie.onrender.com/api/friendRequests', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -92,7 +92,7 @@ const SearchPage = () => {
     // Cancel friend request in backend
     const currentUserId = localStorage.getItem('userId');
     try {
-      await fetch(`http://localhost:5000/api/friendRequests/${currentUserId}/reject`, {
+      await fetch(`https://juicee-30ie.onrender.com/api/friendRequests/${currentUserId}/reject`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ receiverId: userId })
@@ -109,7 +109,7 @@ const SearchPage = () => {
 
       try {
         const userId = localStorage.getItem('userId');
-        const res = await fetch(`http://localhost:5000/api/users/search?q=${search}&userId=${userId}`);
+        const res = await fetch(`https://juicee-30ie.onrender.com/api/users/search?q=${search}&userId=${userId}`);
  // changed from /api/users/search
         const data = await res.json();
         setFilteredUsers(data);
@@ -127,7 +127,7 @@ const SearchPage = () => {
     const fetchLastLogins = async () => {
       try {
         const limit = isMobile ? 15 : 20;
-        const res = await fetch(`http://localhost:5000/api/last-logins?limit=${limit}`);
+        const res = await fetch(`https://juicee-30ie.onrender.com/api/last-logins?limit=${limit}`);
         const data = await res.json();
         setLastLoginUsers(data);
       } catch (error) {
@@ -148,7 +148,7 @@ const SearchPage = () => {
       const currentUserId = localStorage.getItem('userId');
       if (!currentUserId) return;
       try {
-        const res = await fetch(`http://localhost:5000/api/user/${currentUserId}`);
+        const res = await fetch(`https://juicee-30ie.onrender.com/api/user/${currentUserId}`);
         const data = await res.json();
         // Build a map of receiverId: true for requests sent by current user
         const sentRequests = {};
@@ -174,7 +174,7 @@ const SearchPage = () => {
 
   useEffect(() => {
     const userId = localStorage.getItem('userId');
-    fetch(`http://localhost:5000/api/user/${userId}/blocked`)
+    fetch(`https://juicee-30ie.onrender.com/api/user/${userId}/blocked`)
       .then(res => res.json())
       .then(data => setBlockedUsers(data.map(u => u.userId)));
   }, []);
@@ -182,7 +182,7 @@ const SearchPage = () => {
   // Fetch users who have blocked me
   useEffect(() => {
     const userId = localStorage.getItem('userId');
-    fetch(`http://localhost:5000/api/user/${userId}/blocked-by`)
+    fetch(`https://juicee-30ie.onrender.com/api/user/${userId}/blocked-by`)
       .then(res => res.json())
       .then(data => setBlockedBy(data.map(u => u.userId)));
   }, []);
