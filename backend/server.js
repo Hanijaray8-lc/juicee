@@ -11,16 +11,27 @@ let serviceAccount;
 
 if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
   try {
-    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+    const jsonStr = process.env.FIREBASE_SERVICE_ACCOUNT_JSON.trim();
+    try {
+      serviceAccount = JSON.parse(jsonStr);
+    } catch (parseErr) {
+      // Handle unescaped multiline private_key string in .env file gracefully
+      const sanitized = jsonStr.replace(/\r?\n/g, '\\n');
+      serviceAccount = JSON.parse(sanitized);
+    }
     if (serviceAccount && serviceAccount.private_key) {
       serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
     }
   } catch (err) {
-    console.error('❌ Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON:', err);
+    console.error('❌ Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON env variable:', err.message);
   }
-} else {
+}
+
+// Robust Fallback: If FIREBASE_SERVICE_ACCOUNT_JSON was missing or failed to parse, load serviceAccountKey.json
+if (!serviceAccount) {
   try {
     serviceAccount = require('./serviceAccountKey.json');
+    console.log('✅ Loaded serviceAccount from serviceAccountKey.json');
   } catch (err) {
     console.warn('⚠️ Warning: serviceAccountKey.json not found. Set FIREBASE_SERVICE_ACCOUNT_JSON environment variable.');
   }
@@ -31,13 +42,13 @@ if (serviceAccount) {
     credential: admin.credential.cert(serviceAccount),
     projectId: process.env.FIREBASE_PROJECT_ID || 'juicy1-96e7b'
   });
-  console.log('✅ Firebase Admin SDK initialized');
+  console.log('✅ Firebase Admin SDK initialized with Service Account Credentials');
 } else {
   try {
     admin.initializeApp({
       projectId: process.env.FIREBASE_PROJECT_ID || 'juicy1-96e7b'
     });
-    console.log('✅ Firebase Admin SDK initialized with default credentials');
+    console.log('⚠️ Firebase Admin SDK initialized with default credentials (No service key found)');
   } catch (err) {
     console.error('❌ Failed to initialize Firebase Admin SDK:', err);
   }
