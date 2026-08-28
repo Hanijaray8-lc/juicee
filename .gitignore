@@ -1,0 +1,45 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+
+# production
+/build
+
+# misc
+.DS_Store
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 🔐 Sensitive Files - NEVER COMMIT
+
+backend/.env
+backend/serviceAccountKey.json
+android/app/google-services.json
+android/app/client_secret.json
+.DS_Store
+
+# Large archives
+*.zip
+
+
+
+backend/.env
+backend/.env
+
+backend/.env
+backend/env
+
+backend/.env
+backend/env

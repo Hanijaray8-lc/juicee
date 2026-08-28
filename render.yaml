@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: juicy-backend
+    env: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: node server.js

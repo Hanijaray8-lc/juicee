@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="description" content="Chat Fresh. Catch the Vibe. Make Every Moment Juicy." />
+  <link rel="icon" href="%PUBLIC_URL%/ic_notification.png" />
+  <title>Juicy</title>
+<<<<<<< HEAD
+  <script>
+    if (typeof window !== 'undefined') {
+      if (!window.global) {
+        window.global = window;
+      }
+      if (!window.process) {
+        window.process = {};
+      }
+      if (!window.process.env) {
+        window.process.env = { NODE_ENV: 'development' };
+      }
+      window.process.browser = true;
+      if (typeof window.process.nextTick !== 'function') {
+        window.process.nextTick = function (cb) {
+          var args = Array.prototype.slice.call(arguments, 1);
+          if (typeof queueMicrotask === 'function') {
+            queueMicrotask(function () { cb.apply(null, args); });
+          } else {
+            Promise.resolve().then(function () { cb.apply(null, args); });
+          }
+        };
+      }
+    }
+  </script>
+=======
+>>>>>>> 46ed5e03c779c926a8d8f3605df7acf2a76e2e4d
+</head>
+
+<body>
+  <noscript>You need to enable JavaScript to run this app.</noscript>
+  <div id="root"></div>
+
+</body>
+
+</html>
