@@ -180,15 +180,21 @@ async function sendNotificationToUser(recipientUserOrToken, notification) {
         if (!resp.success && resp.error) {
           const code = resp.error.code || '';
           const msg = resp.error.message || '';
-          console.error(`[FCM] Error for token [${tokens[index].substring(0, 8)}...]:`, code, msg);
+          // Always log the exact Firebase error for diagnostics
+          console.error(`[FCM] Send failed for token [${tokens[index].substring(0, 8)}...] | code: ${code} | message: ${msg}`);
 
+          // FIX: Only remove the token when Firebase explicitly confirms it is
+          // invalid or no longer registered via the official error CODES.
+          // Do NOT match on error message substrings — that incorrectly deletes
+          // valid tokens on credential, auth, network, or other transient errors.
           if (
-            code === 'messaging/invalid-registration-token' ||
             code === 'messaging/registration-token-not-registered' ||
-            msg.includes('not registered') ||
-            msg.includes('invalid')
+            code === 'messaging/invalid-registration-token'
           ) {
             invalidTokens.push(tokens[index]);
+          } else {
+            // Token kept in MongoDB — error is not an invalid-token error
+            console.warn(`[FCM] Token NOT removed (non-registration error) | code: ${code}`);
           }
         }
       });
