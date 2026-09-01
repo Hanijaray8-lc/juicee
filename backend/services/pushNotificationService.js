@@ -227,7 +227,7 @@ async function sendMessageNotification(recipientUser, sender, messageText) {
       timestamp: new Date().toISOString(),
     },
     channelId: 'chat_messages',
-    imageUrl: sender.profilePic, // Optional: sender's profile pic
+    imageUrl: sender.profileImage || sender.profilePic || undefined, // sender's profile pic (schema field is profileImage)
   };
 
   return sendNotificationToUser(recipientUser, notification);
