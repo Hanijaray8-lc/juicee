@@ -515,49 +515,35 @@ async function startServer() {
             io.to(String(message.senderId)).emit('receive_message', emitPayload);
           }
 
-          // 🔔 FCM Push: Send notification when receiver is not actively in this chat.
-          // FIX (VPS): Do NOT rely on socket existence/count to determine background state.
-          // On Hostinger VPS the TCP keep-alive keeps sockets alive for ~85 s after the
-          // Android app is backgrounded, and Android freezes JS before it can emit
-          // app_state='background'. Using socket count caused FCM to be incorrectly
-          // skipped on VPS while it worked on Render (which kills sockets instantly).
+          // 🔔 FCM Push: Always send when receiver has a registered token and is not blocked.
+          // FIX: The previous skip guard (receiverInThisChat && receiverExplicitlyForeground)
+          // relied on two server-side state values that are STALE on VPS:
+          //   • usersInChat — never cleared because Android freezes JS on background,
+          //     so the React left_chat cleanup event never reaches the server.
+          //   • userAppStates — never transitions to 'background' because Android freezes
+          //     JS before the app_state: background emit can be sent.
+          // Result: both flags stayed true → isReceiverActivelyInThisChat = true → FCM skipped.
           //
-          // NEW RULE: skip FCM only when BOTH independent client signals confirm the
-          // receiver is actively viewing the exact conversation right now:
-          //   (a) receiver explicitly sent in_chat for this sender  →  usersInChat match
-          //   (b) receiver's app explicitly reported foreground       →  userAppStates = 'foreground'
-          //
-          // If either signal is absent or uncertain → SEND FCM.
-          // Android's native MyFirebaseMessagingService suppresses the status-bar
-          // notification itself when the app is truly foreground (isAppVisible guard),
-          // so sending FCM eagerly is always safe and produces no duplicates.
+          // FIX: Send FCM eagerly always. Android's native MyFirebaseMessagingService
+          // suppresses the status-bar notification itself when the app is truly foreground
+          // (MainActivity.isAppVisible guard at line 164 of MyFirebaseMessagingService.java),
+          // so this produces no visible duplicates for foreground users.
           if (!isReceiverBlockedSender) {
             try {
               const receiverUser = await User.findById(message.receiverId).select('fcmToken fcmTokens username');
               if (receiverUser && (receiverUser.fcmToken || (receiverUser.fcmTokens && receiverUser.fcmTokens.length > 0))) {
-                // Skip FCM only when we have RELIABLE evidence from two explicit client signals.
-                // Socket existence and socket count are deliberately excluded — they do NOT
-                // prove the user is looking at the screen on a VPS with long keep-alive.
-                const receiverInThisChat = usersInChat[String(message.receiverId)] === String(message.senderId);
-                const receiverExplicitlyForeground = userAppStates[String(message.receiverId)] === 'foreground';
-                const isReceiverActivelyInThisChat = receiverInThisChat && receiverExplicitlyForeground;
+                const senderUser = await User.findById(message.senderId).select('username profileImage');
+                if (senderUser) {
+                  const msgPreview = message.type === 'image' ? '📷 Photo'
+                    : message.type === 'video' ? '🎥 Video'
+                      : message.type === 'audio' ? '🎵 Voice message'
+                        : message.type === 'document' ? '📄 Document'
+                          : message.type === 'contact' ? '👤 Contact'
+                            : message.type === 'location' ? '📍 Location'
+                              : (message.text || 'New message').substring(0, 100);
 
-                if (!isReceiverActivelyInThisChat) {
-                  const senderUser = await User.findById(message.senderId).select('username profilePic');
-                  if (senderUser) {
-                    const msgPreview = message.type === 'image' ? '📷 Photo'
-                      : message.type === 'video' ? '🎥 Video'
-                        : message.type === 'audio' ? '🎵 Voice message'
-                          : message.type === 'document' ? '📄 Document'
-                            : message.type === 'contact' ? '👤 Contact'
-                              : message.type === 'location' ? '📍 Location'
-                                : (message.text || 'New message').substring(0, 100);
-
-                    console.log(`[FCM MESSAGE] Sending push to ${receiverUser.username || message.receiverId} | inChat:${receiverInThisChat} | appState:${userAppStates[String(message.receiverId)] || 'unknown'} | sockets:${onlineUsersSockets[String(message.receiverId)]?.size || 0}`);
-                    await sendMessageNotification(receiverUser, senderUser, msgPreview);
-                  }
-                } else {
-                  console.log(`[FCM MESSAGE] Skipped — receiver confirmed active in exact chat | inChat:${receiverInThisChat} | appState:${userAppStates[String(message.receiverId)]}`);
+                  console.log(`[FCM MESSAGE] Sending push to ${receiverUser.username || message.receiverId} | appState:${userAppStates[String(message.receiverId)] || 'unknown'} | sockets:${onlineUsersSockets[String(message.receiverId)]?.size || 0}`);
+                  await sendMessageNotification(receiverUser, senderUser, msgPreview);
                 }
               }
             } catch (fcmErr) {
