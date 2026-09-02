@@ -404,9 +404,11 @@ router.post('/google-login', async (req, res) => {
 
     const cleanPhone = bodyPhone && bodyPhone.trim() ? bodyPhone.trim() : undefined;
 
+    let isNewUser = false;
     if (!user) {
       // User does not exist, create a new account automatically
       // Generate a unique username based on email handle
+      isNewUser = true;
       const baseUsername = email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '');
       let username = baseUsername;
       let counter = 1;
@@ -459,7 +461,8 @@ router.post('/google-login', async (req, res) => {
       message: 'Google login successful',
       token,
       user,
-      requirePhone
+      requirePhone,
+      isNewUser
     });
   } catch (err) {
     console.error('Google login server error:', err);
