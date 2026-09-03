@@ -1,8 +1,9 @@
 const getEffectiveApiKey = () => {
-  return (process.env.REACT_APP_GROQ_API_KEY || '').trim();
+  return (process.env.REACT_APP_GEMINI_API_KEY || '').trim();
 };
 
-const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const GEMINI_API_URL =
+  'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent';
 
 
 
@@ -56,8 +57,8 @@ const cleanAndFormatAiResponse = (text) => {
 
 
 /**
- * Calls AI to get a response to user message.
- * Supports ChatGPT/Meta AI conversational flow with history context.
+ * Calls Google Gemini AI to get a response to user message.
+ * Supports conversational flow with history context.
  * @param {string} userMessage - The current message from the user.
  * @param {Array} history - The message history in local state.
  * @returns {Promise<string>} The response text from the AI.
@@ -68,51 +69,54 @@ export const getLoveBotResponse = async (userMessage, history = []) => {
   }
 
   const cleanUserMessage = userMessage.trim();
-  let apiKey = getEffectiveApiKey();
+  const apiKey = getEffectiveApiKey();
 
   const systemPrompt = `You are jerry Bot ✨, an intelligent, versatile, and friendly AI personal assistant (built into the Juicy app). You function like ChatGPT and Meta AI. Provide clear, smart, concise answers to any question. IMPORTANT: Always format output as clean plain text with standard line breaks (\\n) and bullet points. Never use Markdown tables (no '|' pipes) or HTML tags like <br>.`;
 
+  // Build conversation history in Gemini format
   const recentHistory = history.slice(-6).map(msg => ({
-    role: (msg.sender === 'You' || msg.senderId !== 'lovebot') ? 'user' : 'assistant',
-    content: msg.text || ''
-  })).filter(m => m.content.trim() !== '');
+    role: (msg.sender === 'You' || msg.senderId !== 'lovebot') ? 'user' : 'model',
+    parts: [{ text: msg.text || '' }]
+  })).filter(m => m.parts[0].text.trim() !== '');
 
-  const messages = [
-    { role: 'system', content: systemPrompt },
+  // Add current user message
+  const contents = [
     ...recentHistory,
-    { role: 'user', content: cleanUserMessage }
+    { role: 'user', parts: [{ text: cleanUserMessage }] }
   ];
 
-  const makeApiCall = async (keyToUse) => {
-    return fetch(GROQ_API_URL, {
+  try {
+    const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${keyToUse}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        messages: messages,
-        temperature: 0.7,
-        max_tokens: 400
+        systemInstruction: {
+          parts: [{ text: systemPrompt }]
+        },
+        contents: contents,
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 400
+        }
       })
     });
-  };
-
-  try {
-    const response = await makeApiCall(apiKey);
 
     if (response.ok) {
       const data = await response.json();
-      if (data?.choices?.[0]?.message?.content) {
-        return cleanAndFormatAiResponse(data.choices[0].message.content.trim());
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text) {
+        return cleanAndFormatAiResponse(text.trim());
       }
+    } else {
+      const errData = await response.json();
+      console.warn('Gemini API error:', errData);
     }
   } catch (error) {
-    console.warn('Groq API error:', error.message);
+    console.warn('Gemini API error:', error.message);
   }
 
   // Fallback error message if all attempts fail
   return "⚠️ I'm having trouble connecting right now. Please check your internet connection and try again shortly.";
 };
-
