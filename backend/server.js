@@ -843,6 +843,15 @@ async function startServer() {
             return;
           }
 
+          // Clean up any stale active call cache for caller or receiver before tracking new call
+          delete activeOutgoingCalls[callerId];
+          delete activeOutgoingCalls[receiverId];
+          for (const [k, v] of Object.entries(activeOutgoingCalls)) {
+            if (v && (v.targetUserId === receiverId || v.from === callerId || v.targetUserId === callerId || v.from === receiverId)) {
+              delete activeOutgoingCalls[k];
+            }
+          }
+
           // Track this outgoing call
           activeOutgoingCalls[callerId] = {
             targetUserId: receiverId,
