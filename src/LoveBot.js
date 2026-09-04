@@ -1,11 +1,15 @@
 const getEffectiveApiKey = () => {
-  return (process.env.REACT_APP_GEMINI_API_KEY || '').trim();
+  return (
+    process.env.REACT_APP_GROQ_API_KEY ||
+    process.env.REACT_APP_GEMINI_API_KEY ||
+    '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'
+  ).trim();
+  
 };
 
-const GEMINI_API_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent';
-
-
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const PRIMARY_MODEL = 'openai/gpt-oss-120b';
+const FALLBACK_MODEL = 'qwen/qwen3.8-27b';
 
 /**
  * Cleans and formats AI response strings into clean plain text with proper line breaks,
@@ -54,10 +58,8 @@ const cleanAndFormatAiResponse = (text) => {
   return cleaned.trim();
 };
 
-
-
 /**
- * Calls Google Gemini AI to get a response to user message.
+ * Calls Groq AI to get a response to user message.
  * Supports conversational flow with history context.
  * @param {string} userMessage - The current message from the user.
  * @param {Array} history - The message history in local state.
@@ -73,48 +75,59 @@ export const getLoveBotResponse = async (userMessage, history = []) => {
 
   const systemPrompt = `You are jerry Bot ✨, an intelligent, versatile, and friendly AI personal assistant (built into the Juicy app). You function like ChatGPT and Meta AI. Provide clear, smart, concise answers to any question. IMPORTANT: Always format output as clean plain text with standard line breaks (\\n) and bullet points. Never use Markdown tables (no '|' pipes) or HTML tags like <br>.`;
 
-  // Build conversation history in Gemini format
-  const recentHistory = history.slice(-6).map(msg => ({
-    role: (msg.sender === 'You' || msg.senderId !== 'lovebot') ? 'user' : 'model',
-    parts: [{ text: msg.text || '' }]
-  })).filter(m => m.parts[0].text.trim() !== '');
+  // Build conversation history in Groq/OpenAI chat format
+  const recentHistory = (history || [])
+    .slice(-6)
+    .map(msg => ({
+      role: (msg.sender === 'You' || msg.senderId !== 'lovebot') ? 'user' : 'assistant',
+      content: typeof msg.text === 'string' ? msg.text : ''
+    }))
+    .filter(m => m.content.trim() !== '');
 
-  // Add current user message
-  const contents = [
+  // Add system prompt and current user message
+  const messages = [
+    { role: 'system', content: systemPrompt },
     ...recentHistory,
-    { role: 'user', parts: [{ text: cleanUserMessage }] }
+    { role: 'user', content: cleanUserMessage }
   ];
 
-  try {
-    const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
+  const callGroq = async (modelName) => {
+    const response = await fetch(GROQ_API_URL, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        systemInstruction: {
-          parts: [{ text: systemPrompt }]
-        },
-        contents: contents,
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 400
-        }
+        model: modelName,
+        messages: messages,
+        temperature: 0.7,
+        max_tokens: 600
       })
     });
 
     if (response.ok) {
       const data = await response.json();
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      const text = data?.choices?.[0]?.message?.content;
       if (text) {
         return cleanAndFormatAiResponse(text.trim());
       }
     } else {
-      const errData = await response.json();
-      console.warn('Gemini API error:', errData);
+      const errData = await response.json().catch(() => ({}));
+      console.warn(`Groq API error (${modelName}):`, errData);
+      throw new Error(`Groq API failed with status ${response.status}`);
     }
-  } catch (error) {
-    console.warn('Gemini API error:', error.message);
+  };
+
+  try {
+    return await callGroq(PRIMARY_MODEL);
+  } catch (primaryError) {
+    console.warn('Attempting fallback model due to:', primaryError.message);
+    try {
+      return await callGroq(FALLBACK_MODEL);
+    } catch (fallbackError) {
+      console.warn('Fallback model also failed:', fallbackError.message);
+    }
   }
 
   // Fallback error message if all attempts fail
