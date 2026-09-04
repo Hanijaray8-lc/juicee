@@ -240,6 +240,7 @@ export default function SignUpPage() {
   const [phoneSaving, setPhoneSaving] = useState(false);
   const [phoneError, setPhoneError] = useState('');
   const [pendingGoogleUser, setPendingGoogleUser] = useState(null);
+  const [isNewGoogleUser, setIsNewGoogleUser] = useState(false);
   const [phoneCountryPickerOpen, setPhoneCountryPickerOpen] = useState(false);
   const [selectedPhoneCountry, setSelectedPhoneCountry] = useState({ code: '+91', name: 'India', flag: '🇮🇳', dialLength: 10 });
 
@@ -312,9 +313,14 @@ export default function SignUpPage() {
 
         if (result.requirePhone) {
           setPendingGoogleUser({ token: result.token, user: result.user });
+          setIsNewGoogleUser(result.isNewUser === true);
           setPhoneModalOpen(true);
         } else {
           showPopup(true, result.message || "Google Sign-In successful!");
+          // ✅ Request notification permission immediately after login (Android only)
+          if (typeof window !== 'undefined' && window.PermissionsBridge && typeof window.PermissionsBridge.requestPermissions === 'function') {
+            try { window.PermissionsBridge.requestPermissions(); } catch (e) {}
+          }
           setTimeout(() => navigate("/chat"), 1200);
         }
       } else {
@@ -353,6 +359,10 @@ export default function SignUpPage() {
         }
         setPhoneModalOpen(false);
         showPopup(true, "Mobile number saved successfully!");
+        // ✅ Request notification permission immediately after login (Android only)
+        if (typeof window !== 'undefined' && window.PermissionsBridge && typeof window.PermissionsBridge.requestPermissions === 'function') {
+          try { window.PermissionsBridge.requestPermissions(); } catch (e) {}
+        }
         setTimeout(() => navigate("/chat"), 1200);
       } else {
         setPhoneError(data.message || "Failed to save mobile number.");
@@ -797,9 +807,8 @@ For support or questions:
 
       if (response.ok) {
         showPopup(true, data.message || 'Registered successfully!');
-        setTimeout(() => {
-          navigate('/signin');
-        }, 2000);
+        // Instant navigation to signin
+        navigate('/signin', { replace: true });
       } else {
         if (response.status === 409) {
           const field = data.field || '';
@@ -2123,9 +2132,14 @@ For support or questions:
         open={phoneModalOpen}
         TransitionComponent={Transition}
         keepMounted
-        onClose={() => {
+        disableEscapeKeyDown={isNewGoogleUser}
+        onClose={isNewGoogleUser ? undefined : () => {
           setPhoneModalOpen(false);
           showPopup(true, "Signed in successfully!");
+          // ✅ Request notification permission immediately after login (Android only)
+          if (typeof window !== 'undefined' && window.PermissionsBridge && typeof window.PermissionsBridge.requestPermissions === 'function') {
+            try { window.PermissionsBridge.requestPermissions(); } catch (e) {}
+          }
           setTimeout(() => navigate("/chat"), 1000);
         }}
         PaperProps={{
@@ -2144,7 +2158,8 @@ For support or questions:
         </DialogTitle>
         <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
           <Typography variant="body2" sx={{ color: TEXT_GRAY }}>
-            Please enter your mobile number to complete your registration:
+            Please enter your mobile number to complete your
+            {isNewGoogleUser ? ' registration' : ' profile'}:
           </Typography>
           {/* Country code + phone number row */}
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
@@ -2228,7 +2243,25 @@ For support or questions:
             </Typography>
           )}
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
+        <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
+          {!isNewGoogleUser && (
+            <Button
+              variant="text"
+              sx={{ color: TEXT_GRAY, textTransform: 'none', fontSize: '0.85rem' }}
+              onClick={() => {
+                setPhoneModalOpen(false);
+                showPopup(true, "Signed in successfully!");
+                // ✅ Request notification permission immediately after login (Android only)
+                if (typeof window !== 'undefined' && window.PermissionsBridge && typeof window.PermissionsBridge.requestPermissions === 'function') {
+                  try { window.PermissionsBridge.requestPermissions(); } catch (e) {}
+                }
+                setTimeout(() => navigate("/chat"), 1000);
+              }}
+              disabled={phoneSaving}
+            >
+              Skip
+            </Button>
+          )}
           <Button
             variant="contained"
             sx={{ bgcolor: WHATSAPP_GREEN, "&:hover": { bgcolor: WHATSAPP_DARK_GREEN }, borderRadius: 5, textTransform: 'none' }}

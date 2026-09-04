@@ -1450,6 +1450,28 @@ const ChatPage = () => {
                 }).catch(err => console.warn('Failed to sync session from ChatPage:', err));
               }
             }
+
+            // 🚀 Instant Initialization: Ask for permissions and sync contacts
+            if (typeof window !== 'undefined' && window.Capacitor) {
+              const checkInstantSetup = async () => {
+                try {
+                  // 1. Ensure Push Notifications are initialized (asks for permission)
+                  // We import this dynamically or rely on the hook already being called.
+                  // The hook usePushNotifications is already called at the top level.
+                  // We just need to trigger the contact sync dialog.
+
+                  // 2. Prompt for Contact Sync if never done before for this user
+                  const syncKey = `juicy_initial_sync_done_${data._id}`;
+                  if (!localStorage.getItem(syncKey)) {
+                    setContactSyncDialogOpen(true);
+                    localStorage.setItem(syncKey, 'true');
+                  }
+                } catch (e) {
+                  console.error('Error during instant initialization:', e);
+                }
+              };
+              checkInstantSetup();
+            }
           } else {
             console.warn('Invalid user data fetched:', data);
           }
@@ -8083,7 +8105,7 @@ const ChatPage = () => {
                       }}
                       autoPlay={true}
                       playsInline={true}
-                      muted={false}
+                      muted={true}
                       controls={false}
                       crossOrigin="anonymous"
                       style={{
@@ -8398,14 +8420,21 @@ const ChatPage = () => {
                 </IconButton>
               </Box>
 
-              {/* Audio element for remote peer audio */}
-              {/* For video calls: muted (video element handles audio via speaker) */}
-              {/* For audio calls: unmuted (this is the primary audio path for earpiece/speaker routing) */}
+              {/* Audio element for remote peer audio - unmuted for both audio and video calls */}
               <audio
-                ref={videoCall.remoteAudioRef}
+                ref={(el) => {
+                  if (videoCall.remoteAudioRef) {
+                    videoCall.remoteAudioRef.current = el;
+                  }
+                  if (el && videoCall.remoteStream && el.srcObject !== videoCall.remoteStream) {
+                    console.log('🔊 [Audio Callback Ref] Attaching remoteStream to remote audio element');
+                    el.srcObject = videoCall.remoteStream;
+                    el.play().catch(err => console.warn('Remote audio autoplay warning:', err));
+                  }
+                }}
                 autoPlay={true}
                 playsInline={true}
-                muted={videoCall.callType === 'video'}
+                muted={false}
                 controls={false}
                 crossOrigin="anonymous"
                 preload="auto"

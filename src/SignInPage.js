@@ -227,6 +227,7 @@ function SignInPage() {
   const [phoneSaving, setPhoneSaving] = useState(false);
   const [phoneError, setPhoneError] = useState('');
   const [pendingGoogleUser, setPendingGoogleUser] = useState(null);
+  const [isNewGoogleUser, setIsNewGoogleUser] = useState(false);
   const [phoneCountryPickerOpen, setPhoneCountryPickerOpen] = useState(false);
   const [selectedPhoneCountry, setSelectedPhoneCountry] = useState({ code: '+91', name: 'India', flag: '🇮🇳', dialLength: 10 });
 
@@ -258,6 +259,49 @@ function SignInPage() {
     { code: '+234', name: 'Nigeria', flag: '🇳🇬', dialLength: 10 },
     { code: '+254', name: 'Kenya', flag: '🇰🇪', dialLength: 9 },
   ];
+
+  // ✅ Request all essential app permissions one by one (Notifications, Camera, Microphone, Photos & Videos)
+  const requestAllAppPermissions = () => {
+    // 1. Android Native Permissions Bridge: Prompts Notifications, Camera, Microphone, Photos & Videos sequentially
+    if (typeof window !== 'undefined' && window.PermissionsBridge && typeof window.PermissionsBridge.requestPermissions === 'function') {
+      try {
+        window.PermissionsBridge.requestPermissions();
+        return;
+      } catch (e) {
+        console.warn('PermissionsBridge.requestPermissions error:', e);
+      }
+    }
+
+    // 2. Capacitor Plugins Fallback (if running without bridge)
+    try {
+      if (typeof window !== 'undefined' && window.Capacitor) {
+        const { PushNotifications, Camera } = window.Capacitor.Plugins || {};
+        if (PushNotifications && typeof PushNotifications.requestPermissions === 'function') {
+          PushNotifications.requestPermissions().catch(() => {});
+        }
+        if (Camera && typeof Camera.requestPermissions === 'function') {
+          Camera.requestPermissions({ permissions: ['camera', 'photos'] }).catch(() => {});
+        }
+      }
+    } catch (e) {}
+
+    // 3. Web Browser Fallback: Notifications & MediaStream permissions
+    try {
+      if (typeof Notification !== 'undefined' && Notification.requestPermission) {
+        Notification.requestPermission().catch(() => {});
+      }
+    } catch (e) {}
+
+    try {
+      if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function') {
+        navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+          .then(stream => {
+            if (stream) stream.getTracks().forEach(t => t.stop());
+          })
+          .catch(() => {});
+      }
+    } catch (e) {}
+  };
 
   const handleGoogleResponse = async (response) => {
     if (!response || !response.credential) {
@@ -299,10 +343,14 @@ function SignInPage() {
 
         if (result.requirePhone) {
           setPendingGoogleUser({ token: result.token, user: result.user });
+          setIsNewGoogleUser(result.isNewUser === true);
           setPhoneModalOpen(true);
         } else {
           showPopup(true, result.message || "Google Sign-In successful!");
-          setTimeout(() => navigate("/chat"), 1200);
+          // ✅ Request permissions immediately after login: Notifications, Camera, Microphone, Photos/Videos (one by one)
+          requestAllAppPermissions();
+          // WhatsApp style instant navigation
+          navigate("/chat", { replace: true });
         }
       } else {
         showPopup(false, result.message || "Google Sign-In failed.");
@@ -340,6 +388,7 @@ function SignInPage() {
         }
         setPhoneModalOpen(false);
         showPopup(true, "Mobile number saved successfully!");
+        requestAllAppPermissions();
         setTimeout(() => navigate("/chat"), 1200);
       } else {
         setPhoneError(data.message || "Failed to save mobile number.");
@@ -598,7 +647,7 @@ function SignInPage() {
           body: JSON.stringify({ email, password }),
         });
 
-        const result = await response.json(); if (response.ok) {
+        const result = await response.json();         if (response.ok) {
           localStorage.setItem('userId', result.user._id);
           localStorage.setItem('token', result.token);
           if (result.user.username) {
@@ -623,7 +672,10 @@ function SignInPage() {
           }
 
           showPopup(true, result.message || "Login successful!");
-          setTimeout(() => navigate("/chat"), 1500);
+          // ✅ Request permissions immediately after login: Notifications, Camera, Microphone, Photos/Videos (one by one)
+          requestAllAppPermissions();
+          // WhatsApp style instant navigation
+          navigate("/chat", { replace: true });
         } else {
           showPopup(false, result.message || "Invalid credentials.");
         }
@@ -1500,7 +1552,8 @@ function SignInPage() {
         open={phoneModalOpen}
         TransitionComponent={Transition}
         keepMounted
-        onClose={() => {
+        disableEscapeKeyDown={isNewGoogleUser}
+        onClose={isNewGoogleUser ? undefined : () => {
           setPhoneModalOpen(false);
           showPopup(true, "Signed in successfully!");
           setTimeout(() => navigate("/chat"), 1000);
@@ -1521,7 +1574,8 @@ function SignInPage() {
         </DialogTitle>
         <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
           <Typography variant="body2" sx={{ color: TEXT_GRAY }}>
-            Please enter your mobile number to complete your registration:
+          Please enter your mobile number to complete your
+            {isNewGoogleUser ? ' registration' : ' profile'}:
           </Typography>
           {/* Country code + phone number row */}
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
@@ -1605,8 +1659,21 @@ function SignInPage() {
             </Typography>
           )}
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-
+        <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
+          {!isNewGoogleUser && (
+            <Button
+              variant="text"
+              sx={{ color: TEXT_GRAY, textTransform: 'none', fontSize: '0.85rem' }}
+              onClick={() => {
+                setPhoneModalOpen(false);
+                showPopup(true, "Signed in successfully!");
+                setTimeout(() => navigate("/chat"), 1000);
+              }}
+              disabled={phoneSaving}
+            >
+              Skip
+            </Button>
+          )}
           <Button
             variant="contained"
             sx={{ bgcolor: WHATSAPP_GREEN, "&:hover": { bgcolor: WHATSAPP_DARK_GREEN }, borderRadius: 5, textTransform: 'none' }}

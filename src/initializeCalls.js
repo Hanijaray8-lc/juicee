@@ -41,33 +41,28 @@ export const useInitializeCalls = (socket, user, selectedUser, dbFriends, setCal
     ]);
   }, [setCallLogs]);
 
-  // ICE servers for NAT traversal and fallback relay
+  // ICE servers for NAT traversal and fallback relay (optimized for fast mobile P2P & candidate gathering)
   const iceServers = [
-    // STUN servers for direct NAT traversal
+    // Fast STUN servers for direct NAT traversal
     {
       urls: [
         'stun:stun.l.google.com:19302',
-        'stun:stun1.l.google.com:19302',
-        'stun:stun2.l.google.com:19302',
-        'stun:stun3.l.google.com:19302',
-        'stun:stun4.l.google.com:19302'
+        'stun:stun1.l.google.com:19302'
       ]
     },
-    // TURN servers for relay fallback (supporting UDP & TCP)
+    // Fast TURN servers for relay fallback (UDP port 443 & 80)
     {
       urls: [
-        'turn:openrelay.metered.ca:80',
         'turn:openrelay.metered.ca:443',
-        'turn:openrelay.metered.ca:443?transport=tcp'
+        'turn:openrelay.metered.ca:80'
       ],
       username: 'openrelayproject',
       credential: 'openrelayproject'
     },
     {
       urls: [
-        'turn:global.relay.metered.ca:80',
         'turn:global.relay.metered.ca:443',
-        'turn:global.relay.metered.ca:443?transport=tcp'
+        'turn:global.relay.metered.ca:80'
       ],
       username: 'cfb9d79f53f4d7f0ca10c84f',
       credential: 'r3k0rWoUV9pYx/k+'
@@ -77,38 +72,68 @@ export const useInitializeCalls = (socket, user, selectedUser, dbFriends, setCal
   // Initialize video call hook (must be after `iceServers` is defined)
   const videoCall = useVideoCall(socket, user, selectedUser, dbFriends, iceServers);
 
-  // Proximity sensor for screen off during audio calls via Capacitor plugin
+  // Proximity sensor for screen off during audio calls (Android Native WakeLock + iOS Capgo plugin)
   useEffect(() => {
-    let proximityEnabled = false;
+    let isCapgoActive = false;
 
-    const setupProximity = async () => {
-      try {
-        const { CapacitorProximity } = await import('@capgo/capacitor-proximity');
-        const status = await CapacitorProximity.getStatus();
-        if (status.available) {
-          if (videoCall && videoCall.callStarted && videoCall.callType === 'audio' && !videoCall.isSpeakerOn) {
+    const manageProximity = async () => {
+      const isAudioCallActive = Boolean(videoCall && videoCall.callStarted && videoCall.callType === 'audio');
+      const isEarpieceMode = Boolean(!videoCall || !videoCall.isSpeakerOn);
+      const shouldEnableProximity = isAudioCallActive && isEarpieceMode;
+
+      const { AudioRoute } = window.Capacitor?.Plugins || {};
+
+      if (shouldEnableProximity) {
+        // 1. Primary: Native Android PROXIMITY_SCREEN_OFF_WAKE_LOCK (true screen black out + touch disable)
+        if (AudioRoute && typeof AudioRoute.acquireProximityLock === 'function') {
+          AudioRoute.acquireProximityLock().catch(err => {
+            console.warn('AudioRoute acquireProximityLock error:', err);
+          });
+        }
+
+        // 2. Secondary / iOS: Capgo Proximity plugin
+        try {
+          const { CapacitorProximity } = await import('@capgo/capacitor-proximity');
+          const status = await CapacitorProximity.getStatus();
+          if (status?.available) {
             await CapacitorProximity.enable();
-            proximityEnabled = true;
-          } else {
+            isCapgoActive = true;
+          }
+        } catch (err) {
+          // Silent catch if plugin is unavailable on platform
+        }
+      } else {
+        // Turn off proximity lock (Speaker ON, Video call, or Call ended)
+        if (AudioRoute && typeof AudioRoute.releaseProximityLock === 'function') {
+          AudioRoute.releaseProximityLock().catch(() => {});
+        }
+
+        if (isCapgoActive) {
+          try {
+            const { CapacitorProximity } = await import('@capgo/capacitor-proximity');
             await CapacitorProximity.disable();
-            proximityEnabled = false;
+            isCapgoActive = false;
+          } catch (err) {
+            // Silent catch
           }
         }
-      } catch (err) {
-        console.warn('Capacitor Proximity not available:', err);
       }
     };
 
-    setupProximity();
+    manageProximity();
 
     return () => {
-      if (proximityEnabled) {
+      const { AudioRoute } = window.Capacitor?.Plugins || {};
+      if (AudioRoute && typeof AudioRoute.releaseProximityLock === 'function') {
+        AudioRoute.releaseProximityLock().catch(() => {});
+      }
+      if (isCapgoActive) {
         import('@capgo/capacitor-proximity').then(({ CapacitorProximity }) => {
-          CapacitorProximity.disable().catch(() => { });
-        }).catch(() => { });
+          CapacitorProximity.disable().catch(() => {});
+        }).catch(() => {});
       }
     };
-  }, [videoCall]);
+  }, [videoCall?.callStarted, videoCall?.callType, videoCall?.isSpeakerOn]);
 
   // Wrapper to initiate call and log it
   const initiateCallHandler = useCallback(async (friendId, type = 'audio') => {

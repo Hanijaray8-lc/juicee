@@ -145,34 +145,7 @@ const AppContent = () => {
     };
     setStatusBar();
 
-    // 🔋 Battery Optimization Check for Android (Critical for background socket stability)
-    const checkBatteryOptimizations = async () => {
-      if (isNative) {
-        try {
-          const { AudioRoute } = window.Capacitor?.Plugins || {};
-          if (AudioRoute && typeof AudioRoute.isIgnoringBatteryOptimizations === 'function') {
-            const { isIgnoring } = await AudioRoute.isIgnoringBatteryOptimizations();
-            console.log('🔋 Battery optimizations ignored:', isIgnoring);
 
-            if (!isIgnoring) {
-              const lastPrompt = localStorage.getItem('last_battery_prompt');
-              const now = Date.now();
-              // Prompt once every 3 days if not ignoring, until user accepts
-              if (!lastPrompt || (now - parseInt(lastPrompt)) > 3 * 24 * 60 * 60 * 1000) {
-                if (typeof AudioRoute.requestIgnoreBatteryOptimizations === 'function') {
-                  console.log('🔋 Requesting battery optimization exemption...');
-                  await AudioRoute.requestIgnoreBatteryOptimizations();
-                  localStorage.setItem('last_battery_prompt', now.toString());
-                }
-              }
-            }
-          }
-        } catch (err) {
-          console.warn('Battery optimization check failed:', err);
-        }
-      }
-    };
-    checkBatteryOptimizations();
 
     return () => {
       if (backButtonListener) {

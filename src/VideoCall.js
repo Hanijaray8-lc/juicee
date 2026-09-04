@@ -47,6 +47,9 @@ const useVideoCall = (socket, user, selectedUser, dbFriends, iceServers) => {
   const [audioRoutingMode, setAudioRoutingMode] = useState('speaker'); // 'speaker' or 'earpiece' for Android
   const [userAcceptedCall, setUserAcceptedCall] = useState(false); // Track deferred accept state
   const ringtoneShouldPlayRef = useRef(false);
+  const prewarmedStreamRef = useRef(null);
+  const prewarmedPromiseRef = useRef(null);
+  const isIncomingCallActiveRef = useRef(false);
 
   /**
    * ✅ ENHANCED: Initialize Web Audio API with retries and better error handling
@@ -316,12 +319,11 @@ const useVideoCall = (socket, user, selectedUser, dbFriends, iceServers) => {
         userVideo.current.srcObject = remoteStreamToAttach;
         userVideo.current.autoplay = true;
         userVideo.current.playsinline = true;
-        userVideo.current.muted = false;
-        userVideo.current.volume = 1.0;
+        userVideo.current.muted = true; // ✅ Video element MUST be muted for mobile autoplay compliance
         userVideo.current.controls = false;
         const p = userVideo.current.play();
         if (p !== undefined) {
-          p.then(() => console.log('✅ Remote video/audio playback started')).catch(e => console.warn('⚠️ Remote video autoplay failed:', e));
+          p.then(() => console.log('✅ Remote video playback started')).catch(e => console.warn('⚠️ Remote video autoplay failed:', e));
         }
       } catch (e) {
         console.error('❌ Error attaching video stream:', e);
@@ -360,6 +362,7 @@ const useVideoCall = (socket, user, selectedUser, dbFriends, iceServers) => {
         if (userVideo.current.srcObject !== remoteStream) {
           userVideo.current.srcObject = remoteStream;
         }
+        userVideo.current.muted = true; // ✅ Video element MUST be muted for mobile autoplay compliance
         userVideo.current.play().catch(e => console.warn('⚠️ Video element play failed in effect:', e));
       }
     }
@@ -396,22 +399,18 @@ const useVideoCall = (socket, user, selectedUser, dbFriends, iceServers) => {
 
         while (retries > 0 && !currentStream) {
           try {
-            // ✅ ENHANCED: Android-optimized media constraints
+            // ✅ ENHANCED: Android-optimized fast media constraints
             const constraints = {
               audio: {
                 echoCancellation: true,
                 noiseSuppression: true,
                 autoGainControl: true,
-                // For long-distance calls, prefer higher sample rates
-                sampleRate: { ideal: 48000, min: 16000 },
               },
               video: type === 'video' ? {
                 width: { ideal: 1280, min: 640, max: 1920 },
                 height: { ideal: 720, min: 480, max: 1080 },
                 facingMode: cameraFacing,
                 frameRate: { ideal: 30, min: 15, max: 60 },
-                // ✅ HD quality hints — reduces blur
-                resizeMode: 'none', // prevent camera from downscaling internally
               } : false,
             };
             console.log('🎤 Requesting media for', type, 'call with constraints:', constraints);
@@ -427,6 +426,18 @@ const useVideoCall = (socket, user, selectedUser, dbFriends, iceServers) => {
             });
             break;
           } catch (err) {
+            if (err.name === 'OverconstrainedError') {
+              console.warn('⚠️ OverconstrainedError detected in initiateCall, falling back to basic media constraints');
+              try {
+                currentStream = await navigator.mediaDevices.getUserMedia({
+                  audio: true,
+                  video: type === 'video' ? true : false,
+                });
+                break;
+              } catch (fallbackErr) {
+                console.error('Fallback getUserMedia failed:', fallbackErr);
+              }
+            }
             retries--;
             if (retries > 0) {
               console.warn(`⚠️ Media request failed, retrying... (${retries} attempts left):`, err.message);
@@ -446,12 +457,15 @@ const useVideoCall = (socket, user, selectedUser, dbFriends, iceServers) => {
           callerAudioRef.current.play().catch(err => console.warn('Ringtone play failed:', err));
         }
 
-        // Create peer connection as initiator with trickle: true
+        // Create peer connection as initiator with trickle: true and pre-gathered candidate pool
         const peer = new Peer({
           initiator: true,
           trickle: true,
           stream: currentStream,
-          config: { iceServers },
+          config: {
+            iceServers,
+            iceCandidatePoolSize: 2,
+          },
         });
         peerRef.current = peer;
 
@@ -518,6 +532,15 @@ const useVideoCall = (socket, user, selectedUser, dbFriends, iceServers) => {
           processPendingCandidates();
           setCalling(false);
           if (callerAudioRef.current) callerAudioRef.current.pause();
+
+          // ✅ CRITICAL: Re-assert audio routing immediately.
+          // When callerAudioRef pauses, Android native bridge calls caller.stop() which resets MODE_NORMAL.
+          // Re-asserting applyAudioRouting restores MODE_IN_COMMUNICATION & VoIP focus so microphone stays unmuted!
+          const isVideoCall = (type === 'video');
+          const targetMode = isVideoCall ? 'speaker' : 'earpiece';
+          applyAudioRouting(targetMode, type);
+          setTimeout(() => applyAudioRouting(targetMode, type), 150);
+          setTimeout(() => applyAudioRouting(targetMode, type), 600);
         });
 
         // Handle call rejection
@@ -666,53 +689,89 @@ const useVideoCall = (socket, user, selectedUser, dbFriends, iceServers) => {
       // Apply audio routing for answered call type
       applyAudioRouting(wantVideo ? 'speaker' : 'earpiece', wantVideo ? 'video' : 'audio');
 
-      // Request media stream (audio + optional video) with retry logic
-      let currentStream = null;
-      let retries = 3;
-
-      while (retries > 0 && !currentStream) {
+      // ⚡ INSTANT MEDIA: Check if pre-warmed stream from ringing phase is ready
+      isIncomingCallActiveRef.current = false;
+      let currentStream = prewarmedStreamRef.current;
+      if (!currentStream && prewarmedPromiseRef.current) {
+        console.log('⏳ Awaiting in-flight pre-warmed media stream...');
         try {
-          // ✅ ENHANCED: Android-optimized media constraints for answer
-          const constraints = {
-            audio: {
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true,
-              sampleRate: { ideal: 48000, min: 16000 },
-            },
-            video: wantVideo ? {
-              width: { ideal: 1280, min: 640, max: 1920 },
-              height: { ideal: 720, min: 480, max: 1080 },
-              facingMode: cameraFacing,
-              frameRate: { ideal: 30, min: 15, max: 60 },
-              // ✅ HD quality hints — reduces blur
-              resizeMode: 'none',
-            } : false,
-          };
-          console.log('📹 Requesting media with constraints:', constraints);
-          currentStream = await navigator.mediaDevices.getUserMedia(constraints);
-          console.log('✅ Got media stream successfully');
-          break;
-        } catch (err) {
-          retries--;
-          if (retries > 0) {
-            console.warn(`⚠️ Media request failed, retrying... (${retries} attempts left):`, err.message);
-            // Wait 500ms before retry
-            await new Promise(resolve => setTimeout(resolve, 500));
-          } else {
-            throw err;
+          currentStream = await prewarmedPromiseRef.current;
+        } catch (e) {
+          currentStream = null;
+        }
+      }
+
+      // Check if pre-warmed stream is valid and active
+      const isPrewarmedValid = currentStream &&
+        currentStream.getAudioTracks().some(t => t.readyState === 'live') &&
+        (!wantVideo || currentStream.getVideoTracks().some(t => t.readyState === 'live'));
+
+      if (isPrewarmedValid) {
+        console.log('⚡ Instant connect: Using pre-warmed media stream (0ms hardware latency)!');
+        prewarmedStreamRef.current = null;
+        prewarmedPromiseRef.current = null;
+      } else {
+        console.log('🎙️ Pre-warmed stream not ready or invalid, acquiring media directly...');
+        // Request media stream (audio + optional video) with retry logic
+        let retries = 3;
+        currentStream = null;
+
+        while (retries > 0 && !currentStream) {
+          try {
+            // ✅ ENHANCED: Fast Android-optimized media constraints for answer
+            const constraints = {
+              audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+              },
+              video: wantVideo ? {
+                width: { ideal: 1280, min: 640, max: 1920 },
+                height: { ideal: 720, min: 480, max: 1080 },
+                facingMode: cameraFacing,
+                frameRate: { ideal: 30, min: 15, max: 60 },
+              } : false,
+            };
+            console.log('📹 Requesting media with constraints:', constraints);
+            currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+            console.log('✅ Got media stream successfully');
+            break;
+          } catch (err) {
+            if (err.name === 'OverconstrainedError') {
+              console.warn('⚠️ OverconstrainedError detected in answerCall, falling back to basic media constraints');
+              try {
+                currentStream = await navigator.mediaDevices.getUserMedia({
+                  audio: true,
+                  video: wantVideo ? true : false,
+                });
+                break;
+              } catch (fallbackErr) {
+                console.error('Fallback getUserMedia failed:', fallbackErr);
+              }
+            }
+            retries--;
+            if (retries > 0) {
+              console.warn(`⚠️ Media request failed, retrying... (${retries} attempts left):`, err.message);
+              // Wait 500ms before retry
+              await new Promise(resolve => setTimeout(resolve, 500));
+            } else {
+              throw err;
+            }
           }
         }
       }
 
       setStream(currentStream);
 
-      // Create peer connection as non-initiator with trickle: true
+      // Create peer connection as non-initiator with trickle: true and pre-gathered candidate pool
       const peer = new Peer({
         initiator: false,
         trickle: true,
         stream: currentStream,
-        config: { iceServers },
+        config: {
+          iceServers,
+          iceCandidatePoolSize: 2,
+        },
       });
       peerRef.current = peer;
 
@@ -793,6 +852,16 @@ const useVideoCall = (socket, user, selectedUser, dbFriends, iceServers) => {
    * Reject an incoming call
    */
   const rejectCall = useCallback(() => {
+    isIncomingCallActiveRef.current = false;
+    // ⚡ Clean up any pre-warmed media stream immediately
+    if (prewarmedStreamRef.current) {
+      try {
+        prewarmedStreamRef.current.getTracks().forEach(track => track.stop());
+      } catch (e) {}
+      prewarmedStreamRef.current = null;
+    }
+    prewarmedPromiseRef.current = null;
+
     // Clear notification immediately when rejecting call
     dismissCallNotification(call?.from);
 
@@ -812,6 +881,16 @@ const useVideoCall = (socket, user, selectedUser, dbFriends, iceServers) => {
    */
   const clearIncomingCallUI = useCallback(() => {
     console.log('[clearIncomingCallUI] Silently clearing incoming call state');
+    isIncomingCallActiveRef.current = false;
+    // ⚡ Clean up any pre-warmed media stream immediately
+    if (prewarmedStreamRef.current) {
+      try {
+        prewarmedStreamRef.current.getTracks().forEach(track => track.stop());
+      } catch (e) {}
+      prewarmedStreamRef.current = null;
+    }
+    prewarmedPromiseRef.current = null;
+
     ringtoneShouldPlayRef.current = false;
     setReceivingCall(false);
     setCall({});
@@ -828,9 +907,34 @@ const useVideoCall = (socket, user, selectedUser, dbFriends, iceServers) => {
    */
   const endCall = useCallback(() => {
     console.log('🛑 endCall triggered - stopping all tracks and resetting audio state');
+    isIncomingCallActiveRef.current = false;
+    // ⚡ Clean up any pre-warmed media stream immediately
+    if (prewarmedStreamRef.current) {
+      try {
+        prewarmedStreamRef.current.getTracks().forEach(track => track.stop());
+      } catch (e) {}
+      prewarmedStreamRef.current = null;
+    }
+    prewarmedPromiseRef.current = null;
 
     // Clear call notification immediately when ending call
     dismissCallNotification();
+
+    // Clear timeout timer if pending
+    if (callingTimeoutTimerRef.current) {
+      clearTimeout(callingTimeoutTimerRef.current);
+      callingTimeoutTimerRef.current = null;
+    }
+
+    // Clean up one-time call acceptance/rejection socket listeners to avoid stale closures
+    if (socket) {
+      try {
+        socket.off('callAccepted');
+        socket.off('callRejected');
+      } catch (e) {
+        console.warn('Error removing socket call listeners:', e);
+      }
+    }
 
     setCallStarted(false);
     setCallAccepted(false);
@@ -839,6 +943,9 @@ const useVideoCall = (socket, user, selectedUser, dbFriends, iceServers) => {
     setIsFrontCamera(true); // Reset to front camera by default for the next call!
     ringtoneShouldPlayRef.current = false;
     pendingCandidatesRef.current = [];
+    setCallerSignal(null); // ✅ Clear stale offer SDP signal
+    setCallerId(null); // ✅ Clear stale caller ID
+    setUserAcceptedCall(false); // ✅ Reset user acceptance flag
 
     // Destroy peer connection cleanly
     if (peerRef.current) {
@@ -862,6 +969,27 @@ const useVideoCall = (socket, user, selectedUser, dbFriends, iceServers) => {
     if (remoteAudioRef.current) {
       remoteAudioRef.current.pause();
       remoteAudioRef.current.srcObject = null;
+    }
+    if (userVideo.current) {
+      try {
+        userVideo.current.pause();
+        userVideo.current.srcObject = null;
+      } catch (e) {
+        console.warn('Error pausing userVideo:', e);
+      }
+    }
+
+    // Clean up dynamic audio element if attached
+    if (typeof document !== 'undefined') {
+      try {
+        const dynAudio = document.getElementById('juicy-remote-audio-element');
+        if (dynAudio) {
+          dynAudio.pause();
+          dynAudio.srcObject = null;
+        }
+      } catch (e) {
+        console.warn('Error cleaning dynamic audio element:', e);
+      }
     }
 
     // Close audio context
@@ -929,6 +1057,7 @@ const useVideoCall = (socket, user, selectedUser, dbFriends, iceServers) => {
   const handleIncomingCall = useCallback(
     ({ from, signal, callerName, callType: incomingType }) => {
       console.log('📲 Incoming call from:', callerName, 'ID:', from, 'type:', incomingType);
+      isIncomingCallActiveRef.current = true;
       setIsFrontCamera(true); // Ensure front camera opens by default when answering!
       setReceivingCall(true);
       setCall({ from, callerName, callType: incomingType || 'audio' });
@@ -937,6 +1066,52 @@ const useVideoCall = (socket, user, selectedUser, dbFriends, iceServers) => {
         setCallerSignal(signal);
       }
       setCallerId(from);
+
+      // ⚡ PRE-WARM MEDIA: Start acquiring media stream in background while phone is ringing!
+      // This eliminates the 1.5 - 2.5 second hardware wake-up delay on Android when user taps "Accept".
+      const wantVideo = (incomingType === 'video');
+      const constraints = {
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+        video: wantVideo ? {
+          width: { ideal: 1280, min: 640, max: 1920 },
+          height: { ideal: 720, min: 480, max: 1080 },
+          facingMode: 'user',
+          frameRate: { ideal: 30, min: 15, max: 60 },
+        } : false,
+      };
+
+      if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function') {
+        if (prewarmedStreamRef.current) {
+          try {
+            prewarmedStreamRef.current.getTracks().forEach(t => t.stop());
+          } catch (e) {}
+          prewarmedStreamRef.current = null;
+        }
+
+        prewarmedPromiseRef.current = navigator.mediaDevices.getUserMedia(constraints)
+          .then(wStream => {
+            if (!isIncomingCallActiveRef.current) {
+              console.log('🛑 Incoming call was dismissed/rejected before pre-warm completed. Stopping tracks.');
+              try {
+                wStream.getTracks().forEach(t => t.stop());
+              } catch (e) {}
+              prewarmedStreamRef.current = null;
+              return null;
+            }
+            console.log('⚡ Media stream pre-warmed successfully during incoming call ringing');
+            prewarmedStreamRef.current = wStream;
+            return wStream;
+          })
+          .catch(err => {
+            console.warn('⚠️ Media pre-warm deferred to answer:', err.message);
+            prewarmedStreamRef.current = null;
+            return null;
+          });
+      }
     },
     []
   );

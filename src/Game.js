@@ -62,17 +62,20 @@ export const GameSelectorDialog = ({ open, onClose, onSelectGame }) => {
       }
     }}>
       <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pb: 1 }}>
-        <Typography variant="h6" fontWeight={700} sx={{
+        <Box component="span" sx={{
+          fontWeight: 700,
+          fontSize: '1.25rem',
           background: 'linear-gradient(90deg, #ff8a00, #e52e71)',
           WebkitBackgroundClip: 'text',
           WebkitTextFillColor: 'transparent'
         }}>
           Play a Game 🎮
-        </Typography>
+        </Box>
         <IconButton onClick={onClose} size="small" sx={{ color: 'rgba(255,255,255,0.7)' }}>
           <CloseIcon fontSize="small" />
         </IconButton>
       </DialogTitle>
+
       <Divider sx={{ bgcolor: 'rgba(255, 255, 255, 0.1)' }} />
       <DialogContent sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
         {/* Tic Tac Toe */}

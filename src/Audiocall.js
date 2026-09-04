@@ -924,7 +924,7 @@ const Audiocall = ({ videoCall, user, selectedUser, dbFriends, handleCallEnd, an
                     }}
                     autoPlay={true}
                     playsInline={true}
-                    muted={false}
+                    muted={true}
                     controls={false}
                     crossOrigin="anonymous"
                     style={{
@@ -1239,14 +1239,21 @@ const Audiocall = ({ videoCall, user, selectedUser, dbFriends, handleCallEnd, an
               </IconButton>
             </Box>
 
-            {/* Audio element for remote peer audio */}
-            {/* For video calls: muted (video element handles audio via speaker) */}
-            {/* For audio calls: unmuted (this is the primary audio path for earpiece/speaker routing) */}
+            {/* Audio element for remote peer audio - unmuted for both audio and video calls */}
             <audio
-              ref={videoCall.remoteAudioRef}
+              ref={(el) => {
+                if (videoCall.remoteAudioRef) {
+                  videoCall.remoteAudioRef.current = el;
+                }
+                if (el && videoCall.remoteStream && el.srcObject !== videoCall.remoteStream) {
+                  console.log('🔊 [Audio Callback Ref] Attaching remoteStream to remote audio element');
+                  el.srcObject = videoCall.remoteStream;
+                  el.play().catch(err => console.warn('Remote audio autoplay warning:', err));
+                }
+              }}
               autoPlay={true}
               playsInline={true}
-              muted={videoCall.callType === 'video'}
+              muted={false}
               controls={false}
               crossOrigin="anonymous"
               preload="auto"
