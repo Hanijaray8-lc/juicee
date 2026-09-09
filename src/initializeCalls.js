@@ -41,67 +41,122 @@ export const useInitializeCalls = (socket, user, selectedUser, dbFriends, setCal
     ]);
   }, [setCallLogs]);
 
-  // ICE servers for NAT traversal and fallback relay
+  // ICE servers for NAT traversal and fallback relay (optimized for fast mobile P2P & candidate gathering)
   const iceServers = [
-    // STUN servers for direct NAT traversal (Google & Cloudflare)
+    // Fast STUN servers for direct NAT traversal (4 Google STUN for better candidate diversity)
     {
       urls: [
         'stun:stun.l.google.com:19302',
         'stun:stun1.l.google.com:19302',
         'stun:stun2.l.google.com:19302',
-        'stun:stun3.l.google.com:19302',
-        'stun:stun4.l.google.com:19302',
-        'stun:global.stun.twilio.com:3478'
+        'stun:stun3.l.google.com:19302'
       ]
     },
-    // Metered openrelay community STUN/TURN fallback
+    // Fast TURN servers for relay fallback (UDP port 443 & 80)
     {
       urls: [
-        'stun:openrelay.metered.ca:80',
-        'turn:openrelay.metered.ca:80',
         'turn:openrelay.metered.ca:443',
-        'turn:openrelay.metered.ca:443?transport=tcp'
+        'turn:openrelay.metered.ca:80'
       ],
       username: 'openrelayproject',
       credential: 'openrelayproject'
+    },
+    {
+      urls: [
+        'turn:global.relay.metered.ca:443',
+        'turn:global.relay.metered.ca:80'
+      ],
+      username: 'cfb9d79f53f4d7f0ca10c84f',
+      credential: 'r3k0rWoUV9pYx/k+'
     }
   ];
 
-  // Initialize video call hook (must be after `iceServers` is defined)
-  const videoCall = useVideoCall(socket, user, selectedUser, dbFriends, iceServers);
+  /**
+   * RTCPeerConnection configuration for both initiator and answerer peers.
+   * - bundlePolicy: 'max-bundle'  → All media on one transport (lower latency, fewer TURN relay ports)
+   * - sdpSemantics: 'unified-plan' → Modern SDP format required for reliable track events on all browsers
+   * - iceTransportPolicy: 'all'   → Try STUN (direct) AND TURN (relay) candidates simultaneously
+   * - iceCandidatePoolSize: 10    → Pre-gather candidates before offer/answer (speeds up ICE)
+   */
+  const rtcConfig = {
+    iceServers,
+    bundlePolicy: 'max-bundle',
+    sdpSemantics: 'unified-plan',
+    iceTransportPolicy: 'all',
+    iceCandidatePoolSize: 10,
+  };
 
-  // Proximity sensor for screen off during audio calls via Capacitor plugin
+  // Initialize video call hook (must be after `iceServers` and `rtcConfig` are defined)
+  const videoCall = useVideoCall(socket, user, selectedUser, dbFriends, iceServers, rtcConfig);
+
+  // Stable ref for videoCall instance so socket listeners don't re-bind on every render
+  const videoCallRef = useRef(videoCall);
   useEffect(() => {
-    let proximityEnabled = false;
+    videoCallRef.current = videoCall;
+  }, [videoCall]);
 
-    const setupProximity = async () => {
-      try {
-        const { CapacitorProximity } = await import('@capgo/capacitor-proximity');
-        const status = await CapacitorProximity.getStatus();
-        if (status.available) {
-          if (videoCall && videoCall.callStarted && videoCall.callType === 'audio' && !videoCall.isSpeakerOn) {
+  // Proximity sensor for screen off during audio calls (Android Native WakeLock + iOS Capgo plugin)
+  useEffect(() => {
+    let isCapgoActive = false;
+
+    const manageProximity = async () => {
+      const isAudioCallActive = Boolean(videoCall && videoCall.callStarted && videoCall.callType === 'audio');
+      const isEarpieceMode = Boolean(!videoCall || !videoCall.isSpeakerOn);
+      const shouldEnableProximity = isAudioCallActive && isEarpieceMode;
+
+      const { AudioRoute } = window.Capacitor?.Plugins || {};
+
+      if (shouldEnableProximity) {
+        // 1. Primary: Native Android PROXIMITY_SCREEN_OFF_WAKE_LOCK (true screen black out + touch disable)
+        if (AudioRoute && typeof AudioRoute.acquireProximityLock === 'function') {
+          AudioRoute.acquireProximityLock().catch(err => {
+            console.warn('AudioRoute acquireProximityLock error:', err);
+          });
+        }
+
+        // 2. Secondary / iOS: Capgo Proximity plugin
+        try {
+          const { CapacitorProximity } = await import('@capgo/capacitor-proximity');
+          const status = await CapacitorProximity.getStatus();
+          if (status?.available) {
             await CapacitorProximity.enable();
-            proximityEnabled = true;
-          } else {
+            isCapgoActive = true;
+          }
+        } catch (err) {
+          // Silent catch if plugin is unavailable on platform
+        }
+      } else {
+        // Turn off proximity lock (Speaker ON, Video call, or Call ended)
+        if (AudioRoute && typeof AudioRoute.releaseProximityLock === 'function') {
+          AudioRoute.releaseProximityLock().catch(() => { });
+        }
+
+        if (isCapgoActive) {
+          try {
+            const { CapacitorProximity } = await import('@capgo/capacitor-proximity');
             await CapacitorProximity.disable();
-            proximityEnabled = false;
+            isCapgoActive = false;
+          } catch (err) {
+            // Silent catch
           }
         }
-      } catch (err) {
-        console.warn('Capacitor Proximity not available:', err);
       }
     };
 
-    setupProximity();
+    manageProximity();
 
     return () => {
-      if (proximityEnabled) {
+      const { AudioRoute } = window.Capacitor?.Plugins || {};
+      if (AudioRoute && typeof AudioRoute.releaseProximityLock === 'function') {
+        AudioRoute.releaseProximityLock().catch(() => { });
+      }
+      if (isCapgoActive) {
         import('@capgo/capacitor-proximity').then(({ CapacitorProximity }) => {
           CapacitorProximity.disable().catch(() => { });
         }).catch(() => { });
       }
     };
-  }, [videoCall]);
+  }, [videoCall?.callStarted, videoCall?.callType, videoCall?.isSpeakerOn]);
 
   // Wrapper to initiate call and log it
   const initiateCallHandler = useCallback(async (friendId, type = 'audio') => {
@@ -116,7 +171,7 @@ export const useInitializeCalls = (socket, user, selectedUser, dbFriends, setCal
   }, [videoCall, selectedUser, addCallLog]);
 
   // Comprehensive call end handler that saves to backend
-  const handleCallEnd = useCallback(async () => {
+  const handleCallEnd = useCallback(async (skipEmit = false) => {
     // 1. Guard Clause - If we've already logged this call, or there's no active call, skip
     if (loggingLockRef.current) {
       console.log('🛑 Duplicate log prevented via Ref Lock');
@@ -199,8 +254,8 @@ export const useInitializeCalls = (socket, user, selectedUser, dbFriends, setCal
     if (typeof videoCall.dismissCallNotification === 'function') {
       videoCall.dismissCallNotification();
     }
-    // End the video call in the hook (this will emit endCall to peer)
-    videoCall.endCall();
+    // End the video call in the hook (pass skipEmit to avoid double-emit loop)
+    videoCall.endCall(skipEmit);
   }, [videoCall, selectedUser]);
 
   // Wrapper to answer call and log it
@@ -218,21 +273,29 @@ export const useInitializeCalls = (socket, user, selectedUser, dbFriends, setCal
   useEffect(() => {
     if (!socket) return;
 
-    socket.on('incomingCall', videoCall.handleIncomingCall);
-    return () => socket.off('incomingCall', videoCall.handleIncomingCall);
-  }, [socket, videoCall]);
+    const onIncomingCall = (data) => {
+      if (videoCallRef.current?.handleIncomingCall) {
+        videoCallRef.current.handleIncomingCall(data);
+      }
+    };
+
+    socket.on('incomingCall', onIncomingCall);
+    return () => socket.off('incomingCall', onIncomingCall);
+  }, [socket]);
 
   // Listen for trickle ICE candidate messages from peer
   useEffect(() => {
-    if (!socket || !videoCall.handleIceCandidate) return;
+    if (!socket) return;
 
     const handleCandidate = (data) => {
-      videoCall.handleIceCandidate(data);
+      if (videoCallRef.current?.handleIceCandidate) {
+        videoCallRef.current.handleIceCandidate(data);
+      }
     };
 
     socket.on('iceCandidate', handleCandidate);
     return () => socket.off('iceCandidate', handleCandidate);
-  }, [socket, videoCall]);
+  }, [socket]);
 
   useEffect(() => {
     let timer;
@@ -247,14 +310,14 @@ export const useInitializeCalls = (socket, user, selectedUser, dbFriends, setCal
       videoCall.setCallDuration('00:00');
     }
     return () => clearInterval(timer);
-  }, [videoCall.callStarted, videoCall.callStartTime, videoCall]);
+  }, [videoCall.callStarted, videoCall.callStartTime, videoCall.setCallDuration]);
 
   useEffect(() => {
     if (!socket) return;
 
     const handleEndCallFromPeer = () => {
       console.log('📴 [Socket] Received callEnded event from peer - closing UI');
-      handleCallEnd();
+      handleCallEnd(true);
     };
 
     console.log('🔔 Setting up callEnded listener');
@@ -268,11 +331,13 @@ export const useInitializeCalls = (socket, user, selectedUser, dbFriends, setCal
 
   // Listen for busy signal (simultaneous calls detected)
   useEffect(() => {
-    if (!socket || !videoCall.handleBusyCall) return;
+    if (!socket) return;
 
     const handleBusySignal = (data) => {
       console.log('🚫 [Socket] Received callBusy signal:', data);
-      videoCall.handleBusyCall(data);
+      if (videoCallRef.current?.handleBusyCall) {
+        videoCallRef.current.handleBusyCall(data);
+      }
     };
 
     console.log('🔔 Setting up callBusy listener');
@@ -282,7 +347,27 @@ export const useInitializeCalls = (socket, user, selectedUser, dbFriends, setCal
       console.log('🔔 Removing callBusy listener');
       socket.off('callBusy', handleBusySignal);
     };
-  }, [socket, videoCall]);
+  }, [socket]);
+
+  // Listen for ringing signal (when receiver device is online and ringing)
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleRingingSignal = (data) => {
+      console.log('🔔 [Socket] Received callRinging signal:', data);
+      if (videoCallRef.current?.handleCallRinging) {
+        videoCallRef.current.handleCallRinging(data);
+      }
+    };
+
+    console.log('🔔 Setting up callRinging listener');
+    socket.on('callRinging', handleRingingSignal);
+
+    return () => {
+      console.log('🔔 Removing callRinging listener');
+      socket.off('callRinging', handleRingingSignal);
+    };
+  }, [socket]);
 
   // Handle auto-ending states (rejection, timeout) for logging - Caller side only
   useEffect(() => {
@@ -296,6 +381,7 @@ export const useInitializeCalls = (socket, user, selectedUser, dbFriends, setCal
     videoCall,
     initiateCallHandler,
     handleCallEnd,
-    answerCallHandler
+    answerCallHandler,
+    prewarmCallerMedia: videoCall.prewarmCallerMedia // ⚡ Expose pre-warm for call button trigger
   };
 };

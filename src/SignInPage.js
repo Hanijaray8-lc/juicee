@@ -201,12 +201,28 @@ function SignInPage() {
 
   const [forgotOpen, setForgotOpen] = useState(false);
   const [forgotMobile, setForgotMobile] = useState("");
+  const [forgotCountry, setForgotCountry] = useState({ code: '+91', name: 'India', flag: '🇮🇳', dialLength: 10 });
+  const [forgotCountryPickerOpen, setForgotCountryPickerOpen] = useState(false);
   const [forgotStatus, setForgotStatus] = useState(""); // '', 'checking', 'processing', 'done', 'error'
   const [forgotError, setForgotError] = useState("");
   const [resetOpen, setResetOpen] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [resetStatus, setResetStatus] = useState(""); // '', 'processing', 'done', 'error'
+  const [resetError, setResetError] = useState("");
+
+  const getFormattedForgotPhone = () => {
+    let digits = forgotMobile.replace(/\D/g, '');
+    if (!digits) return '';
+    if (forgotCountry.code === '+91' && digits.startsWith('91') && digits.length === 12) {
+      digits = digits.slice(2);
+    } else if (digits.startsWith('0') && digits.length > forgotCountry.dialLength) {
+      digits = digits.replace(/^0+/, '');
+    }
+    return `${forgotCountry.code}${digits}`;
+  };
 
   // --- GOOGLE SIGN-IN STATES & HANDLERS ---
   const [googleClientId, setGoogleClientId] = useState(() => {
@@ -231,7 +247,7 @@ function SignInPage() {
   const [phoneCountryPickerOpen, setPhoneCountryPickerOpen] = useState(false);
   const [selectedPhoneCountry, setSelectedPhoneCountry] = useState({ code: '+91', name: 'India', flag: '🇮🇳', dialLength: 10 });
 
-  // Countries list for phone modal
+  // Countries list for phone modal & forgot password (all 49 countries from SignUp page)
   const phoneCountries = [
     { code: '+966', name: 'Saudi Arabia', flag: '🇸🇦', dialLength: 9 },
     { code: '+91', name: 'India', flag: '🇮🇳', dialLength: 10 },
@@ -244,20 +260,43 @@ function SignInPage() {
     { code: '+968', name: 'Oman', flag: '🇴🇲', dialLength: 8 },
     { code: '+973', name: 'Bahrain', flag: '🇧🇭', dialLength: 8 },
     { code: '+20', name: 'Egypt', flag: '🇪🇬', dialLength: 10 },
+    { code: '+962', name: 'Jordan', flag: '🇯🇴', dialLength: 9 },
+    { code: '+61', name: 'Australia', flag: '🇦🇺', dialLength: 9 },
+    { code: '+64', name: 'New Zealand', flag: '🇳🇿', dialLength: 9 },
+    { code: '+65', name: 'Singapore', flag: '🇸🇬', dialLength: 8 },
+    { code: '+60', name: 'Malaysia', flag: '🇲🇾', dialLength: 9 },
+    { code: '+66', name: 'Thailand', flag: '🇹🇭', dialLength: 9 },
+    { code: '+86', name: 'China', flag: '🇨🇳', dialLength: 11 },
+    { code: '+81', name: 'Japan', flag: '🇯🇵', dialLength: 10 },
+    { code: '+82', name: 'South Korea', flag: '🇰🇷', dialLength: 10 },
+    { code: '+33', name: 'France', flag: '🇫🇷', dialLength: 9 },
+    { code: '+49', name: 'Germany', flag: '🇩🇪', dialLength: 10 },
+    { code: '+39', name: 'Italy', flag: '🇮🇹', dialLength: 10 },
+    { code: '+34', name: 'Spain', flag: '🇪🇸', dialLength: 9 },
     { code: '+92', name: 'Pakistan', flag: '🇵🇰', dialLength: 10 },
     { code: '+880', name: 'Bangladesh', flag: '🇧🇩', dialLength: 10 },
     { code: '+94', name: 'Sri Lanka', flag: '🇱🇰', dialLength: 9 },
     { code: '+977', name: 'Nepal', flag: '🇳🇵', dialLength: 10 },
-    { code: '+61', name: 'Australia', flag: '🇦🇺', dialLength: 9 },
-    { code: '+65', name: 'Singapore', flag: '🇸🇬', dialLength: 8 },
-    { code: '+60', name: 'Malaysia', flag: '🇲🇾', dialLength: 9 },
-    { code: '+86', name: 'China', flag: '🇨🇳', dialLength: 11 },
-    { code: '+81', name: 'Japan', flag: '🇯🇵', dialLength: 10 },
-    { code: '+82', name: 'South Korea', flag: '🇰🇷', dialLength: 10 },
+    { code: '+63', name: 'Philippines', flag: '🇵🇭', dialLength: 10 },
+    { code: '+62', name: 'Indonesia', flag: '🇮🇩', dialLength: 10 },
     { code: '+55', name: 'Brazil', flag: '🇧🇷', dialLength: 11 },
+    { code: '+52', name: 'Mexico', flag: '🇲🇽', dialLength: 10 },
     { code: '+7', name: 'Russia', flag: '🇷🇺', dialLength: 10 },
+    { code: '+90', name: 'Turkey', flag: '🇹🇷', dialLength: 10 },
+    { code: '+27', name: 'South Africa', flag: '🇿🇦', dialLength: 9 },
     { code: '+234', name: 'Nigeria', flag: '🇳🇬', dialLength: 10 },
     { code: '+254', name: 'Kenya', flag: '🇰🇪', dialLength: 9 },
+    { code: '+212', name: 'Morocco', flag: '🇲🇦', dialLength: 9 },
+    { code: '+31', name: 'Netherlands', flag: '🇳🇱', dialLength: 9 },
+    { code: '+32', name: 'Belgium', flag: '🇧🇪', dialLength: 9 },
+    { code: '+41', name: 'Switzerland', flag: '🇨🇭', dialLength: 9 },
+    { code: '+46', name: 'Sweden', flag: '🇸🇪', dialLength: 9 },
+    { code: '+47', name: 'Norway', flag: '🇳🇴', dialLength: 8 },
+    { code: '+45', name: 'Denmark', flag: '🇩🇰', dialLength: 8 },
+    { code: '+358', name: 'Finland', flag: '🇫🇮', dialLength: 9 },
+    { code: '+353', name: 'Ireland', flag: '🇮🇪', dialLength: 9 },
+    { code: '+351', name: 'Portugal', flag: '🇵🇹', dialLength: 9 },
+    { code: '+30', name: 'Greece', flag: '🇬🇷', dialLength: 10 },
   ];
 
   // ✅ Request all essential app permissions one by one (Notifications, Camera, Microphone, Photos & Videos)
@@ -697,28 +736,36 @@ function SignInPage() {
 
   // Open forgot dialog
   const handleForgotOpen = () => {
-    setForgotOpen(true);
-    setForgotStatus("");
     setForgotMobile("");
+    setForgotCountry({ code: '+91', name: 'India', flag: '🇮🇳', dialLength: 10 });
+    setForgotStatus("");
     setForgotError("");
+    setForgotOpen(true);
   };
 
   // Handle verify button in forgot dialog
   const handleForgotVerify = async () => {
+    const fullPhone = getFormattedForgotPhone();
+    const digitsOnly = forgotMobile.replace(/\D/g, '');
+
+    if (!digitsOnly || digitsOnly.length < 5) {
+      setForgotStatus("error");
+      setForgotError("Please enter your registered mobile number.");
+      return;
+    }
+
     setForgotStatus("checking");
     setForgotError("");
-    const usernameOrEmail = document.getElementById("email")?.value || "";
 
     setTimeout(async () => {
       setForgotStatus("processing");
       try {
-        // Send both username/email and mobile to backend
+        // Send mobile with country code (e.g. +919027503020) to backend
         const response = await fetch(`${API_BASE_URL}/api/forgot-password/request`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            email: usernameOrEmail,
-            phone: forgotMobile
+            phone: fullPhone
           }),
         });
         const result = await response.json();
@@ -727,51 +774,66 @@ function SignInPage() {
           setTimeout(() => {
             setForgotOpen(false);
             setResetOpen(true);
-          }, 1000);
+          }, 800);
         } else {
           setForgotStatus("error");
-          setForgotError(result.message || "Verification failed.");
+          setForgotError(result.message || "Verification failed. Mobile number not registered.");
         }
       } catch (err) {
         setForgotStatus("error");
         setForgotError("Server error. Try again.");
       }
-    }, 1200);
+    }, 800);
   };
 
   // Handle password reset
   const handleResetPassword = async () => {
+    setResetError("");
+    if (!newPassword || newPassword.length < 4) {
+      setResetStatus("error");
+      setResetError("Password must be at least 4 characters long.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setResetStatus("error");
+      setResetError("Passwords do not match.");
+      return;
+    }
+
     setResetStatus("processing");
+    const fullPhone = getFormattedForgotPhone();
+
     setTimeout(async () => {
-      if (newPassword !== confirmPassword) {
-        setResetStatus("error");
-        return;
-      }
-      const usernameOrEmail = document.getElementById("email")?.value || "";
       try {
-        // Send username/email, mobile, and new password to backend
+        // Send formatted mobile with country code and new password to backend
         const response = await fetch(`${API_BASE_URL}/api/forgot-password/reset`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            email: usernameOrEmail,
-            phone: forgotMobile,
+            phone: fullPhone,
             newPassword,
           }),
         });
+        const result = await response.json();
         if (response.ok) {
           setResetStatus("done");
           setTimeout(() => {
             setResetOpen(false);
-            showPopup(true, "Password reset successful!");
-          }, 1200);
+            setNewPassword("");
+            setConfirmPassword("");
+            setForgotMobile("");
+            setResetStatus("");
+            showPopup(true, "Password reset successful! Please sign in.");
+          }, 1000);
         } else {
           setResetStatus("error");
+          setResetError(result.message || "Password reset failed.");
         }
       } catch (err) {
         setResetStatus("error");
+        setResetError("Server error. Try again.");
       }
-    }, 1200);
+    }, 800);
   };
 
   // Auto-redirect if already logged in (WhatsApp-style 0ms instant redirect)
@@ -1300,64 +1362,136 @@ function SignInPage() {
         PaperProps={{
           sx: {
             borderRadius: 3,
-            minWidth: 350,
+            minWidth: { xs: 320, sm: 380 },
+            maxWidth: 420,
             px: 3,
-            py: 2,
+            py: 2.5,
             bgcolor: WHITE,
             color: INPUT_TEXT_COLOR,
           },
         }}
       >
-        <DialogTitle sx={{ fontFamily: "Pacifico, cursive", fontWeight: "bold", ml: 8, color: WHATSAPP_TEAL }}>
+        <DialogTitle sx={{ fontFamily: "Pacifico, cursive", fontWeight: "bold", textAlign: "center", color: WHATSAPP_TEAL, pb: 1 }}>
           Forgot Password
         </DialogTitle>
-        <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          <Typography sx={{ fontWeight: "bold", color: INPUT_TEXT_COLOR }}>
-            Username/Email: <span style={{ color: WHATSAPP_GREEN }}>{document.getElementById("email")?.value || ""}</span>
+        <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
+          <Typography variant="body2" sx={{ color: TEXT_GRAY }}>
+            Enter your registered mobile number to reset your password:
           </Typography>
-          <TextField
-            label="Registered Mobile Number"
-            value={forgotMobile}
-            onChange={e => setForgotMobile(e.target.value)}
-            fullWidth
-            sx={{
-              backgroundColor: LIGHT_GRAY,
-              borderRadius: 1,
-              '& .MuiInputBase-input': {
-                color: INPUT_TEXT_COLOR,
-              },
-              '& .MuiInputLabel-root': {
-                color: TEXT_GRAY,
-              },
-              '& .MuiOutlinedInput-root': {
+
+          {/* Country Code + Mobile Number Row */}
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+            {/* Country code selector button */}
+            <Box
+              onClick={() => setForgotCountryPickerOpen(true)}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 0.5,
+                px: 1.5,
+                py: 1,
                 borderRadius: 2,
-                color: INPUT_TEXT_COLOR,
-              }
-            }}
-          />
+                backgroundColor: LIGHT_GRAY,
+                border: `1.5px solid ${BORDER_GRAY}`,
+                cursor: 'pointer',
+                minWidth: 85,
+                height: 56,
+                userSelect: 'none',
+                transition: 'border-color 0.2s',
+                '&:hover': { borderColor: WHATSAPP_GREEN },
+              }}
+            >
+              <Typography sx={{ fontSize: '1.3rem', lineHeight: 1 }}>{forgotCountry.flag}</Typography>
+              <Typography sx={{ fontSize: '0.85rem', fontWeight: 600, color: INPUT_TEXT_COLOR, whiteSpace: 'nowrap' }}>
+                {forgotCountry.code}
+              </Typography>
+              <Typography sx={{ fontSize: '0.7rem', color: TEXT_GRAY }}>▼</Typography>
+            </Box>
+
+            {/* Mobile Number input */}
+            <TextField
+              label="Registered Mobile Number"
+              placeholder={`${forgotCountry.dialLength} digits`}
+              type="tel"
+              value={forgotMobile}
+              onChange={e => {
+                let val = e.target.value;
+                // If user pastes e.g. +91 9027503020
+                if (val.includes('+') || val.replace(/\D/g, '').length > forgotCountry.dialLength) {
+                  const raw = val.replace(/\D/g, '');
+                  if (forgotCountry.code === '+91' && raw.startsWith('91') && raw.length === 12) {
+                    val = raw.slice(2);
+                  } else {
+                    val = raw.slice(-forgotCountry.dialLength);
+                  }
+                } else {
+                  val = val.replace(/\D/g, '').slice(0, forgotCountry.dialLength);
+                }
+                setForgotMobile(val);
+                setForgotError("");
+              }}
+              fullWidth
+              autoFocus
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <LocalPhoneIcon sx={{ color: WHATSAPP_GREEN, fontSize: '1.1rem' }} />
+                  </InputAdornment>
+                ),
+              }}
+              sx={{
+                backgroundColor: LIGHT_GRAY,
+                borderRadius: 2,
+                '& .MuiInputBase-input': {
+                  color: INPUT_TEXT_COLOR,
+                  fontSize: '0.95rem',
+                  letterSpacing: 1,
+                },
+                '& .MuiInputLabel-root': {
+                  color: TEXT_GRAY,
+                  '&.Mui-focused': { color: WHATSAPP_GREEN },
+                },
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: 2,
+                  color: INPUT_TEXT_COLOR,
+                  '& fieldset': { borderColor: 'transparent' },
+                  '&:hover fieldset': { borderColor: WHATSAPP_GREEN },
+                  '&.Mui-focused fieldset': { borderColor: WHATSAPP_GREEN },
+                }
+              }}
+            />
+          </Box>
+
+          {/* Formatted phone preview */}
+          {forgotMobile && (
+            <Typography variant="caption" sx={{ color: WHATSAPP_TEAL, fontWeight: 600, ml: 0.5 }}>
+              Will verify as: {getFormattedForgotPhone()}
+            </Typography>
+          )}
+
           {forgotStatus === "checking" && (
-            <Typography sx={{ color: "orange", fontWeight: "bold" }}>Checking...</Typography>
+            <Typography sx={{ color: "orange", fontWeight: "bold", fontSize: '0.9rem' }}>Checking...</Typography>
           )}
           {forgotStatus === "processing" && (
-            <Typography sx={{ color: "blue", fontWeight: "bold" }}>Processing...</Typography>
+            <Typography sx={{ color: "blue", fontWeight: "bold", fontSize: '0.9rem' }}>Processing...</Typography>
           )}
           {forgotStatus === "done" && (
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
               <CheckCircleRoundedIcon sx={{ color: WHATSAPP_GREEN }} />
-              <Typography sx={{ color: WHATSAPP_GREEN, fontWeight: "bold" }}>Done!</Typography>
+              <Typography sx={{ color: WHATSAPP_GREEN, fontWeight: "bold" }}>Verified! Opening password reset...</Typography>
             </Box>
           )}
           {forgotStatus === "error" && (
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
               <CancelRoundedIcon sx={{ color: "#ef1c1c" }} />
-              <Typography sx={{ color: "#ef1c1c", fontWeight: "bold" }}>{forgotError}</Typography>
+              <Typography sx={{ color: "#ef1c1c", fontWeight: "bold", fontSize: '0.85rem' }}>{forgotError}</Typography>
             </Box>
           )}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
           <Button
             variant="contained"
-            sx={{ bgcolor: "#ef1c1c", "&:hover": { bgcolor: "#cc1818" }, borderRadius: 5 }}
+            sx={{ bgcolor: "#ef1c1c", "&:hover": { bgcolor: "#cc1818" }, borderRadius: 5, textTransform: 'none' }}
             onClick={() => setForgotOpen(false)}
             disabled={forgotStatus === "processing" || forgotStatus === "done"}
           >
@@ -1365,11 +1499,11 @@ function SignInPage() {
           </Button>
           <Button
             variant="contained"
-            sx={{ bgcolor: WHATSAPP_GREEN, "&:hover": { bgcolor: WHATSAPP_DARK_GREEN }, borderRadius: 5 }}
+            sx={{ bgcolor: WHATSAPP_GREEN, "&:hover": { bgcolor: WHATSAPP_DARK_GREEN }, borderRadius: 5, textTransform: 'none' }}
             onClick={handleForgotVerify}
             disabled={forgotStatus === "processing" || forgotStatus === "done"}
           >
-            Verify
+            {forgotStatus === "checking" || forgotStatus === "processing" ? "Verifying..." : "Verify"}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1383,65 +1517,101 @@ function SignInPage() {
         PaperProps={{
           sx: {
             borderRadius: 3,
-            minWidth: 350,
+            minWidth: { xs: 320, sm: 380 },
+            maxWidth: 420,
             px: 3,
-            py: 2,
+            py: 2.5,
             bgcolor: WHITE,
             color: INPUT_TEXT_COLOR,
           },
         }}
       >
-        <DialogTitle sx={{ fontFamily: "Pacifico, cursive", fontWeight: "bold", ml: 8, color: WHATSAPP_TEAL }}>
+        <DialogTitle sx={{ fontFamily: "Pacifico, cursive", fontWeight: "bold", textAlign: "center", color: WHATSAPP_TEAL, pb: 1 }}>
           Reset Password
         </DialogTitle>
-        <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          <Typography sx={{ fontWeight: "bold", color: INPUT_TEXT_COLOR }}>
-            Username/Email: <span style={{ color: WHATSAPP_GREEN }}>{document.getElementById("email")?.value || ""}</span>
-          </Typography>
+        <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2, pt: 1 }}>
+          <Box sx={{ p: 1.5, borderRadius: 2, bgcolor: LIGHT_GRAY, border: `1px solid ${BORDER_GRAY}` }}>
+            <Typography variant="body2" sx={{ fontWeight: 600, color: INPUT_TEXT_COLOR }}>
+              Verified Mobile: <span style={{ color: WHATSAPP_GREEN }}>{getFormattedForgotPhone()}</span>
+            </Typography>
+          </Box>
+
           <TextField
             label="New Password"
-            type="password"
+            type={showNewPassword ? "text" : "password"}
             value={newPassword}
-            onChange={e => setNewPassword(e.target.value)}
+            onChange={e => {
+              setNewPassword(e.target.value);
+              setResetError("");
+            }}
             fullWidth
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    edge="end"
+                    size="small"
+                  >
+                    {showNewPassword ? <VisibilityOff /> : <Visibility />}
+                  </IconButton>
+                </InputAdornment>
+              ),
+            }}
             sx={{
               backgroundColor: LIGHT_GRAY,
-              borderRadius: 1,
-              '& .MuiInputBase-input': {
-                color: INPUT_TEXT_COLOR,
-              },
-              '& .MuiInputLabel-root': {
-                color: TEXT_GRAY,
-              },
+              borderRadius: 2,
+              '& .MuiInputBase-input': { color: INPUT_TEXT_COLOR },
+              '& .MuiInputLabel-root': { color: TEXT_GRAY, '&.Mui-focused': { color: WHATSAPP_GREEN } },
               '& .MuiOutlinedInput-root': {
                 borderRadius: 2,
                 color: INPUT_TEXT_COLOR,
+                '& fieldset': { borderColor: 'transparent' },
+                '&:hover fieldset': { borderColor: WHATSAPP_GREEN },
+                '&.Mui-focused fieldset': { borderColor: WHATSAPP_GREEN },
               }
             }}
           />
+
           <TextField
             label="Confirm Password"
-            type="password"
+            type={showConfirmPassword ? "text" : "password"}
             value={confirmPassword}
-            onChange={e => setConfirmPassword(e.target.value)}
+            onChange={e => {
+              setConfirmPassword(e.target.value);
+              setResetError("");
+            }}
             fullWidth
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    edge="end"
+                    size="small"
+                  >
+                    {showConfirmPassword ? <VisibilityOff /> : <Visibility />}
+                  </IconButton>
+                </InputAdornment>
+              ),
+            }}
             sx={{
               backgroundColor: LIGHT_GRAY,
-              borderRadius: 1,
-              '& .MuiInputBase-input': {
-                color: INPUT_TEXT_COLOR,
-              },
-              '& .MuiInputLabel-root': {
-                color: TEXT_GRAY,
-              },
+              borderRadius: 2,
+              '& .MuiInputBase-input': { color: INPUT_TEXT_COLOR },
+              '& .MuiInputLabel-root': { color: TEXT_GRAY, '&.Mui-focused': { color: WHATSAPP_GREEN } },
               '& .MuiOutlinedInput-root': {
                 borderRadius: 2,
                 color: INPUT_TEXT_COLOR,
+                '& fieldset': { borderColor: 'transparent' },
+                '&:hover fieldset': { borderColor: WHATSAPP_GREEN },
+                '&.Mui-focused fieldset': { borderColor: WHATSAPP_GREEN },
               }
             }}
           />
+
           {resetStatus === "processing" && (
-            <Typography sx={{ color: "blue", fontWeight: "bold" }}>Processing...</Typography>
+            <Typography sx={{ color: "blue", fontWeight: "bold", fontSize: '0.9rem' }}>Processing reset...</Typography>
           )}
           {resetStatus === "done" && (
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -1452,16 +1622,16 @@ function SignInPage() {
           {resetStatus === "error" && (
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
               <CancelRoundedIcon sx={{ color: "#ef1c1c" }} />
-              <Typography sx={{ color: "#ef1c1c", fontWeight: "bold" }}>
-                {newPassword !== confirmPassword ? "Passwords do not match." : "Reset failed."}
+              <Typography sx={{ color: "#ef1c1c", fontWeight: "bold", fontSize: '0.85rem' }}>
+                {resetError || (newPassword !== confirmPassword ? "Passwords do not match." : "Reset failed. Try again.")}
               </Typography>
             </Box>
           )}
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
           <Button
             variant="contained"
-            sx={{ bgcolor: "#ef1c1c", "&:hover": { bgcolor: "#cc1818" }, borderRadius: 5 }}
+            sx={{ bgcolor: "#ef1c1c", "&:hover": { bgcolor: "#cc1818" }, borderRadius: 5, textTransform: 'none' }}
             onClick={() => setResetOpen(false)}
             disabled={resetStatus === "processing" || resetStatus === "done"}
           >
@@ -1469,11 +1639,11 @@ function SignInPage() {
           </Button>
           <Button
             variant="contained"
-            sx={{ bgcolor: WHATSAPP_GREEN, "&:hover": { bgcolor: WHATSAPP_DARK_GREEN }, borderRadius: 5 }}
+            sx={{ bgcolor: WHATSAPP_GREEN, "&:hover": { bgcolor: WHATSAPP_DARK_GREEN }, borderRadius: 5, textTransform: 'none' }}
             onClick={handleResetPassword}
             disabled={resetStatus === "processing" || resetStatus === "done"}
           >
-            Submit
+            {resetStatus === "processing" ? "Submitting..." : "Submit"}
           </Button>
         </DialogActions>
       </Dialog>
@@ -1719,6 +1889,59 @@ function SignInPage() {
                 py: 1.2,
                 cursor: 'pointer',
                 backgroundColor: selectedPhoneCountry.code === country.code && selectedPhoneCountry.name === country.name
+                  ? `${WHATSAPP_GREEN}18`
+                  : 'transparent',
+                '&:hover': { backgroundColor: `${WHATSAPP_GREEN}12` },
+                borderBottom: `1px solid ${BORDER_GRAY}`,
+                transition: 'background 0.15s',
+              }}
+            >
+              <Typography sx={{ fontSize: '1.4rem' }}>{country.flag}</Typography>
+              <Typography sx={{ flex: 1, fontSize: '0.9rem', color: INPUT_TEXT_COLOR, fontWeight: 500 }}>
+                {country.name}
+              </Typography>
+              <Typography sx={{ fontSize: '0.85rem', fontWeight: 700, color: WHATSAPP_TEAL }}>
+                {country.code}
+              </Typography>
+            </Box>
+          ))}
+        </DialogContent>
+      </Dialog>
+
+      {/* Country Picker Dialog for Forgot Password */}
+      <Dialog
+        open={forgotCountryPickerOpen}
+        onClose={() => setForgotCountryPickerOpen(false)}
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            minWidth: 300,
+            maxHeight: '70vh',
+            bgcolor: WHITE,
+            color: INPUT_TEXT_COLOR,
+          },
+        }}
+      >
+        <DialogTitle sx={{ fontWeight: 700, color: WHATSAPP_TEAL, pb: 1, fontSize: '1rem' }}>
+          Select Country Code
+        </DialogTitle>
+        <DialogContent sx={{ p: 0, overflowY: 'auto' }}>
+          {phoneCountries.map((country, idx) => (
+            <Box
+              key={`forgot-country-${country.code}-${idx}`}
+              onClick={() => {
+                setForgotCountry(country);
+                setForgotMobile('');
+                setForgotCountryPickerOpen(false);
+              }}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1.5,
+                px: 2,
+                py: 1.2,
+                cursor: 'pointer',
+                backgroundColor: forgotCountry.code === country.code && forgotCountry.name === country.name
                   ? `${WHATSAPP_GREEN}18`
                   : 'transparent',
                 '&:hover': { backgroundColor: `${WHATSAPP_GREEN}12` },

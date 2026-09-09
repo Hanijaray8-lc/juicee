@@ -28,7 +28,7 @@ const AppContent = () => {
     locationRef.current = location;
   }, [location]);
 
-  const isMobile = useMediaQuery('(max-width:768px)');
+  const isMobile = useMediaQuery('(max-width: 1024px)');
 
   // Show AppBar on these routes
   const showAppBar = isMobile && ['/', '/signin', '/signup'].includes(location.pathname);

@@ -457,104 +457,357 @@ const useVideoCall = (socket, user, selectedUser, dbFriends, iceServers, rtcConf
   const initiateCall = useCallback(
     async (friendId, type = 'audio') => {
       if (!socket || !user) return;
+      // Set authoritative remote user and reset cleanup guard for this call session
       remoteUserIdRef.current = friendId;
       isEndingRef.current = false;
-      activeCallIdRef.current = null;
+      activeCallIdRef.current = null; // Will be set when callAccepted arrives with callId
 
-      setIsFrontCamera(true);
+      setIsFrontCamera(true); // Ensure front camera opens by default when starting a call!
       setCalling(true);
-      setIsRinging(false);
+      setIsRinging(false); // Initially 'Calling...' until remote online/ringing confirmed
       setCallRejected(false);
       setCallType(type || 'audio');
 
+      // ✅ Set default audio routing: speaker for video calls, earpiece for audio calls
       const isVideo = (type === 'video');
       setIsSpeakerOn(isVideo);
       setAudioRoutingMode(isVideo ? 'speaker' : 'earpiece');
+
+      // Apply audio routing immediately for both call types
       applyAudioRouting(isVideo ? 'speaker' : 'earpiece', type);
+
+      // Initialize audio context early for better audio playback
       initAudioContext();
 
-      if (callerAudioRef.current) {
-        callerAudioRef.current.currentTime = 0;
-        callerAudioRef.current.play().catch(err => console.warn('Ringtone play failed:', err));
-      }
+      try {
+        // ⚡ INSTANT CONNECT: Check if caller-side pre-warmed stream is ready
+        let currentStream = null;
+        const prewarmed = callerPrewarmedStreamRef.current;
+        const isPrewarmedValid =
+          prewarmed &&
+          callerPrewarmedTypeRef.current === type &&
+          prewarmed.getAudioTracks().some(t => t.readyState === 'live') &&
+          (type !== 'video' || prewarmed.getVideoTracks().some(t => t.readyState === 'live'));
 
-      console.log('📤 [ZegoCall] Emitting callUser to:', friendId, 'from:', String(user._id), 'type:', type);
-      socket.emit('callUser', {
-        to: String(friendId),
-        from: String(user._id),
-        callerName: user.username,
-        signal: { type: 'zego' },
-        callType: type
-      });
+        if (isPrewarmedValid) {
+          console.log('⚡ [CALLER-PREWARM] Using pre-warmed stream — instant connect!');
+          currentStream = prewarmed;
+          callerPrewarmedStreamRef.current = null; // consumed
+          callerPrewarmedTypeRef.current = null;
+        } else {
+          // Fallback: Request media based on call type with retry logic (original logic)
+          if (prewarmed) {
+            try { prewarmed.getTracks().forEach(t => t.stop()); } catch (e) {}
+            callerPrewarmedStreamRef.current = null;
+          }
+          let retries = 3;
 
-      socket.once('callAccepted', ({ signal, callId } = {}) => {
-        console.log('✅ [ZegoCall] Call accepted by remote user! callId:', callId);
-        if (callId) activeCallIdRef.current = callId;
+          while (retries > 0 && !currentStream) {
+            try {
+              // ✅ ENHANCED: Android-optimized fast media constraints
+              const constraints = {
+                audio: {
+                  echoCancellation: true,
+                  noiseSuppression: true,
+                  autoGainControl: true,
+                },
+                video: type === 'video' ? {
+                  width: { ideal: 1280, min: 640, max: 1920 },
+                  height: { ideal: 720, min: 480, max: 1080 },
+                  facingMode: cameraFacing,
+                  frameRate: { ideal: 30, min: 15, max: 60 },
+                } : false,
+              };
+              console.log('🎤 Requesting media for', type, 'call with constraints:', constraints);
+              currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+              console.log('✅ Got media stream successfully');
+              console.log('   Audio tracks:', currentStream.getAudioTracks().length);
+              console.log('   Video tracks:', currentStream.getVideoTracks().length);
 
-        if (callingTimeoutTimerRef.current) {
-          clearTimeout(callingTimeoutTimerRef.current);
-          callingTimeoutTimerRef.current = null;
+              // Verify audio is enabled
+              currentStream.getAudioTracks().forEach((track, idx) => {
+                track.enabled = true;
+                console.log(`   ✅ Audio track ${idx} enabled (${track.label})`);
+              });
+              break;
+            } catch (err) {
+              if (err.name === 'OverconstrainedError') {
+                console.warn('⚠️ OverconstrainedError detected in initiateCall, falling back to basic media constraints');
+                try {
+                  currentStream = await navigator.mediaDevices.getUserMedia({
+                    audio: true,
+                    video: type === 'video' ? true : false,
+                  });
+                  break;
+                } catch (fallbackErr) {
+                  console.error('Fallback getUserMedia failed:', fallbackErr);
+                }
+              }
+              retries--;
+              if (retries > 0) {
+                console.warn(`⚠️ Media request failed, retrying... (${retries} attempts left):`, err.message);
+                // Wait 500ms before retry
+                await new Promise(resolve => setTimeout(resolve, 500));
+              } else {
+                throw err;
+              }
+            }
+          }
         }
 
-        setCallAccepted(true);
-        setCallStarted(true);
-        setCallingTimeout(false);
-        setCalling(false);
+        setStream(currentStream);
+
+        // Play caller ringtone
         if (callerAudioRef.current) {
-          try {
-            callerAudioRef.current.pause();
-            callerAudioRef.current.currentTime = 0;
-          } catch (e) {}
+          callerAudioRef.current.currentTime = 0;
+          callerAudioRef.current.play().catch(err => console.warn('Ringtone play failed:', err));
         }
 
-        const isVideoCall = (type === 'video');
-        const targetMode = isVideoCall ? 'speaker' : 'earpiece';
-        applyAudioRouting(targetMode, type);
-      });
-
-      socket.once('callRejected', () => {
-        console.log('❌ [ZegoCall] Call rejected by remote user');
-        if (callingTimeoutTimerRef.current) {
-          clearTimeout(callingTimeoutTimerRef.current);
-          callingTimeoutTimerRef.current = null;
-        }
-
-        remoteUserIdRef.current = null;
-        activeCallIdRef.current = null;
-
-        setCalling(false);
-        setCallRejected(true);
-        setCallingTimeout(false);
-        setTimeout(() => setCallRejected(false), 2000);
-        if (callerAudioRef.current) {
-          try {
-            callerAudioRef.current.pause();
-            callerAudioRef.current.currentTime = 0;
-          } catch (e) {}
-        }
-      });
-
-      const timeoutTimer = setTimeout(() => {
-        console.log('⏰ 30 seconds elapsed - call not answered, auto-ending');
-        setCallingTimeout(true);
-        setCalling(false);
-
-        if (callerAudioRef.current) {
-          try {
-            callerAudioRef.current.pause();
-            callerAudioRef.current.currentTime = 0;
-          } catch (e) {}
-        }
-
-        socket.emit('endCall', {
-          to: String(friendId),
-          callId: activeCallIdRef.current
+        // Create peer connection as initiator with trickle: true and pre-gathered candidate pool
+        // Use full rtcConfig if available (includes bundlePolicy, sdpSemantics, iceTransportPolicy)
+        const peerConfig = rtcConfig || { iceServers, iceCandidatePoolSize: 10 };
+        const peer = new Peer({
+          initiator: true,
+          trickle: true,
+          stream: currentStream,
+          config: peerConfig,
         });
-        setTimeout(() => setCallingTimeout(false), 3000);
-      }, 30000);
-      callingTimeoutTimerRef.current = timeoutTimer;
+        peerRef.current = peer;
+
+        // ── ICE connection state monitoring for the initiator ──────────────────
+        // Runs once the underlying RTCPeerConnection is created inside simple-peer
+        const monitorIceState = () => {
+          const pc = peer._pc;
+          if (!pc) return;
+          let iceRestartAttempted = false;
+          pc.oniceconnectionstatechange = () => {
+            const state = pc.iceConnectionState;
+            console.log(`🔗 [ICE-INITIATOR] iceConnectionState: ${state}`);
+            if (state === 'failed' && !iceRestartAttempted) {
+              iceRestartAttempted = true;
+              console.warn('⚠️ [ICE-INITIATOR] ICE failed — attempting ICE restart');
+              try {
+                if (typeof pc.restartIce === 'function') {
+                  pc.restartIce();
+                  console.log('🔄 [ICE-INITIATOR] restartIce() called');
+                }
+              } catch (e) {
+                console.warn('⚠️ [ICE-INITIATOR] restartIce failed:', e.message);
+              }
+            }
+            if (state === 'connected' || state === 'completed') {
+              console.log('✅ [ICE-INITIATOR] P2P connection established!');
+            }
+          };
+        };
+        // Monitor ICE state once the RTCPeerConnection is ready (slight defer for simple-peer internals)
+        setTimeout(monitorIceState, 100);
+        // ───────────────────────────────────────────────────────────────────────
+
+        // Handle signal generation (send offer or trickle candidate to peer)
+        peer.on('signal', data => {
+          if (data.type === 'offer') {
+            console.log('📤 Sending SDP offer signal to:', friendId, 'from:', String(user._id));
+            socket.emit('callUser', {
+              to: String(friendId),
+              from: String(user._id),
+              callerName: user.username,
+              signal: data,
+              callType: type
+            });
+          } else if (data.candidate) {
+            console.log('📤 Sending trickle ICE candidate to:', friendId);
+            socket.emit('iceCandidate', {
+              to: String(friendId),
+              candidate: data
+            });
+          } else {
+            console.log('📤 Sending call signal to:', friendId);
+            socket.emit('callUser', {
+              to: String(friendId),
+              from: String(user._id),
+              callerName: user.username,
+              signal: data,
+              callType: type
+            });
+          }
+        });
+
+        // Handle peer connection established — re-apply audio routing and retry audio play
+        peer.on('connect', () => {
+          console.log('✅ Peer connection established (initiator side) — re-applying audio routing');
+          setCallStartTime(Date.now()); // Accurate call start time
+          const isVideoCall = (type === 'video');
+          const mode = isVideoCall ? 'speaker' : 'earpiece';
+          // Re-assert routing now that media channel is live (Android needs this after ICE)
+          applyAudioRouting(mode, type);
+          // If stream already arrived before connect, retry play
+          const audioEl = remoteAudioRef.current;
+          if (audioEl && audioEl.srcObject) {
+            audioEl.play().catch(e => console.warn('⚠️ Audio retry on connect failed:', e));
+          }
+        });
+
+        // Handle peer errors — trigger cleanup
+        peer.on('error', err => {
+          console.error('❌ Peer connection error (initiator):', err);
+          endCall();
+        });
+
+        // Handle peer close — trigger cleanup
+        peer.on('close', () => {
+          console.log('📴 Peer connection closed (initiator)');
+          endCall();
+        });
+
+        // Handle remote stream reception (primary path — fires on most browsers)
+        peer.on('stream', receivedRemoteStream => {
+          console.log('🎙️ Received remote stream (stream event) in initiateCall');
+          ensureAudioPlayingAndRouted(receivedRemoteStream, type === 'video');
+        });
+
+        // ── Fallback: peer.on('track') for browsers/devices using unified-plan ─
+        // Some Android WebViews and Safari fire 'track' instead of 'stream'.
+        // We collect tracks and reconstruct the MediaStream if 'stream' never fires.
+        {
+          const trackBuffer = [];
+          let trackStreamTimer = null;
+          peer.on('track', (track, trackStream) => {
+            console.log(`🎙️ [TRACK-FALLBACK] Received track: ${track.kind} in initiateCall`);
+            // If simple-peer gives us the stream directly with the track, use it
+            if (trackStream && trackStream.getTracks().length > 0) {
+              ensureAudioPlayingAndRouted(trackStream, type === 'video');
+              return;
+            }
+            // Otherwise buffer tracks and assemble a stream after a brief collect window
+            trackBuffer.push(track);
+            clearTimeout(trackStreamTimer);
+            trackStreamTimer = setTimeout(() => {
+              if (trackBuffer.length > 0) {
+                const assembledStream = new MediaStream(trackBuffer);
+                console.log('🎙️ [TRACK-FALLBACK] Assembled MediaStream from tracks:', trackBuffer.length);
+                ensureAudioPlayingAndRouted(assembledStream, type === 'video');
+              }
+            }, 200);
+          });
+        }
+        // ────────────────────────────────────────────────────────────────────────
+
+        // Handle call acceptance (receive answer) — server now sends { signal, callId }
+        socket.once('callAccepted', ({ signal, callId } = {}) => {
+          // Fallback for old server format where signal was sent directly
+          const sdpSignal = (signal && typeof signal === 'object' && signal.type) ? signal : signal;
+          console.log('✅ Call accepted! callId:', callId);
+
+          // Store the server-assigned callId for this session
+          if (callId) activeCallIdRef.current = callId;
+
+          // Clear calling timeout since call was answered
+          if (callingTimeoutTimerRef.current) {
+            clearTimeout(callingTimeoutTimerRef.current);
+            callingTimeoutTimerRef.current = null;
+          }
+
+          setCallAccepted(true);
+          setCallStarted(true);
+          setCallingTimeout(false);
+          peer.signal(sdpSignal);
+          // ✅ Drain pending ICE candidates with a 50ms delay so remote SDP is applied first
+          processPendingCandidates(50);
+          setCalling(false);
+          if (callerAudioRef.current) callerAudioRef.current.pause();
+
+          // ✅ CRITICAL: Re-assert audio routing immediately.
+          // When callerAudioRef pauses, Android native bridge calls caller.stop() which resets MODE_NORMAL.
+          // Re-asserting applyAudioRouting restores MODE_IN_COMMUNICATION & VoIP focus so microphone stays unmuted!
+          const isVideoCall = (type === 'video');
+          const targetMode = isVideoCall ? 'speaker' : 'earpiece';
+          applyAudioRouting(targetMode, type);
+          setTimeout(() => applyAudioRouting(targetMode, type), 150);
+          setTimeout(() => applyAudioRouting(targetMode, type), 600);
+        });
+
+        // Handle call rejection
+        socket.once('callRejected', () => {
+          console.log('❌ Call rejected');
+
+          // Clear calling timeout
+          if (callingTimeoutTimerRef.current) {
+            clearTimeout(callingTimeoutTimerRef.current);
+            callingTimeoutTimerRef.current = null;
+          }
+
+          // Clear remote refs so endCall won't re-emit to receiver (they already rejected)
+          remoteUserIdRef.current = null;
+          activeCallIdRef.current = null;
+
+          setCalling(false);
+          setCallRejected(true);
+          setCallingTimeout(false);
+          setTimeout(() => setCallRejected(false), 2000);
+          if (callerAudioRef.current) callerAudioRef.current.pause();
+          currentStream.getTracks().forEach(track => track.stop());
+          setStream(null);
+          setRemoteStream(null); // ✅ Clear remote stream state
+        });
+
+        // ✅ NEW: Set 30-second calling timeout - auto-end if no answer
+        const timeoutTimer = setTimeout(() => {
+          console.log('⏰ 30 seconds elapsed - call not answered, auto-ending');
+          setCallingTimeout(true);
+          setCalling(false);
+
+          if (callerAudioRef.current) callerAudioRef.current.pause();
+          if (currentStream) {
+            currentStream.getTracks().forEach(track => track.stop());
+            setStream(null);
+          }
+          setRemoteStream(null); // ✅ Clear remote stream state
+
+          // Show timeout message for 2 seconds then clear
+          setTimeout(() => {
+            setCallingTimeout(false);
+            setCall({});
+          }, 2000);
+        }, 30000); // 30 seconds
+
+        callingTimeoutTimerRef.current = timeoutTimer;
+
+        // store Peer instance separately (preserve `call` metadata)
+        setPeerInstance(peer);
+        peerRef.current = peer;
+      } catch (err) {
+        console.error('❌ Call initiation error:', err);
+        setCalling(false);
+        // User-friendly error messages
+        if (err.name === 'NotAllowedError') {
+          alert('Camera/microphone permission denied. Please allow access in browser settings and try again.');
+        } else if (err.name === 'NotFoundError') {
+          alert('Camera/microphone not found on your device.');
+        } else if (err.name === 'NotReadableError') {
+          alert('Cannot access camera. It may be in use by another app or browser tab. Close other browser tabs using the camera and try again.');
+        } else if (err.name === 'OverconstrainedError') {
+          alert('Camera does not support requested resolution. Trying with basic settings...');
+          // Fallback to basic constraints without specific resolution
+          try {
+            const basicStream = await navigator.mediaDevices.getUserMedia({
+              audio: true,
+              video: type === 'video' ? true : false,
+            });
+            setStream(basicStream);
+            setCalling(true);
+            // Continue call setup with fallback stream (will be retried on next call)
+            console.log('Using fallback camera settings (no specific resolution)');
+          } catch (fallbackErr) {
+            console.error('Fallback also failed:', fallbackErr);
+            alert('Could not access media. Please check device settings.');
+          }
+        } else {
+          alert('Error accessing camera/microphone: ' + err.message);
+        }
+      }
     },
-    [socket, user, applyAudioRouting, initAudioContext]
+    [socket, user, iceServers, cameraFacing]
   );
 
   /**
@@ -597,40 +850,288 @@ const useVideoCall = (socket, user, selectedUser, dbFriends, iceServers, rtcConf
     }
   }, [callerId, call, selectedUser]);
 
-  const answerCall = useCallback(() => {
+  const answerCall = useCallback(async () => {
     if (!socket) return;
-    const callerTargetId = String(callerId || call?.from);
-    remoteUserIdRef.current = callerTargetId;
+    // Set authoritative remote user and reset cleanup guard for this call session
+    remoteUserIdRef.current = callerId;
     isEndingRef.current = false;
-    console.log('📞 [ZegoCall] answerCall initiated, remoteUser:', callerTargetId, 'callId:', activeCallIdRef.current);
+    console.log('📞 [CALL-AUDIO] answerCall initiated, remoteUser:', callerId);
 
+    // 1. Immediately silence and release incoming ringtone player before VoIP audio routing starts
     ringtoneShouldPlayRef.current = false;
     if (receiverAudioRef.current) {
       try {
         receiverAudioRef.current.pause();
         receiverAudioRef.current.currentTime = 0;
-      } catch (e) {}
+        console.log('🔕 [CALL-AUDIO] Incoming ringtone paused cleanly');
+      } catch (e) {
+        console.warn('Error pausing incoming ringtone:', e);
+      }
     }
 
-    dismissCallNotification(callerTargetId);
+    // Clear notification immediately when answering call
+    dismissCallNotification(callerId || call?.from);
 
-    const wantVideo = callType === 'video' || call?.callType === 'video';
-    const initialMode = wantVideo ? 'speaker' : 'earpiece';
-    setIsSpeakerOn(wantVideo);
-    setAudioRoutingMode(initialMode);
-    applyAudioRouting(initialMode, wantVideo ? 'video' : 'audio');
+    if (!callerSignal) {
+      console.log('⏳ Accept clicked, but WebRTC offer signal not loaded yet. Waiting for signal...');
+      setUserAcceptedCall(true);
+      return;
+    }
 
-    socket.emit('answerCall', {
-      to: callerTargetId,
-      signal: { type: 'zego' },
-      callId: activeCallIdRef.current
-    });
+    // Initialize audio context early for better audio playback
+    initAudioContext();
 
-    setCallAccepted(true);
-    setReceivingCall(false);
-    setCallStarted(true);
-    setCallStartTime(Date.now());
-  }, [socket, callerId, call, callType, dismissCallNotification, applyAudioRouting]);
+    try {
+      // Determine if answering with video
+      const wantVideo = callType === 'video' || call?.callType === 'video';
+
+      // Set default audio routing based on answered call type: speaker for video, earpiece for audio
+      const initialMode = wantVideo ? 'speaker' : 'earpiece';
+      setIsSpeakerOn(wantVideo);
+      setAudioRoutingMode(initialMode);
+
+      // Apply initial audio routing
+      applyAudioRouting(initialMode, wantVideo ? 'video' : 'audio');
+
+      // ⚡ INSTANT MEDIA: Check if pre-warmed stream from ringing phase is ready
+      isIncomingCallActiveRef.current = false;
+      let currentStream = prewarmedStreamRef.current;
+      if (!currentStream && prewarmedPromiseRef.current) {
+        console.log('⏳ Awaiting in-flight pre-warmed media stream...');
+        try {
+          currentStream = await prewarmedPromiseRef.current;
+        } catch (e) {
+          currentStream = null;
+        }
+      }
+
+      // Check if pre-warmed stream is valid and active
+      const isPrewarmedValid = currentStream &&
+        currentStream.getAudioTracks().some(t => t.readyState === 'live') &&
+        (!wantVideo || currentStream.getVideoTracks().some(t => t.readyState === 'live'));
+
+      if (isPrewarmedValid) {
+        console.log('⚡ Instant connect: Using pre-warmed media stream (0ms hardware latency)!');
+        prewarmedStreamRef.current = null;
+        prewarmedPromiseRef.current = null;
+      } else {
+        console.log('🎙️ Pre-warmed stream not ready or invalid, acquiring media directly...');
+        // Request media stream (audio + optional video) with retry logic
+        let retries = 3;
+        currentStream = null;
+
+        while (retries > 0 && !currentStream) {
+          try {
+            // ✅ ENHANCED: Fast Android-optimized media constraints for answer
+            const constraints = {
+              audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+              },
+              video: wantVideo ? {
+                width: { ideal: 1280, min: 640, max: 1920 },
+                height: { ideal: 720, min: 480, max: 1080 },
+                facingMode: cameraFacing,
+                frameRate: { ideal: 30, min: 15, max: 60 },
+              } : false,
+            };
+            console.log('📹 Requesting media with constraints:', constraints);
+            currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+            console.log('✅ Got media stream successfully');
+            break;
+          } catch (err) {
+            if (err.name === 'OverconstrainedError') {
+              console.warn('⚠️ OverconstrainedError detected in answerCall, falling back to basic media constraints');
+              try {
+                currentStream = await navigator.mediaDevices.getUserMedia({
+                  audio: true,
+                  video: wantVideo ? true : false,
+                });
+                break;
+              } catch (fallbackErr) {
+                console.error('Fallback getUserMedia failed:', fallbackErr);
+              }
+            }
+            retries--;
+            if (retries > 0) {
+              console.warn(`⚠️ Media request failed, retrying... (${retries} attempts left):`, err.message);
+              await new Promise(resolve => setTimeout(resolve, 500));
+            } else {
+              throw err;
+            }
+          }
+        }
+      }
+
+      // Explicitly verify and enable all local audio and video tracks
+      if (currentStream) {
+        currentStream.getAudioTracks().forEach((track, idx) => {
+          track.enabled = true;
+          console.log(`   ✅ [CALL-AUDIO] Local audio track ${idx} verified enabled: ${track.id} (${track.readyState})`);
+        });
+        if (wantVideo) {
+          currentStream.getVideoTracks().forEach((track, idx) => {
+            track.enabled = true;
+            console.log(`   ✅ [CALL-AUDIO] Local video track ${idx} enabled: ${track.id} (${track.readyState})`);
+          });
+        }
+      }
+
+      setStream(currentStream);
+
+      // Create peer connection as non-initiator with trickle: true and pre-gathered candidate pool
+      // Use full rtcConfig if available (includes bundlePolicy, sdpSemantics, iceTransportPolicy)
+      const peerConfig = rtcConfig || { iceServers, iceCandidatePoolSize: 10 };
+      const peer = new Peer({
+        initiator: false,
+        trickle: true,
+        stream: currentStream,
+        config: peerConfig,
+      });
+      peerRef.current = peer;
+
+      // ── ICE connection state monitoring for the answerer ───────────────────
+      const monitorIceStateAnswerer = () => {
+        const pc = peer._pc;
+        if (!pc) return;
+        let iceRestartAttempted = false;
+        pc.oniceconnectionstatechange = () => {
+          const state = pc.iceConnectionState;
+          console.log(`🔗 [ICE-ANSWERER] iceConnectionState: ${state}`);
+          if (state === 'failed' && !iceRestartAttempted) {
+            iceRestartAttempted = true;
+            console.warn('⚠️ [ICE-ANSWERER] ICE failed — attempting ICE restart');
+            try {
+              if (typeof pc.restartIce === 'function') {
+                pc.restartIce();
+                console.log('🔄 [ICE-ANSWERER] restartIce() called');
+              }
+            } catch (e) {
+              console.warn('⚠️ [ICE-ANSWERER] restartIce failed:', e.message);
+            }
+          }
+          if (state === 'connected' || state === 'completed') {
+            console.log('✅ [ICE-ANSWERER] P2P connection established!');
+          }
+        };
+      };
+      setTimeout(monitorIceStateAnswerer, 100);
+      // ───────────────────────────────────────────────────────────────────────
+
+      // Send answer signal or trickle candidate back to caller
+      peer.on('signal', data => {
+        if (data.type === 'answer') {
+          console.log('📤 Sending answer SDP signal to caller:', String(callerId));
+          socket.emit('answerCall', {
+            to: String(callerId), // ✅ CRITICAL: Ensure callerId is String
+            signal: data,
+            callId: activeCallIdRef.current  // ✅ Include callId for server-side state transition
+          });
+        } else if (data.candidate) {
+          console.log('📤 Sending trickle ICE candidate to caller:', String(callerId));
+          socket.emit('iceCandidate', {
+            to: String(callerId),
+            candidate: data,
+            callId: activeCallIdRef.current
+          });
+        } else {
+          console.log('📤 Sending answer signal to caller:', String(callerId));
+          socket.emit('answerCall', {
+            to: String(callerId),
+            signal: data,
+            callId: activeCallIdRef.current
+          });
+        }
+      });
+
+      // Handle peer connection established — re-apply audio routing and retry audio play
+      peer.on('connect', () => {
+        console.log('✅ Peer connection established (answerer side) — re-applying audio routing');
+        setCallStartTime(Date.now()); // Accurate call start time
+        // Re-assert routing now that media channel is live (Android needs this after ICE)
+        applyAudioRouting(initialMode, wantVideo ? 'video' : 'audio');
+        // If stream already arrived before connect, retry play
+        const audioEl = remoteAudioRef.current;
+        if (audioEl && audioEl.srcObject) {
+          audioEl.play().catch(e => console.warn('⚠️ Audio retry on connect (answerer) failed:', e));
+        }
+      });
+
+      // Handle peer errors — trigger cleanup
+      peer.on('error', err => {
+        console.error('❌ Peer connection error (answerer):', err);
+        endCall();
+      });
+
+      // Handle peer close — trigger cleanup
+      peer.on('close', () => {
+        console.log('📴 Peer connection closed (answerer)');
+        endCall();
+      });
+
+      // Receive remote stream (primary path — fires on most browsers)
+      peer.on('stream', receivedRemoteStream => {
+        console.log('🎤 [CALL-AUDIO] Received remote stream (stream event) in answerCall');
+        ensureAudioPlayingAndRouted(receivedRemoteStream, wantVideo);
+      });
+
+      // ── Fallback: peer.on('track') for browsers/devices using unified-plan ─
+      // Some Android WebViews and Safari fire 'track' instead of 'stream'.
+      {
+        const trackBuffer = [];
+        let trackStreamTimer = null;
+        peer.on('track', (track, trackStream) => {
+          console.log(`🎤 [TRACK-FALLBACK] Received track: ${track.kind} in answerCall`);
+          if (trackStream && trackStream.getTracks().length > 0) {
+            ensureAudioPlayingAndRouted(trackStream, wantVideo);
+            return;
+          }
+          trackBuffer.push(track);
+          clearTimeout(trackStreamTimer);
+          trackStreamTimer = setTimeout(() => {
+            if (trackBuffer.length > 0) {
+              const assembledStream = new MediaStream(trackBuffer);
+              console.log('🎤 [TRACK-FALLBACK] Assembled MediaStream from tracks:', trackBuffer.length);
+              ensureAudioPlayingAndRouted(assembledStream, wantVideo);
+            }
+          }, 200);
+        });
+      }
+      // ────────────────────────────────────────────────────────────────────────
+
+      // Connect to caller's offer signal
+      peer.signal(callerSignal);
+      // ✅ Drain pending ICE candidates with a 50ms delay so remote SDP is applied first
+      processPendingCandidates(50);
+
+      // Update states
+      setCallAccepted(true);
+      setReceivingCall(false);
+      setCallStarted(true);
+      setCallStartTime(Date.now());
+      setPeerInstance(peer);
+
+      // Re-apply audio routing to firmly assert communication mode
+      applyAudioRouting(initialMode, wantVideo ? 'video' : 'audio');
+
+      console.log('✅ [CALL-AUDIO] Call answered successfully');
+
+    } catch (err) {
+      console.error('❌ Error answering call:', err);
+      setReceivingCall(false);
+      setCall({});
+      if (err.name === 'NotAllowedError') {
+        alert('Camera/microphone permission denied. Please allow access in browser settings.');
+      } else if (err.name === 'NotFoundError') {
+        alert('Camera/microphone not found on your device.');
+      } else if (err.name === 'NotReadableError') {
+        alert('Cannot access camera. It may be in use by another app or browser tab.');
+      } else {
+        alert('Error accessing media: ' + err.message);
+      }
+    }
+  }, [socket, callerSignal, callerId, callType, call, iceServers, cameraFacing, ensureAudioPlayingAndRouted, processPendingCandidates, dismissCallNotification, initAudioContext, applyAudioRouting]);
 
   /**
    * Reject an incoming call
@@ -899,12 +1400,51 @@ const useVideoCall = (socket, user, selectedUser, dbFriends, iceServers, rtcConf
         socket.emit('callRinging', { to: String(from), callId });
       }
 
-            // Release any stale pre-warmed stream
-      if (prewarmedStreamRef.current) {
-        try { prewarmedStreamRef.current.getTracks().forEach(t => t.stop()); } catch (e) {}
-        prewarmedStreamRef.current = null;
+      // ⚡ PRE-WARM MEDIA: Start acquiring media stream in background while phone is ringing!
+      // This eliminates the 1.5 - 2.5 second hardware wake-up delay on Android when user taps "Accept".
+      const wantVideo = (incomingType === 'video');
+      const constraints = {
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+        video: wantVideo ? {
+          width: { ideal: 1280, min: 640, max: 1920 },
+          height: { ideal: 720, min: 480, max: 1080 },
+          facingMode: 'user',
+          frameRate: { ideal: 30, min: 15, max: 60 },
+        } : false,
+      };
+
+      if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function') {
+        if (prewarmedStreamRef.current) {
+          try {
+            prewarmedStreamRef.current.getTracks().forEach(t => t.stop());
+          } catch (e) {}
+          prewarmedStreamRef.current = null;
+        }
+
+        prewarmedPromiseRef.current = navigator.mediaDevices.getUserMedia(constraints)
+          .then(wStream => {
+            if (!isIncomingCallActiveRef.current || prewarmedCallIdRef.current !== currentCallId) {
+              console.log('🛑 Incoming call was dismissed/rejected or callId changed before pre-warm completed. Stopping tracks.');
+              try {
+                wStream.getTracks().forEach(t => t.stop());
+              } catch (e) {}
+              prewarmedStreamRef.current = null;
+              return null;
+            }
+            console.log('⚡ Media stream pre-warmed successfully during incoming call ringing');
+            prewarmedStreamRef.current = wStream;
+            return wStream;
+          })
+          .catch(err => {
+            console.warn('⚠️ Media pre-warm deferred to answer:', err.message);
+            prewarmedStreamRef.current = null;
+            return null;
+          });
       }
-      prewarmedPromiseRef.current = null;
     },
     [socket]
   );
@@ -1220,14 +1760,8 @@ const useVideoCall = (socket, user, selectedUser, dbFriends, iceServers, rtcConf
     }
   }, [userAcceptedCall, callerSignal, socket, answerCall]);
 
-  const targetId = remoteUserIdRef.current || callerId || selectedUser?._id || call?.from;
-  const roomId = user?._id && targetId
-    ? `call_${[String(user._id), String(targetId)].sort().join('_')}`
-    : (activeCallIdRef.current ? `call_${activeCallIdRef.current}` : null);
-
   // Return all call state and functions
   return {
-    roomId,
     // Refs (myVideo removed)
     userVideo,
     selfVideoRef, // Self-view reference for own camera feed

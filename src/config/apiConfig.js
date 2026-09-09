@@ -11,10 +11,10 @@ const isNative = typeof window !== 'undefined' && window.Capacitor;
 const PRODUCTION_URL = 'https://juicyapp.in';
 const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
-const rawApiUrl = process.env.REACT_APP_API_URL || (isLocalhost ? 'http://localhost:5000' : PRODUCTION_URL);
+const rawApiUrl = process.env.REACT_APP_API_URL || (isLocalhost ? 'https://juicyapp.in/' : PRODUCTION_URL);
 const API_BASE_URL = rawApiUrl.endsWith('/') ? rawApiUrl.slice(0, -1) : rawApiUrl;
 
-const rawSocketUrl = process.env.REACT_APP_SOCKET_URL || process.env.REACT_APP_SERVER_URL || (isLocalhost ? 'http://localhost:5000' : PRODUCTION_URL);
+const rawSocketUrl = process.env.REACT_APP_SOCKET_URL || process.env.REACT_APP_SERVER_URL || (isLocalhost ? 'https://juicyapp.in/' : PRODUCTION_URL);
 const SOCKET_BASE_URL = rawSocketUrl.endsWith('/') ? rawSocketUrl.slice(0, -1) : rawSocketUrl;
 
 console.log(`🌐 [API Config] Running on: ${isNative ? 'MOBILE' : 'WEB'}`);

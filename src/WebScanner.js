@@ -46,7 +46,7 @@ import logojuicy2 from './logo/new juicy.png';
 export default function WebScanner() {
     const navigate = useNavigate();
     const socket = useSocket();
-    const isMobile = useMediaQuery('(max-width:768px)');
+    const isMobile = useMediaQuery('(max-width: 1024px)');
 
     // Generate session ID on load
     const [sessionId] = useState(() => `juicy-web-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
