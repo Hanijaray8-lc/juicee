@@ -317,7 +317,7 @@ const Settings = ({ onBack }) => {
 
 
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isMobile = useMediaQuery('(max-width: 1024px)');
   const navigate = useNavigate();
   const userId = localStorage.getItem('userId');
   const fileInputRef = React.useRef(null);

@@ -50,7 +50,7 @@ const GRAY_TEXT = '#64748b';
 const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
     useSwipeBack(); // Default threshold is 80px
     const theme = useTheme();
-    const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+    const isMobile = useMediaQuery('(max-width: 1024px)');
 
     const [logs, setLogs] = useState(() => {
         try {

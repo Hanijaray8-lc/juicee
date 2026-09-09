@@ -256,7 +256,11 @@ const Audiocall = ({ videoCall, user, selectedUser, dbFriends, handleCallEnd, an
                   '100%': { opacity: 0.8 }
                 }
               }}>
-                {videoCall.callingTimeout ? '❌ Call not answered' : '📞 Calling...'}
+                {videoCall.callingTimeout
+                  ? '❌ Call not answered'
+                  : videoCall.isRinging
+                    ? '🔔 Ringing...'
+                    : '📞 Calling...'}
               </Typography>
 
               {/* 30-second countdown timer display */}
@@ -265,7 +269,7 @@ const Audiocall = ({ videoCall, user, selectedUser, dbFriends, handleCallEnd, an
                 opacity: 0.7,
                 mt: 1
               }}>
-                Waiting for response... (up to 30 seconds)
+                {videoCall.isRinging ? 'Ringing user phone...' : 'Waiting for response... (up to 30 seconds)'}
               </Typography>
             </Box>
 
@@ -313,7 +317,7 @@ const Audiocall = ({ videoCall, user, selectedUser, dbFriends, handleCallEnd, an
                 zIndex: 1,
                 fontSize: '2.5rem'
               }}>
-                📞
+                {videoCall.isRinging ? '🔔' : '📞'}
               </Box>
             </Box>
 
@@ -800,13 +804,13 @@ const Audiocall = ({ videoCall, user, selectedUser, dbFriends, handleCallEnd, an
                 textShadow: '0 2px 8px rgba(0,0,0,0.3)'
               }}>
                 {(() => {
-                  // If we initiated, show selectedUser name
-                  if (selectedUser) {
-                    return selectedUser?.username || selectedUser?.name || 'Unknown';
-                  }
-                  // If we received, show caller name
+                  // If we received a call, always show the actual caller's name first (C's name, not B's)
                   if (videoCall.call?.callerName) {
                     return videoCall.call.callerName;
+                  }
+                  // If we initiated the call, show selected user name
+                  if (selectedUser) {
+                    return selectedUser?.username || selectedUser?.name || 'Unknown';
                   }
                   return 'Unknown';
                 })()}
@@ -1238,27 +1242,6 @@ const Audiocall = ({ videoCall, user, selectedUser, dbFriends, handleCallEnd, an
                 <PhoneIcon sx={{ fontSize: { xs: 24, sm: 26 }, transform: 'rotate(135deg)' }} />
               </IconButton>
             </Box>
-
-            {/* Audio element for remote peer audio - unmuted for both audio and video calls */}
-            <audio
-              ref={(el) => {
-                if (videoCall.remoteAudioRef) {
-                  videoCall.remoteAudioRef.current = el;
-                }
-                if (el && videoCall.remoteStream && el.srcObject !== videoCall.remoteStream) {
-                  console.log('🔊 [Audio Callback Ref] Attaching remoteStream to remote audio element');
-                  el.srcObject = videoCall.remoteStream;
-                  el.play().catch(err => console.warn('Remote audio autoplay warning:', err));
-                }
-              }}
-              autoPlay={true}
-              playsInline={true}
-              muted={false}
-              controls={false}
-              crossOrigin="anonymous"
-              preload="auto"
-              style={{ display: 'none' }}
-            />
           </Box>
         </Dialog>
       )}

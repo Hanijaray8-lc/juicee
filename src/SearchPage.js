@@ -81,7 +81,7 @@ const SearchPage = () => {
   const [userFriends, setUserFriends] = useState([]);
 
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isMobile = useMediaQuery('(max-width: 1024px)');
 
   // Check if browser supports Contact Picker API
   const supportsContactPicker = 'contacts' in navigator && 'ContactsManager' in window;

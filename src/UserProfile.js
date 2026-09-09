@@ -63,7 +63,7 @@ const UserProfile = ({
     }
   }, [initialTab]);
 
-  const isMobile = useMediaQuery('(max-width:768px)');
+  const isMobile = useMediaQuery('(max-width: 1024px)');
   const [friends, setFriends] = useState([]);
   const [user, setUser] = useState(null);
   const socket = useSocket();
