@@ -1,0 +1,107 @@
+/* src/ChatPage.css */
+
+/* Chat pane wrapper styling */
+.chat-pane-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  position: relative;
+  box-sizing: border-box;
+}
+
+
+
+/* Scrollable messages wrapper */
+.chat-messages-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Scrolling container of bubbles */
+.chat-messages-scroll-area {
+  flex: 1;
+  overflow-y: auto !important;
+  position: relative;
+  height: 0 !important; /* Forces layout to fill available space & scroll */
+  min-height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Input area at the bottom */
+.chat-input-bar-container {
+  flex-shrink: 0;
+  width: 100%;
+  position: relative;
+  z-index: 1100;
+  box-sizing: border-box;
+  background-color: transparent;
+  /* Padding bottom accounts for soft navigation handles */
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px) !important;
+}
+
+/* Ensure mobile overrides align with fixed header layout */
+@media (max-width: 768px) {
+  .chat-pane-container {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100% !important;
+    width: 100% !important;
+    overflow: hidden !important;
+  }
+  .chat-header-fixed {
+    position: fixed !important;
+    top: env(safe-area-inset-top, 0px) !important;
+    z-index: 1200 !important;
+  }
+  .chat-messages-wrapper {
+    flex: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    position: relative !important;
+    overflow: hidden !important;
+    width: 100% !important;
+  }
+  .chat-input-bar-container {
+    position: relative !important;
+    bottom: auto !important;
+    flex-shrink: 0 !important;
+  }
+}
+
+/* Custom Scrolling Last Seen Marquee Styles */
+.lastseen-scroll-container {
+  width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+}
+.lastseen-scroll-text {
+  display: inline-block;
+  white-space: nowrap;
+  box-sizing: border-box;
+  will-change: transform;
+}
+.lastseen-scroll-text.marquee-active {
+  animation: lastseen-marquee 12s linear infinite;
+}
+@keyframes lastseen-marquee {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
