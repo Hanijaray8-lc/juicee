@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App brand colors -->
+    <color name="colorPrimary">#FF2E7E</color>
+    <color name="colorPrimaryDark">#CC0055</color>
+    <color name="colorAccent">#FF6B35</color>
+
+    <!-- FCM notification accent color (used in AndroidManifest meta-data) -->
+    <color name="fcmNotificationColor">#FF6B35</color>
+</resources>
