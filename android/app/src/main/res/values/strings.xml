@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Juicy</string>
+    <string name="title_activity_main">Juicy</string>
+    <string name="package_name">com.juicychat.app</string>
+    <string name="custom_url_scheme">com.juicychat.app</string>
+    <string name="server_client_id">821005945428-7qbipus2rfd5r10d0uoblo6pi23sd9l5.apps.googleusercontent.com</string>
+</resources>

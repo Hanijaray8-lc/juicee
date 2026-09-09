@@ -1,0 +1,357 @@
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/.transforms/28dc64e5a571f5b1d9f4ec45bd2e57b3/results.bin b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/.transforms/28dc64e5a571f5b1d9f4ec45bd2e57b3/results.bin
+new file mode 100644
+index 0000000..7ed749e
+--- /dev/null
++++ b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/.transforms/28dc64e5a571f5b1d9f4ec45bd2e57b3/results.bin
+@@ -0,0 +1 @@
++o/bundleLibRuntimeToDirDebug
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/.transforms/28dc64e5a571f5b1d9f4ec45bd2e57b3/transformed/bundleLibRuntimeToDirDebug/desugar_graph.bin b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/.transforms/28dc64e5a571f5b1d9f4ec45bd2e57b3/transformed/bundleLibRuntimeToDirDebug/desugar_graph.bin
+new file mode 100644
+index 0000000..e799ae1
+Binary files /dev/null and b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/.transforms/28dc64e5a571f5b1d9f4ec45bd2e57b3/transformed/bundleLibRuntimeToDirDebug/desugar_graph.bin differ
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/.transforms/94641a98ef1c8e01baf3c2a031cb7fbe/results.bin b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/.transforms/94641a98ef1c8e01baf3c2a031cb7fbe/results.bin
+new file mode 100644
+index 0000000..0d259dd
+--- /dev/null
++++ b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/.transforms/94641a98ef1c8e01baf3c2a031cb7fbe/results.bin
+@@ -0,0 +1 @@
++o/classes
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/.transforms/94641a98ef1c8e01baf3c2a031cb7fbe/transformed/classes/classes_dex/classes.dex b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/.transforms/94641a98ef1c8e01baf3c2a031cb7fbe/transformed/classes/classes_dex/classes.dex
+new file mode 100644
+index 0000000..e195651
+Binary files /dev/null and b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/.transforms/94641a98ef1c8e01baf3c2a031cb7fbe/transformed/classes/classes_dex/classes.dex differ
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/aapt_friendly_merged_manifests/debug/processDebugManifest/aapt/AndroidManifest.xml b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/aapt_friendly_merged_manifests/debug/processDebugManifest/aapt/AndroidManifest.xml
+new file mode 100644
+index 0000000..8f92706
+--- /dev/null
++++ b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/aapt_friendly_merged_manifests/debug/processDebugManifest/aapt/AndroidManifest.xml
+@@ -0,0 +1,10 @@
++<?xml version="1.0" encoding="utf-8"?>
++<manifest xmlns:android="http://schemas.android.com/apk/res/android"
++    package="com.codetrixstudio.capacitor.GoogleAuth.capacitorgoogleauth" >
++
++    <uses-sdk android:minSdkVersion="24" />
++
++    <uses-permission android:name="android.permission.USE_CREDENTIALS" />
++    <uses-permission android:name="android.permission.INTERNET" />
++
++</manifest>
+\ No newline at end of file
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/aapt_friendly_merged_manifests/debug/processDebugManifest/aapt/output-metadata.json b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/aapt_friendly_merged_manifests/debug/processDebugManifest/aapt/output-metadata.json
+new file mode 100644
+index 0000000..dc7fa9a
+--- /dev/null
++++ b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/aapt_friendly_merged_manifests/debug/processDebugManifest/aapt/output-metadata.json
+@@ -0,0 +1,18 @@
++{
++  "version": 3,
++  "artifactType": {
++    "type": "AAPT_FRIENDLY_MERGED_MANIFESTS",
++    "kind": "Directory"
++  },
++  "applicationId": "com.codetrixstudio.capacitor.GoogleAuth.capacitorgoogleauth",
++  "variantName": "debug",
++  "elements": [
++    {
++      "type": "SINGLE",
++      "filters": [],
++      "attributes": [],
++      "outputFile": "AndroidManifest.xml"
++    }
++  ],
++  "elementType": "File"
++}
+\ No newline at end of file
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/aar_metadata/debug/writeDebugAarMetadata/aar-metadata.properties b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/aar_metadata/debug/writeDebugAarMetadata/aar-metadata.properties
+new file mode 100644
+index 0000000..1211b1e
+--- /dev/null
++++ b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/aar_metadata/debug/writeDebugAarMetadata/aar-metadata.properties
+@@ -0,0 +1,6 @@
++aarFormatVersion=1.0
++aarMetadataVersion=1.0
++minCompileSdk=1
++minCompileSdkExtension=0
++minAndroidGradlePluginVersion=1.0.0
++coreLibraryDesugaringEnabled=false
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/annotation_processor_list/debug/javaPreCompileDebug/annotationProcessors.json b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/annotation_processor_list/debug/javaPreCompileDebug/annotationProcessors.json
+new file mode 100644
+index 0000000..9e26dfe
+--- /dev/null
++++ b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/annotation_processor_list/debug/javaPreCompileDebug/annotationProcessors.json
+@@ -0,0 +1 @@
++{}
+\ No newline at end of file
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/compile_library_classes_jar/debug/bundleLibCompileToJarDebug/classes.jar b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/compile_library_classes_jar/debug/bundleLibCompileToJarDebug/classes.jar
+new file mode 100644
+index 0000000..3b8414c
+Binary files /dev/null and b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/compile_library_classes_jar/debug/bundleLibCompileToJarDebug/classes.jar differ
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/compile_r_class_jar/debug/generateDebugRFile/R.jar b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/compile_r_class_jar/debug/generateDebugRFile/R.jar
+new file mode 100644
+index 0000000..99d5561
+Binary files /dev/null and b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/compile_r_class_jar/debug/generateDebugRFile/R.jar differ
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/compile_symbol_list/debug/generateDebugRFile/R.txt b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/compile_symbol_list/debug/generateDebugRFile/R.txt
+new file mode 100644
+index 0000000..01a51ab
+--- /dev/null
++++ b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/compile_symbol_list/debug/generateDebugRFile/R.txt
+@@ -0,0 +1,3 @@
++int id webview 0x0
++int layout bridge_layout_main 0x0
++int string server_client_id 0x0
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/compiled_local_resources/debug/compileDebugLibraryResources/out/layout_bridge_layout_main.xml.flat b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/compiled_local_resources/debug/compileDebugLibraryResources/out/layout_bridge_layout_main.xml.flat
+new file mode 100644
+index 0000000..c08cbfa
+Binary files /dev/null and b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/compiled_local_resources/debug/compileDebugLibraryResources/out/layout_bridge_layout_main.xml.flat differ
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/incremental/debug/packageDebugResources/compile-file-map.properties b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/incremental/debug/packageDebugResources/compile-file-map.properties
+new file mode 100644
+index 0000000..f342d7a
+--- /dev/null
++++ b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/incremental/debug/packageDebugResources/compile-file-map.properties
+@@ -0,0 +1,2 @@
++#Thu Aug 20 21:30:56 IST 2026
++com.codetrixstudio.capacitor.GoogleAuth.capacitorgoogleauth.codetrix-studio-capacitor-google-auth-main-6\:/layout/bridge_layout_main.xml=D\:\\react 2\\05-02-2026\\juicee\\Juicy\\node_modules\\@codetrix-studio\\capacitor-google-auth\\android\\build\\intermediates\\packaged_res\\debug\\packageDebugResources\\layout\\bridge_layout_main.xml
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/incremental/debug/packageDebugResources/merged.dir/values/values.xml b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/incremental/debug/packageDebugResources/merged.dir/values/values.xml
+new file mode 100644
+index 0000000..5012e3d
+--- /dev/null
++++ b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/incremental/debug/packageDebugResources/merged.dir/values/values.xml
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="utf-8"?>
++<resources>
++    <string name="server_client_id">Your Web Client Key</string>
++</resources>
+\ No newline at end of file
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/incremental/debug/packageDebugResources/merger.xml b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/incremental/debug/packageDebugResources/merger.xml
+new file mode 100644
+index 0000000..1a55004
+--- /dev/null
++++ b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/incremental/debug/packageDebugResources/merger.xml
+@@ -0,0 +1,2 @@
++<?xml version="1.0" encoding="utf-8"?>
++<merger version="3"><dataSet aapt-namespace="http://schemas.android.com/apk/res-auto" config="main$Generated" generated="true" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\src\main\res"/></dataSet><dataSet aapt-namespace="http://schemas.android.com/apk/res-auto" config="main" generated-set="main$Generated" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~:!&lt;dir>navigation"><source path="D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\src\main\res"><file name="bridge_layout_main" path="D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\src\main\res\layout\bridge_layout_main.xml" qualifiers="" type="layout"/><file path="D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\src\main\res\values\colors.xml" qualifiers=""/><file path="D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\src\main\res\values\strings.xml" qualifiers=""><string name="server_client_id">Your Web Client Key</string></file><file path="D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\src\main\res\values\styles.xml" qualifiers=""/></source></dataSet><dataSet aapt-namespace="http://schemas.android.com/apk/res-auto" config="debug$Generated" generated="true" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\src\debug\res"/></dataSet><dataSet aapt-namespace="http://schemas.android.com/apk/res-auto" config="debug" generated-set="debug$Generated" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~:!&lt;dir>navigation"><source path="D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\src\debug\res"/></dataSet><dataSet aapt-namespace="http://schemas.android.com/apk/res-auto" config="generated$Generated" generated="true" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\build\generated\res\resValues\debug"/></dataSet><dataSet aapt-namespace="http://schemas.android.com/apk/res-auto" config="generated" generated-set="generated$Generated" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~:!&lt;dir>navigation"><source path="D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\build\generated\res\resValues\debug"/></dataSet><mergedItems/></merger>
+\ No newline at end of file
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/incremental/mergeDebugAssets/merger.xml b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/incremental/mergeDebugAssets/merger.xml
+new file mode 100644
+index 0000000..053486e
+--- /dev/null
++++ b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/incremental/mergeDebugAssets/merger.xml
+@@ -0,0 +1,2 @@
++<?xml version="1.0" encoding="utf-8"?>
++<merger version="3"><dataSet config="main" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\src\main\assets"/></dataSet><dataSet config="debug" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\src\debug\assets"/></dataSet><dataSet config="generated" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\build\intermediates\shader_assets\debug\compileDebugShaders\out"/></dataSet></merger>
+\ No newline at end of file
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/incremental/mergeDebugJniLibFolders/merger.xml b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/incremental/mergeDebugJniLibFolders/merger.xml
+new file mode 100644
+index 0000000..9e6ea0b
+--- /dev/null
++++ b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/incremental/mergeDebugJniLibFolders/merger.xml
+@@ -0,0 +1,2 @@
++<?xml version="1.0" encoding="utf-8"?>
++<merger version="3"><dataSet config="main" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\src\main\jniLibs"/></dataSet><dataSet config="debug" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\src\debug\jniLibs"/></dataSet></merger>
+\ No newline at end of file
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/incremental/mergeDebugShaders/merger.xml b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/incremental/mergeDebugShaders/merger.xml
+new file mode 100644
+index 0000000..6a627b4
+--- /dev/null
++++ b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/incremental/mergeDebugShaders/merger.xml
+@@ -0,0 +1,2 @@
++<?xml version="1.0" encoding="utf-8"?>
++<merger version="3"><dataSet config="main" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\src\main\shaders"/></dataSet><dataSet config="debug" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\src\debug\shaders"/></dataSet></merger>
+\ No newline at end of file
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/codetrixstudio/capacitor/GoogleAuth/GoogleAuth$1.class b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/codetrixstudio/capacitor/GoogleAuth/GoogleAuth$1.class
+new file mode 100644
+index 0000000..aa68321
+Binary files /dev/null and b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/codetrixstudio/capacitor/GoogleAuth/GoogleAuth$1.class differ
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/codetrixstudio/capacitor/GoogleAuth/GoogleAuth$2.class b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/codetrixstudio/capacitor/GoogleAuth/GoogleAuth$2.class
+new file mode 100644
+index 0000000..427ef4d
+Binary files /dev/null and b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/codetrixstudio/capacitor/GoogleAuth/GoogleAuth$2.class differ
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/codetrixstudio/capacitor/GoogleAuth/GoogleAuth.class b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/codetrixstudio/capacitor/GoogleAuth/GoogleAuth.class
+new file mode 100644
+index 0000000..55783b1
+Binary files /dev/null and b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/javac/debug/compileDebugJavaWithJavac/classes/com/codetrixstudio/capacitor/GoogleAuth/GoogleAuth.class differ
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/local_only_symbol_list/debug/parseDebugLocalResources/R-def.txt b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/local_only_symbol_list/debug/parseDebugLocalResources/R-def.txt
+new file mode 100644
+index 0000000..4618b24
+--- /dev/null
++++ b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/local_only_symbol_list/debug/parseDebugLocalResources/R-def.txt
+@@ -0,0 +1,5 @@
++R_DEF: Internal format may change without notice
++local
++id webview
++layout bridge_layout_main
++string server_client_id
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/manifest_merge_blame_file/debug/processDebugManifest/manifest-merger-blame-debug-report.txt b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/manifest_merge_blame_file/debug/processDebugManifest/manifest-merger-blame-debug-report.txt
+new file mode 100644
+index 0000000..a047c77
+--- /dev/null
++++ b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/manifest_merge_blame_file/debug/processDebugManifest/manifest-merger-blame-debug-report.txt
+@@ -0,0 +1,14 @@
++1<?xml version="1.0" encoding="utf-8"?>
++2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
++3    package="com.codetrixstudio.capacitor.GoogleAuth.capacitorgoogleauth" >
++4
++5    <uses-sdk android:minSdkVersion="24" />
++6
++7    <uses-permission android:name="android.permission.USE_CREDENTIALS" />
++7-->D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\src\main\AndroidManifest.xml:3:5-74
++7-->D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\src\main\AndroidManifest.xml:3:22-71
++8    <uses-permission android:name="android.permission.INTERNET" />
++8-->D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\src\main\AndroidManifest.xml:4:5-66
++8-->D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\src\main\AndroidManifest.xml:4:22-64
++9
++10</manifest>
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/merged_manifest/debug/processDebugManifest/AndroidManifest.xml b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/merged_manifest/debug/processDebugManifest/AndroidManifest.xml
+new file mode 100644
+index 0000000..8f92706
+--- /dev/null
++++ b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/merged_manifest/debug/processDebugManifest/AndroidManifest.xml
+@@ -0,0 +1,10 @@
++<?xml version="1.0" encoding="utf-8"?>
++<manifest xmlns:android="http://schemas.android.com/apk/res/android"
++    package="com.codetrixstudio.capacitor.GoogleAuth.capacitorgoogleauth" >
++
++    <uses-sdk android:minSdkVersion="24" />
++
++    <uses-permission android:name="android.permission.USE_CREDENTIALS" />
++    <uses-permission android:name="android.permission.INTERNET" />
++
++</manifest>
+\ No newline at end of file
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/navigation_json/debug/extractDeepLinksDebug/navigation.json b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/navigation_json/debug/extractDeepLinksDebug/navigation.json
+new file mode 100644
+index 0000000..0637a08
+--- /dev/null
++++ b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/navigation_json/debug/extractDeepLinksDebug/navigation.json
+@@ -0,0 +1 @@
++[]
+\ No newline at end of file
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/nested_resources_validation_report/debug/generateDebugResources/nestedResourcesValidationReport.txt b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/nested_resources_validation_report/debug/generateDebugResources/nestedResourcesValidationReport.txt
+new file mode 100644
+index 0000000..08f4ebe
+--- /dev/null
++++ b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/nested_resources_validation_report/debug/generateDebugResources/nestedResourcesValidationReport.txt
+@@ -0,0 +1 @@
++0 Warning/Error
+\ No newline at end of file
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/packaged_res/debug/packageDebugResources/layout/bridge_layout_main.xml b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/packaged_res/debug/packageDebugResources/layout/bridge_layout_main.xml
+new file mode 100644
+index 0000000..56fec15
+--- /dev/null
++++ b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/packaged_res/debug/packageDebugResources/layout/bridge_layout_main.xml
+@@ -0,0 +1,15 @@
++<?xml version="1.0" encoding="utf-8"?>
++<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    xmlns:app="http://schemas.android.com/apk/res-auto"
++    xmlns:tools="http://schemas.android.com/tools"
++    android:layout_width="match_parent"
++    android:layout_height="match_parent"
++    tools:context="com.getcapacitor.BridgeActivity"
++    >
++
++    <WebView
++        android:id="@+id/webview"
++        android:layout_width="fill_parent"
++        android:layout_height="fill_parent" />
++
++</androidx.coordinatorlayout.widget.CoordinatorLayout>
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/packaged_res/debug/packageDebugResources/values/values.xml b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/packaged_res/debug/packageDebugResources/values/values.xml
+new file mode 100644
+index 0000000..5012e3d
+--- /dev/null
++++ b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/packaged_res/debug/packageDebugResources/values/values.xml
+@@ -0,0 +1,4 @@
++<?xml version="1.0" encoding="utf-8"?>
++<resources>
++    <string name="server_client_id">Your Web Client Key</string>
++</resources>
+\ No newline at end of file
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/runtime_library_classes_dir/debug/bundleLibRuntimeToDirDebug/com/codetrixstudio/capacitor/GoogleAuth/GoogleAuth$1.class b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/runtime_library_classes_dir/debug/bundleLibRuntimeToDirDebug/com/codetrixstudio/capacitor/GoogleAuth/GoogleAuth$1.class
+new file mode 100644
+index 0000000..aa68321
+Binary files /dev/null and b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/runtime_library_classes_dir/debug/bundleLibRuntimeToDirDebug/com/codetrixstudio/capacitor/GoogleAuth/GoogleAuth$1.class differ
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/runtime_library_classes_dir/debug/bundleLibRuntimeToDirDebug/com/codetrixstudio/capacitor/GoogleAuth/GoogleAuth$2.class b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/runtime_library_classes_dir/debug/bundleLibRuntimeToDirDebug/com/codetrixstudio/capacitor/GoogleAuth/GoogleAuth$2.class
+new file mode 100644
+index 0000000..427ef4d
+Binary files /dev/null and b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/runtime_library_classes_dir/debug/bundleLibRuntimeToDirDebug/com/codetrixstudio/capacitor/GoogleAuth/GoogleAuth$2.class differ
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/runtime_library_classes_dir/debug/bundleLibRuntimeToDirDebug/com/codetrixstudio/capacitor/GoogleAuth/GoogleAuth.class b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/runtime_library_classes_dir/debug/bundleLibRuntimeToDirDebug/com/codetrixstudio/capacitor/GoogleAuth/GoogleAuth.class
+new file mode 100644
+index 0000000..55783b1
+Binary files /dev/null and b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/runtime_library_classes_dir/debug/bundleLibRuntimeToDirDebug/com/codetrixstudio/capacitor/GoogleAuth/GoogleAuth.class differ
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/runtime_library_classes_jar/debug/bundleLibRuntimeToJarDebug/classes.jar b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/runtime_library_classes_jar/debug/bundleLibRuntimeToJarDebug/classes.jar
+new file mode 100644
+index 0000000..420170c
+Binary files /dev/null and b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/runtime_library_classes_jar/debug/bundleLibRuntimeToJarDebug/classes.jar differ
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/symbol_list_with_package_name/debug/generateDebugRFile/package-aware-r.txt b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/symbol_list_with_package_name/debug/generateDebugRFile/package-aware-r.txt
+new file mode 100644
+index 0000000..5ba05a8
+--- /dev/null
++++ b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/intermediates/symbol_list_with_package_name/debug/generateDebugRFile/package-aware-r.txt
+@@ -0,0 +1,4 @@
++com.codetrixstudio.capacitor.GoogleAuth.capacitorgoogleauth
++id webview
++layout bridge_layout_main
++string server_client_id
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/outputs/logs/manifest-merger-debug-report.txt b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/outputs/logs/manifest-merger-debug-report.txt
+new file mode 100644
+index 0000000..ff8cf26
+--- /dev/null
++++ b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/outputs/logs/manifest-merger-debug-report.txt
+@@ -0,0 +1,24 @@
++-- Merging decision tree log ---
++manifest
++ADDED from D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\src\main\AndroidManifest.xml:2:3-5:14
++INJECTED from D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\src\main\AndroidManifest.xml:2:3-5:14
++	package
++		INJECTED from D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\src\main\AndroidManifest.xml
++	xmlns:android
++		ADDED from D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\src\main\AndroidManifest.xml:2:13-71
++uses-permission#android.permission.USE_CREDENTIALS
++ADDED from D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\src\main\AndroidManifest.xml:3:5-74
++	android:name
++		ADDED from D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\src\main\AndroidManifest.xml:3:22-71
++uses-permission#android.permission.INTERNET
++ADDED from D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\src\main\AndroidManifest.xml:4:5-66
++	android:name
++		ADDED from D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\src\main\AndroidManifest.xml:4:22-64
++uses-sdk
++INJECTED from D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\src\main\AndroidManifest.xml reason: use-sdk injection requested
++INJECTED from D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\src\main\AndroidManifest.xml
++INJECTED from D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\src\main\AndroidManifest.xml
++	android:targetSdkVersion
++		INJECTED from D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\src\main\AndroidManifest.xml
++	android:minSdkVersion
++		INJECTED from D:\react 2\05-02-2026\juicee\Juicy\node_modules\@codetrix-studio\capacitor-google-auth\android\src\main\AndroidManifest.xml
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/android/build/tmp/compileDebugJavaWithJavac/previous-compilation-data.bin b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/tmp/compileDebugJavaWithJavac/previous-compilation-data.bin
+new file mode 100644
+index 0000000..d2cb679
+Binary files /dev/null and b/node_modules/@codetrix-studio/capacitor-google-auth/android/build/tmp/compileDebugJavaWithJavac/previous-compilation-data.bin differ
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/dist/esm/definitions.js b/node_modules/@codetrix-studio/capacitor-google-auth/dist/esm/definitions.js
+index 7e3939b..c157001 100644
+--- a/node_modules/@codetrix-studio/capacitor-google-auth/dist/esm/definitions.js
++++ b/node_modules/@codetrix-studio/capacitor-google-auth/dist/esm/definitions.js
+@@ -1,3 +1,2 @@
+ /// <reference types="@capacitor/cli" />
+ export {};
+-//# sourceMappingURL=definitions.js.map
+\ No newline at end of file
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/dist/esm/index.js b/node_modules/@codetrix-studio/capacitor-google-auth/dist/esm/index.js
+index 2025f2e..c43d5c3 100644
+--- a/node_modules/@codetrix-studio/capacitor-google-auth/dist/esm/index.js
++++ b/node_modules/@codetrix-studio/capacitor-google-auth/dist/esm/index.js
+@@ -4,4 +4,3 @@ const GoogleAuth = registerPlugin('GoogleAuth', {
+ });
+ export * from './definitions';
+ export { GoogleAuth };
+-//# sourceMappingURL=index.js.map
+\ No newline at end of file
+diff --git a/node_modules/@codetrix-studio/capacitor-google-auth/dist/esm/web.js b/node_modules/@codetrix-studio/capacitor-google-auth/dist/esm/web.js
+index dd62570..3eb9b22 100644
+--- a/node_modules/@codetrix-studio/capacitor-google-auth/dist/esm/web.js
++++ b/node_modules/@codetrix-studio/capacitor-google-auth/dist/esm/web.js
+@@ -125,4 +125,3 @@ export class GoogleAuthWeb extends WebPlugin {
+         return user;
+     }
+ }
+-//# sourceMappingURL=web.js.map
+\ No newline at end of file
