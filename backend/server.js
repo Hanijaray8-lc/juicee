@@ -1,8 +1,8 @@
 const express = require('express');
 const mongoose = require('mongoose');
-const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '.env') });
+require('dotenv').config();
 const cors = require('cors');
+const path = require('path');
 const fs = require('fs');
 
 // Initialize Firebase Admin SDK
@@ -11,27 +11,13 @@ let serviceAccount;
 
 if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
   try {
-    const jsonStr = process.env.FIREBASE_SERVICE_ACCOUNT_JSON.trim();
-    try {
-      serviceAccount = JSON.parse(jsonStr);
-    } catch (parseErr) {
-      // Handle unescaped multiline private_key string in .env file gracefully
-      const sanitized = jsonStr.replace(/\r?\n/g, '\\n');
-      serviceAccount = JSON.parse(sanitized);
-    }
-    if (serviceAccount && serviceAccount.private_key) {
-      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
-    }
+    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
   } catch (err) {
-    console.error('❌ Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON env variable:', err.message);
+    console.error('❌ Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON:', err);
   }
-}
-
-// Robust Fallback: If FIREBASE_SERVICE_ACCOUNT_JSON was missing or failed to parse, load serviceAccountKey.json
-if (!serviceAccount) {
+} else {
   try {
     serviceAccount = require('./serviceAccountKey.json');
-    console.log('✅ Loaded serviceAccount from serviceAccountKey.json');
   } catch (err) {
     console.warn('⚠️ Warning: serviceAccountKey.json not found. Set FIREBASE_SERVICE_ACCOUNT_JSON environment variable.');
   }
@@ -42,13 +28,13 @@ if (serviceAccount) {
     credential: admin.credential.cert(serviceAccount),
     projectId: process.env.FIREBASE_PROJECT_ID || 'juicy1-96e7b'
   });
-  console.log('✅ Firebase Admin SDK initialized with Service Account Credentials');
+  console.log('✅ Firebase Admin SDK initialized');
 } else {
   try {
     admin.initializeApp({
       projectId: process.env.FIREBASE_PROJECT_ID || 'juicy1-96e7b'
     });
-    console.log('⚠️ Firebase Admin SDK initialized with default credentials (No service key found)');
+    console.log('✅ Firebase Admin SDK initialized with default credentials');
   } catch (err) {
     console.error('❌ Failed to initialize Firebase Admin SDK:', err);
   }
@@ -78,12 +64,12 @@ const corsOptions = {
       'http://localhost:5000',
       'capacitor://localhost',
       'https://juicee-30ie.onrender.com/',
-      'https://juicyapp.in//',
+      'https://juicy-ob2d.onrender.com//',
       'https://juicee-30ie.onrender.com',
-      'https://juicyapp.in/',
+      'https://juicy-ob2d.onrender.com/',
       'https://juicyapp.in',
       'https://juicy.lcind.space',
-      'https://juicyapp.in/',
+      'https://juicy-ob2d.onrender.com/',
       process.env.FRONTEND_URL || 'http://localhost:3000'
     ];
 
@@ -162,14 +148,14 @@ async function startServer() {
             'https://localhost',
             'capacitor://localhost',
             'https://juicy.lcind.space',
-            'https://juicyapp.in/',
+            'https://juicy-ob2d.onrender.com/',
             'https://juicyapp.in',
             'http://localhost:3000',
             'http://localhost:5000',
             'https://juicee-30ie.onrender.com',
             'https://juicy.lcind.space',
-            'https://juicyapp.in/',
-            'https://juicyapp.in//',
+            'https://juicy-ob2d.onrender.com/',
+            'https://juicy-ob2d.onrender.com//',
             process.env.FRONTEND_URL || 'http://localhost:3000'
           ];
 
@@ -910,6 +896,9 @@ async function startServer() {
 
           // Forward answer signal to the caller
           console.log(`📡 Forwarding answer signal to caller ${receiverId}`);
+          if (data.signal && typeof data.signal === 'object' && data.callId) {
+            data.signal.callId = data.callId;
+          }
           io.to(String(receiverId)).emit('callAccepted', data.signal);
           console.log(`✅ Answer signal sent successfully`);
         } catch (error) {
