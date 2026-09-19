@@ -1,8 +1,8 @@
 const express = require('express');
 const mongoose = require('mongoose');
-const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '.env') });
+require('dotenv').config();
 const cors = require('cors');
+const path = require('path');
 const fs = require('fs');
 
 // Initialize Firebase Admin SDK
@@ -11,27 +11,13 @@ let serviceAccount;
 
 if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
   try {
-    const jsonStr = process.env.FIREBASE_SERVICE_ACCOUNT_JSON.trim();
-    try {
-      serviceAccount = JSON.parse(jsonStr);
-    } catch (parseErr) {
-      // Handle unescaped multiline private_key string in .env file gracefully
-      const sanitized = jsonStr.replace(/\r?\n/g, '\\n');
-      serviceAccount = JSON.parse(sanitized);
-    }
-    if (serviceAccount && serviceAccount.private_key) {
-      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
-    }
+    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
   } catch (err) {
-    console.error('❌ Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON env variable:', err.message);
+    console.error('❌ Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON:', err);
   }
-}
-
-// Robust Fallback: If FIREBASE_SERVICE_ACCOUNT_JSON was missing or failed to parse, load serviceAccountKey.json
-if (!serviceAccount) {
+} else {
   try {
     serviceAccount = require('./serviceAccountKey.json');
-    console.log('✅ Loaded serviceAccount from serviceAccountKey.json');
   } catch (err) {
     console.warn('⚠️ Warning: serviceAccountKey.json not found. Set FIREBASE_SERVICE_ACCOUNT_JSON environment variable.');
   }
@@ -42,13 +28,13 @@ if (serviceAccount) {
     credential: admin.credential.cert(serviceAccount),
     projectId: process.env.FIREBASE_PROJECT_ID || 'juicy1-96e7b'
   });
-  console.log('✅ Firebase Admin SDK initialized with Service Account Credentials');
+  console.log('✅ Firebase Admin SDK initialized');
 } else {
   try {
     admin.initializeApp({
       projectId: process.env.FIREBASE_PROJECT_ID || 'juicy1-96e7b'
     });
-    console.log('⚠️ Firebase Admin SDK initialized with default credentials (No service key found)');
+    console.log('✅ Firebase Admin SDK initialized with default credentials');
   } catch (err) {
     console.error('❌ Failed to initialize Firebase Admin SDK:', err);
   }
@@ -78,12 +64,12 @@ const corsOptions = {
       'http://localhost:5000',
       'capacitor://localhost',
       'https://juicee-30ie.onrender.com/',
-      'https://juicyapp.in//',
+      'https://juicy-ob2d.onrender.com//',
       'https://juicee-30ie.onrender.com',
-      'https://juicyapp.in/',
+      'https://juicy-ob2d.onrender.com/',
       'https://juicyapp.in',
       'https://juicy.lcind.space',
-      'https://juicyapp.in/',
+      'https://juicy-ob2d.onrender.com/',
       process.env.FRONTEND_URL || 'http://localhost:3000'
     ];
 
@@ -143,7 +129,7 @@ async function startServer() {
     }));
 
     // Create HTTP server and socket.io after routes
-    const PORT = process.env.PORT || 5000;
+    const PORT = process.env.PORT || 5001;
     const server = http.createServer(app);
 
     // Socket.IO server configuration with better error handling
@@ -162,14 +148,14 @@ async function startServer() {
             'https://localhost',
             'capacitor://localhost',
             'https://juicy.lcind.space',
-            'https://juicyapp.in/',
+            'https://juicy-ob2d.onrender.com/',
             'https://juicyapp.in',
             'http://localhost:3000',
             'http://localhost:5000',
             'https://juicee-30ie.onrender.com',
             'https://juicy.lcind.space',
-            'https://juicyapp.in/',
-            'https://juicyapp.in//',
+            'https://juicy-ob2d.onrender.com/',
+            'https://juicy-ob2d.onrender.com//',
             process.env.FRONTEND_URL || 'http://localhost:3000'
           ];
 
@@ -222,6 +208,7 @@ async function startServer() {
     }
 
     const activeOutgoingCalls = {};
+    const pendingIceCandidates = {}; // targetUserId -> [{ from, candidate, ts }]
     app.set('io', io);
     app.set('activeOutgoingCalls', activeOutgoingCalls);
 
@@ -300,7 +287,7 @@ async function startServer() {
         }
       });
 
-      // Join room biuhfi beeejhoi8 bbeethova na
+      // Join room
       socket.on('join_room', async (userId, username) => {
         try {
           console.log('Socket joining room:', userId);
@@ -332,6 +319,10 @@ async function startServer() {
                   callerName: callDetails.callerName,
                   callType: callDetails.callType
                 });
+                // Deliver any buffered trickle ICE candidates from the caller
+                (pendingIceCandidates[String(userId)] || [])
+                  .filter(c => String(c.from) === String(callDetails.from) && Date.now() - c.ts < 90000)
+                  .forEach(c => socket.emit('iceCandidate', { from: c.from, candidate: c.candidate }));
               } else {
                 delete activeOutgoingCalls[cId];
               }
@@ -515,35 +506,40 @@ async function startServer() {
             io.to(String(message.senderId)).emit('receive_message', emitPayload);
           }
 
-          // 🔔 FCM Push: Always send when receiver has a registered token and is not blocked.
-          // FIX: The previous skip guard (receiverInThisChat && receiverExplicitlyForeground)
-          // relied on two server-side state values that are STALE on VPS:
-          //   • usersInChat — never cleared because Android freezes JS on background,
-          //     so the React left_chat cleanup event never reaches the server.
-          //   • userAppStates — never transitions to 'background' because Android freezes
-          //     JS before the app_state: background emit can be sent.
-          // Result: both flags stayed true → isReceiverActivelyInThisChat = true → FCM skipped.
-          //
-          // FIX: Send FCM eagerly always. Android's native MyFirebaseMessagingService
-          // suppresses the status-bar notification itself when the app is truly foreground
-          // (MainActivity.isAppVisible guard at line 164 of MyFirebaseMessagingService.java),
-          // so this produces no visible duplicates for foreground users.
+          // 🔔 FCM Push: Send notification when receiver is not actively in this chat
+          // FCM is always sent unless receiver is actively viewing THIS conversation.
+          // This ensures background/terminated app delivery without relying on the
+          // fragile app_state emit (which may not fire before Android suspends JS).
           if (!isReceiverBlockedSender) {
             try {
               const receiverUser = await User.findById(message.receiverId).select('fcmToken fcmTokens username');
               if (receiverUser && (receiverUser.fcmToken || (receiverUser.fcmTokens && receiverUser.fcmTokens.length > 0))) {
-                const senderUser = await User.findById(message.senderId).select('username profileImage');
-                if (senderUser) {
-                  const msgPreview = message.type === 'image' ? '📷 Photo'
-                    : message.type === 'video' ? '🎥 Video'
-                      : message.type === 'audio' ? '🎵 Voice message'
-                        : message.type === 'document' ? '📄 Document'
-                          : message.type === 'contact' ? '👤 Contact'
-                            : message.type === 'location' ? '📍 Location'
-                              : (message.text || 'New message').substring(0, 100);
+                // Only skip FCM if the receiver is ACTIVELY in this specific chat (real-time covers it)
+                const isReceiverActivelyInThisChat =
+                  usersInChat[String(message.receiverId)] === String(message.senderId) &&
+                  onlineUsersSockets[String(message.receiverId)] &&
+                  onlineUsersSockets[String(message.receiverId)].size > 0 &&
+                  userAppStates[String(message.receiverId)] !== 'background';
 
-                  console.log(`[FCM MESSAGE] Sending push to ${receiverUser.username || message.receiverId} | appState:${userAppStates[String(message.receiverId)] || 'unknown'} | sockets:${onlineUsersSockets[String(message.receiverId)]?.size || 0}`);
-                  await sendMessageNotification(receiverUser, senderUser, msgPreview);
+                if (!isReceiverActivelyInThisChat) {
+                  const senderUser = await User.findById(message.senderId).select('username profilePic');
+                  if (senderUser) {
+                    const msgPreview = message.type === 'image' ? '📷 Photo'
+                      : message.type === 'video' ? '🎥 Video'
+                        : message.type === 'audio' ? '🎵 Voice message'
+                          : message.type === 'document' ? '📄 Document'
+                            : message.type === 'contact' ? '👤 Contact'
+                              : message.type === 'location' ? '📍 Location'
+                                : (message.text || 'New message').substring(0, 100);
+
+                    await sendMessageNotification(receiverUser, senderUser, msgPreview);
+                    console.log('[FCM MESSAGE] Push sent to', receiverUser.username || message.receiverId,
+                      '| receiver in chat:', usersInChat[String(message.receiverId)] === String(message.senderId),
+                      '| online sockets:', onlineUsersSockets[String(message.receiverId)]?.size || 0,
+                      '| app_state:', userAppStates[String(message.receiverId)] || 'unknown');
+                  }
+                } else {
+                  console.log('[FCM MESSAGE] Skipped — receiver is actively in this chat');
                 }
               }
             } catch (fcmErr) {
@@ -837,19 +833,12 @@ async function startServer() {
               message: `Line busy - simultaneous calls`
             });
 
-            // Clean up both active calls
+            // Clean up both active calls and ICE buffers
             delete activeOutgoingCalls[callerId];
             delete activeOutgoingCalls[receiverId];
+            delete pendingIceCandidates[callerId];
+            delete pendingIceCandidates[receiverId];
             return;
-          }
-
-          // Clean up any stale active call cache for caller or receiver before tracking new call
-          delete activeOutgoingCalls[callerId];
-          delete activeOutgoingCalls[receiverId];
-          for (const [k, v] of Object.entries(activeOutgoingCalls)) {
-            if (v && (v.targetUserId === receiverId || v.from === callerId || v.targetUserId === callerId || v.from === receiverId)) {
-              delete activeOutgoingCalls[k];
-            }
           }
 
           // Track this outgoing call
@@ -911,9 +900,14 @@ async function startServer() {
             delete activeOutgoingCalls[callerId];
             console.log(`🧹 Cleaned up active call for answerer ${callerId}`);
           }
+          // Clean up ICE candidate buffer for the answering user
+          if (callerId) delete pendingIceCandidates[String(callerId)];
 
           // Forward answer signal to the caller
           console.log(`📡 Forwarding answer signal to caller ${receiverId}`);
+          if (data.signal && typeof data.signal === 'object' && data.callId) {
+            data.signal.callId = data.callId;
+          }
           io.to(String(receiverId)).emit('callAccepted', data.signal);
           console.log(`✅ Answer signal sent successfully`);
         } catch (error) {
@@ -932,6 +926,14 @@ async function startServer() {
               from: senderId,
               candidate: data.candidate
             });
+            // Buffer ICE candidates so they can be re-delivered if receiver reconnects
+            if (activeOutgoingCalls[senderId] && String(activeOutgoingCalls[senderId].targetUserId) === targetUserId) {
+              if (!pendingIceCandidates[targetUserId]) pendingIceCandidates[targetUserId] = [];
+              // Drop entries older than 90s
+              pendingIceCandidates[targetUserId] = pendingIceCandidates[targetUserId].filter(c => Date.now() - c.ts < 90000);
+              if (pendingIceCandidates[targetUserId].length >= 60) pendingIceCandidates[targetUserId].shift();
+              pendingIceCandidates[targetUserId].push({ from: senderId, candidate: data.candidate, ts: Date.now() });
+            }
           }
         } catch (error) {
           console.error('❌ iceCandidate handler error:', error);
@@ -952,6 +954,9 @@ async function startServer() {
           if (activeOutgoingCalls[targetUserId]) {
             delete activeOutgoingCalls[targetUserId];
           }
+          // Clean up ICE candidate buffers for both parties
+          if (callerId) delete pendingIceCandidates[String(callerId)];
+          if (targetUserId) delete pendingIceCandidates[String(targetUserId)];
 
           // Notify the caller that their call was rejected
           console.log(`📡 Sending callRejected to ${targetUserId}`);
@@ -976,6 +981,9 @@ async function startServer() {
           if (activeOutgoingCalls[receiverId]) {
             delete activeOutgoingCalls[receiverId];
           }
+          // Clean up ICE candidate buffers for both parties
+          if (callerId) delete pendingIceCandidates[String(callerId)];
+          if (receiverId) delete pendingIceCandidates[String(receiverId)];
 
           // Notify the other party that the call ended
           console.log(`📡 Sending callEnded to ${receiverId}`);
