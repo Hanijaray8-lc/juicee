@@ -2224,4 +2224,8 @@ router.delete('/linked-devices/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// 💡 Support & Help Queries endpoints
+const helpSubRouter = require('./help');
+router.use('/help', helpSubRouter);
+
 module.exports = router;

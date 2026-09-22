@@ -114,6 +114,10 @@ async function startServer() {
     const authRouter = require('./routes/auth');
     app.use('/api', authRouter);
 
+    // 💡 Help & Query Support routes
+    const helpRouter = require('./routes/help');
+    app.use('/api/help', helpRouter);
+
     // 🔥 Notification routes
     const notificationRoutes = require('./routes/notifications');
     app.use(notificationRoutes);
@@ -129,7 +133,7 @@ async function startServer() {
     }));
 
     // Create HTTP server and socket.io after routes
-    const PORT = process.env.PORT || 5000;
+    const PORT = process.env.PORT || 5001;
     const server = http.createServer(app);
 
     // Socket.IO server configuration with better error handling
@@ -208,6 +212,7 @@ async function startServer() {
     }
 
     const activeOutgoingCalls = {};
+    const pendingIceCandidates = {}; // targetUserId -> [{ from, candidate, ts }]
     app.set('io', io);
     app.set('activeOutgoingCalls', activeOutgoingCalls);
 
@@ -318,6 +323,10 @@ async function startServer() {
                   callerName: callDetails.callerName,
                   callType: callDetails.callType
                 });
+                // Deliver any buffered trickle ICE candidates from the caller
+                (pendingIceCandidates[String(userId)] || [])
+                  .filter(c => String(c.from) === String(callDetails.from) && Date.now() - c.ts < 90000)
+                  .forEach(c => socket.emit('iceCandidate', { from: c.from, candidate: c.candidate }));
               } else {
                 delete activeOutgoingCalls[cId];
               }
@@ -828,9 +837,11 @@ async function startServer() {
               message: `Line busy - simultaneous calls`
             });
 
-            // Clean up both active calls
+            // Clean up both active calls and ICE buffers
             delete activeOutgoingCalls[callerId];
             delete activeOutgoingCalls[receiverId];
+            delete pendingIceCandidates[callerId];
+            delete pendingIceCandidates[receiverId];
             return;
           }
 
@@ -893,6 +904,8 @@ async function startServer() {
             delete activeOutgoingCalls[callerId];
             console.log(`🧹 Cleaned up active call for answerer ${callerId}`);
           }
+          // Clean up ICE candidate buffer for the answering user
+          if (callerId) delete pendingIceCandidates[String(callerId)];
 
           // Forward answer signal to the caller
           console.log(`📡 Forwarding answer signal to caller ${receiverId}`);
@@ -917,6 +930,14 @@ async function startServer() {
               from: senderId,
               candidate: data.candidate
             });
+            // Buffer ICE candidates so they can be re-delivered if receiver reconnects
+            if (activeOutgoingCalls[senderId] && String(activeOutgoingCalls[senderId].targetUserId) === targetUserId) {
+              if (!pendingIceCandidates[targetUserId]) pendingIceCandidates[targetUserId] = [];
+              // Drop entries older than 90s
+              pendingIceCandidates[targetUserId] = pendingIceCandidates[targetUserId].filter(c => Date.now() - c.ts < 90000);
+              if (pendingIceCandidates[targetUserId].length >= 60) pendingIceCandidates[targetUserId].shift();
+              pendingIceCandidates[targetUserId].push({ from: senderId, candidate: data.candidate, ts: Date.now() });
+            }
           }
         } catch (error) {
           console.error('❌ iceCandidate handler error:', error);
@@ -937,6 +958,9 @@ async function startServer() {
           if (activeOutgoingCalls[targetUserId]) {
             delete activeOutgoingCalls[targetUserId];
           }
+          // Clean up ICE candidate buffers for both parties
+          if (callerId) delete pendingIceCandidates[String(callerId)];
+          if (targetUserId) delete pendingIceCandidates[String(targetUserId)];
 
           // Notify the caller that their call was rejected
           console.log(`📡 Sending callRejected to ${targetUserId}`);
@@ -961,6 +985,9 @@ async function startServer() {
           if (activeOutgoingCalls[receiverId]) {
             delete activeOutgoingCalls[receiverId];
           }
+          // Clean up ICE candidate buffers for both parties
+          if (callerId) delete pendingIceCandidates[String(callerId)];
+          if (receiverId) delete pendingIceCandidates[String(receiverId)];
 
           // Notify the other party that the call ended
           console.log(`📡 Sending callEnded to ${receiverId}`);
