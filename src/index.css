@@ -1,27 +1,93 @@
-html,
-body,
-#root {
-  margin: 0;
-  padding: 0;
-  height: 100%;
-  overflow: hidden;
-}
+/* ============================================================
+   GLOBAL RESET — Works on ALL mobile screen sizes
+   (16:9, 20:9, 21:9, notch/punch-hole, etc.)
+   ============================================================ */
 
-* {
-  box-sizing: border-box;
+html {
+  /* Use small viewport height so keyboard doesn't break layout */
+  height: -webkit-fill-available;
+  height: 100%;
 }
 
 body {
   margin: 0;
+  padding: 0;
+  /* Fills the real visible screen — no overflow from keyboard/browser chrome */
+  min-height: 100dvh;
+  min-height: -webkit-fill-available;
+  height: 100%;
+  overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overscroll-behavior: none;
+  /* Prevent elastic bounce on iOS/Android WebView */
+  overscroll-behavior-y: none;
+  /* Prevent text resize on orientation change */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+#root {
+  margin: 0;
+  padding: 0;
+  /* 100dvh = dynamic viewport height — adjusts for keyboard, browser chrome, notch */
+  height: 100dvh;
+  /* Fallback for older Android WebViews */
+  height: -webkit-fill-available;
+  width: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+* {
+  box-sizing: border-box;
+  /* Prevent touch callouts and text selection issues on Android */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ============================================================
+   SAFE AREA VARIABLES — For notch/gesture bar on all phones
+   ============================================================ */
+:root {
+  --safe-top:    env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left:   env(safe-area-inset-left, 0px);
+  --safe-right:  env(safe-area-inset-right, 0px);
+
+  /* App shell height accounting for safe areas */
+  --app-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+
+  /* Bottom nav / input bar safe padding */
+  --bottom-safe-padding: max(env(safe-area-inset-bottom, 0px), 8px);
 }
 
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+/* ============================================================
+   RESPONSIVE FONT SCALE — Adapts text to screen size
+   Small phones (360px) → Large phones (430px) → Tablets
+   ============================================================ */
+html {
+  /* Base font scales from 14px (small) to 16px (large) smoothly */
+  font-size: clamp(14px, 3.8vw, 16px);
+}
+
+/* ============================================================
+   PREVENT LAYOUT SHIFTS — Common Android WebView fixes
+   ============================================================ */
+img, video {
+  max-width: 100%;
+  height: auto;
+}
+
+input, textarea, select {
+  /* Prevent iOS auto-zoom on focus (font-size must be >= 16px to avoid) */
+  font-size: max(16px, 1em);
+}

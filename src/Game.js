@@ -682,7 +682,7 @@ export const GameBubble = ({ msg, userId, username, selectedUser, onSendGameMess
 
   const { gameType, status, player1, player2, player1Id, player2Id } = gameData;
   const isInviter = gameType === 'rps' ? (userId === player1Id) : (userId === player1?.id);
-  const oppName = gameType === 'rps' 
+  const oppName = gameType === 'rps'
     ? (selectedUser?.username || 'Opponent')
     : (isInviter ? (player2?.username || 'Opponent') : (player1?.username || 'Opponent'));
 

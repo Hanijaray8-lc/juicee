@@ -14,6 +14,14 @@ import {
   FavoriteBorder as FavoriteBorderIcon
 } from '@mui/icons-material';
 import API_BASE_URL from './config/apiConfig';
+import { getProfileImageSrc } from './utils/imageUtils';
+import {
+  initOfflineDb,
+  getMoodsLocally,
+  saveMoodsLocally,
+  saveSingleMoodLocally,
+  deleteMoodLocally
+} from './db/offlineDb';
 // import { generateUniqueId } from './utils/uniqueIdGenerator';
 
 const moodEmojis = [
@@ -96,22 +104,16 @@ const getMoodCountdown = (moodTimestamp) => {
 
 const getProfileSrc = (u) => {
   if (!u) return '';
-  if (u.profileImage) {
-    try {
-      return u.profileImage.startsWith('data:') ? u.profileImage : `data:image/jpeg;base64,${u.profileImage}`;
-    } catch (e) {
-      return u.profileImage;
-    }
-  }
+  const direct = getProfileImageSrc(u.profileImage || u.profilePic || u.image);
+  if (direct) return direct;
   // --- Local cache fallback: use the cached image written by UserProfile.js ---
-  // Only apply for the current logged-in user (matched by userId stored in localStorage)
   const currentUserId = localStorage.getItem('userId');
   const uId = u._id || u.id;
   if (currentUserId && uId && String(currentUserId) === String(uId)) {
-    const cached = localStorage.getItem('profileImageCache');
-    if (cached) return cached.startsWith('data:') ? cached : `data:image/jpeg;base64,${cached}`;
+    const cached = localStorage.getItem('profileImageCache') || localStorage.getItem('profileImage');
+    if (cached) return getProfileImageSrc(cached) || '';
   }
-  return u.profilePic || u.image || '';
+  return '';
 };
 
 const formatTime = (date) => {
@@ -204,19 +206,57 @@ const Yourmood = ({
   const [showMoodDialog, setShowMoodDialog] = useState(false);
   const [selectedMood, setSelectedMood] = useState(null);
   const [moodText, setMoodText] = useState('');
-  const [moods, setMoods] = useState([]);
+  const [moods, setMoods] = useState(() => {
+    const currentUserId = user?._id || user?.id || localStorage.getItem('userId');
+    if (!currentUserId) return [];
+    try {
+      const cached = localStorage.getItem(`cached_moods_${currentUserId}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {}
+    return [];
+  });
   const updateMoodsAndCache = React.useCallback((newMoodsOrUpdater) => {
     setMoods(prev => {
       const updated = typeof newMoodsOrUpdater === 'function' ? newMoodsOrUpdater(prev) : newMoodsOrUpdater;
       const currentUserId = user?._id || user?.id || localStorage.getItem('userId');
-      if (currentUserId) {
+      if (currentUserId && Array.isArray(updated)) {
         try {
           localStorage.setItem(`cached_moods_${currentUserId}`, JSON.stringify(updated));
         } catch (e) { }
+        saveMoodsLocally(currentUserId, updated).catch(() => {});
       }
       return updated;
     });
   }, [user?._id, user?.id]);
+
+  // --- Deleted mood IDs helpers (persisted in localStorage to survive refresh) ---
+  const getDeletedMoodIds = () => {
+    try {
+      const currentUserId = user?._id || user?.id || localStorage.getItem('userId');
+      if (!currentUserId) return new Set();
+      const stored = localStorage.getItem(`deleted_mood_ids_${currentUserId}`);
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch (e) { return new Set(); }
+  };
+
+  const saveDeletedMoodId = (id) => {
+    try {
+      const currentUserId = user?._id || user?.id || localStorage.getItem('userId');
+      if (!currentUserId || !id) return;
+      const existing = getDeletedMoodIds();
+      existing.add(String(id));
+      localStorage.setItem(`deleted_mood_ids_${currentUserId}`, JSON.stringify([...existing]));
+    } catch (e) { }
+  };
+
+  const filterDeletedMoods = (list) => {
+    const deletedIds = getDeletedMoodIds();
+    if (deletedIds.size === 0) return list;
+    return list.filter(m => !deletedIds.has(String(m._id || m.id || '')));
+  };
   const [viewingMood, setViewingMood] = useState(null);
 
   const viewingDrag = useDragToClose(
@@ -394,14 +434,28 @@ const Yourmood = ({
     }
 
     const currentUserId = user?._id || user?.id || localStorage.getItem('userId');
+    const targetIdStr = String(id);
+
+    // Keep snapshot of current state for rollback if deletion fails
+    let deletedMood = null;
+    let deletedIndex = -1;
+    setMoods(prev => {
+      deletedIndex = prev.findIndex(m => String(m._id || m.id || '') === targetIdStr);
+      if (deletedIndex !== -1) {
+        deletedMood = prev[deletedIndex];
+      }
+      return prev;
+    });
 
     try {
       console.log('Instant-Deleting mood locally:', { id, userId: currentUserId });
-      const targetIdStr = String(id);
 
       if (targetIdStr.startsWith('temp-')) {
         pendingTempDeletesRef.current.add(targetIdStr);
       }
+
+      // Save deleted ID to localStorage so it survives page refresh
+      saveDeletedMoodId(targetIdStr);
 
       // 1. Instantly update UI and local cache (Optimistic update)
       updateMoodsAndCache(prev => prev.filter(m => {
@@ -410,6 +464,11 @@ const Yourmood = ({
         if (targetIdStr.startsWith('temp-') && mid.startsWith('temp-')) return false;
         return true;
       }));
+
+      // Delete from SQLite database
+      if (currentUserId) {
+        deleteMoodLocally(currentUserId, targetIdStr).catch(() => {});
+      }
 
       // 2. Instantly close view dialog and stop any active audio playback
       setViewingMood(null);
@@ -420,36 +479,68 @@ const Yourmood = ({
         socket.emit('delete_mood', { id });
       }
 
-      // 4. Perform database deletion if it's a real server ID
+      // 4. Perform database deletion in background if it's a real server ID
       if (!targetIdStr.startsWith('temp-')) {
-        await fetch(`${API_BASE_URL}/api/auth/moods/${id}`, {
+        const response = await fetch(`${API_BASE_URL}/api/auth/moods/${id}`, {
           method: 'DELETE',
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`,
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({ userId: currentUserId })
-        }).catch((err) => {
-          console.error('Backend deletion fetch error:', err);
         });
+        if (!response.ok) {
+          throw new Error(`Server delete failed with status ${response.status}`);
+        }
       }
 
-      // 5. Reload the page after deleting the mood
-      window.location.reload();
-
     } catch (error) {
-      console.error('Error in instant-deleting mood:', error);
+      console.error('Error in instant-deleting mood, rolling back:', error);
+      // Rollback: restore mood to state if deletion failed
+      if (deletedMood) {
+        updateMoodsAndCache(prev => {
+          const restored = [...prev];
+          if (deletedIndex >= 0 && deletedIndex <= restored.length) {
+            restored.splice(deletedIndex, 0, deletedMood);
+            return restored;
+          }
+          return [...prev, deletedMood];
+        });
+        if (currentUserId) {
+          saveSingleMoodLocally(currentUserId, deletedMood).catch(() => {});
+        }
+        setSongConfirmationMessage('Failed to delete note. Restored.');
+        setSongSnackbarOpen(true);
+      }
+    }
+  };
+
+  // Helper compatibility functions for Mood Songs
+  const handleDeleteSong = async (songId) => {
+    return handleDeleteMood(songId);
+  };
+
+  const handleAddSong = async (songData) => {
+    try {
+      if (songData) {
+        setSelectedSong(songData);
+      }
+    } catch (err) {
+      console.error('Error adding song:', err);
     }
   };
 
   const confirmDelete = async () => {
     if (moodToDeleteId) {
       const targetId = typeof moodToDeleteId === 'object' ? (moodToDeleteId.id || moodToDeleteId._id) : moodToDeleteId;
-      await handleDeleteMood(targetId);
+      // Optimistically close confirmation modal immediately (no freeze/delay)
       setDeleteConfirmOpen(false);
       setMoodToDeleteId(null);
       setSongConfirmationMessage('Note deleted 🗑️');
       setSongSnackbarOpen(true);
+
+      // Trigger deletion in background
+      handleDeleteMood(targetId);
     }
   };
 
@@ -505,9 +596,10 @@ const Yourmood = ({
       : moodText.trim();
 
     // 1. Instantly build an optimistic mood object for immediate UI update
+    const tempId = `temp-${Date.now()}`;
     const optimisticMood = {
-      id: `temp-${Date.now()}`,
-      _id: `temp-${Date.now()}`,
+      id: tempId,
+      _id: tempId,
       userId: user._id,
       username: user.username,
       profilePic: user.profilePic || user.profileImage || '',
@@ -552,7 +644,11 @@ const Yourmood = ({
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         console.error('Mood share failed with status:', response.status, errorData);
-        if (response.status === 429) {
+        if (response.status === 401) {
+          // Remove optimistic mood and prompt user to re-login
+          updateMoodsAndCache(prev => prev.filter(m => m.id !== optimisticMood.id));
+          alert('Your session has expired. Please log out and sign in again.');
+        } else if (response.status === 429) {
           // Remove the optimistic mood if rate-limited, so user knows it failed
           updateMoodsAndCache(prev => prev.filter(m => m.id !== optimisticMood.id));
           alert('You can only post one mood per day. Delete your previous mood to post a new one.');
@@ -579,16 +675,27 @@ const Yourmood = ({
         return;
       }
 
-      updateMoodsAndCache(prev => prev.map(m => (m.id === optimisticMood.id || m._id === optimisticMood._id ? realMood : m)));
+      updateMoodsAndCache(prev => prev.map(m => {
+        const mId = String(m.id || m._id || '');
+        const oId = String(optimisticMood.id || optimisticMood._id || '');
+        // Match by temp id OR by real server id (in case socket already replaced it)
+        if (mId === oId || mId === String(realMood._id || realMood.id || '')) {
+          return realMood;
+        }
+        return m;
+      }));
       setViewingMood(prev => (prev && (prev.id === optimisticMood.id || prev._id === optimisticMood._id) ? realMood : prev));
       console.log('Mood saved to backend:', realMood._id || realMood.id);
 
-      // 5. Reload the page after sharing mood
-      window.location.reload();
+      if (user?._id) {
+        saveSingleMoodLocally(user._id, realMood).catch(() => {});
+      }
 
     } catch (err) {
       console.error('Mood share network error:', err);
-      window.location.reload();
+      // Show error message but keep the optimistic mood visible
+      setSongConfirmationMessage('Note saved locally, will sync when online');
+      setSongSnackbarOpen(true);
     }
   };
 
@@ -613,7 +720,30 @@ const Yourmood = ({
     }
   }, [musicEditorSong]);
 
-  // Load moods effect with instant local cache
+  // Load moods from SQLite offline database on mount
+  useEffect(() => {
+    const currentUserId = user?._id || user?.id || localStorage.getItem('userId');
+    if (!currentUserId) return;
+
+    let isMounted = true;
+    const loadFromSqlite = async () => {
+      try {
+        await initOfflineDb();
+        const sqliteMoods = await getMoodsLocally(currentUserId);
+        if (isMounted && Array.isArray(sqliteMoods) && sqliteMoods.length > 0) {
+          // Filter out any previously deleted moods before showing
+          setMoods(filterDeletedMoods(sqliteMoods));
+        }
+      } catch (err) {
+        console.warn('⚠️ [SQLITE] Error loading moods from SQLite:', err);
+      }
+    };
+
+    loadFromSqlite();
+    return () => { isMounted = false; };
+  }, [user?._id, user?.id]);
+
+  // Load moods effect with instant local cache and SQLite sync
   useEffect(() => {
     if (!user?._id) return;
 
@@ -621,7 +751,8 @@ const Yourmood = ({
     const cachedData = localStorage.getItem(cacheKey);
     if (cachedData) {
       try {
-        setMoods(JSON.parse(cachedData));
+        // Filter deleted moods from cache before restoring
+        setMoods(filterDeletedMoods(JSON.parse(cachedData)));
       } catch (e) { }
     }
 
@@ -641,7 +772,21 @@ const Yourmood = ({
 
         const data = await response.json();
         console.log('Loaded moods:', data);
-        updateMoodsAndCache(data);
+        if (Array.isArray(data)) {
+          // Filter deleted moods from server response before merging
+          const filteredData = filterDeletedMoods(data);
+          // Merge server data with existing optimistic (temp) moods to avoid flicker
+          updateMoodsAndCache(prev => {
+            const tempMoods = prev.filter(m => String(m.id || m._id || '').startsWith('temp-'));
+            // Keep temp moods that haven't been confirmed by server yet
+            const survivingTemps = tempMoods.filter(t => {
+              const tUserId = String(t.userId?._id || t.userId || t.user?._id || t.user || '');
+              return !filteredData.some(s => String(s.userId?._id || s.userId || s.user?._id || s.user || '') === tUserId);
+            });
+            return [...survivingTemps, ...filteredData];
+          });
+          saveMoodsLocally(user._id, filteredData).catch(() => {});
+        }
       } catch (error) {
         console.error('Error loading moods:', error);
       }
@@ -676,24 +821,64 @@ const Yourmood = ({
     if (!socket) return;
 
     socket.on('initial_moods', (list) => {
-      const valid = list.filter(m => (Date.now() - new Date(m.timestamp).getTime()) < 24 * 60 * 60 * 1000);
+      // Filter out deleted moods from socket's initial list
+      const valid = filterDeletedMoods(
+        list.filter(m => (Date.now() - new Date(m.timestamp).getTime()) < 24 * 60 * 60 * 1000)
+      );
       updateMoodsAndCache(valid);
       console.log('initial moods received', valid.length);
     });
 
     socket.on('receive_mood', (mood) => {
+      if (!mood) return;
+      const currentUserId = user?._id || user?.id || localStorage.getItem('userId');
+      const incomingId = String(mood._id || mood.id || '');
+      const incomingUserId = String(mood.userId?._id || mood.userId || mood.user?._id || mood.user || '');
       updateMoodsAndCache(prev => {
-        if (prev.some(m => m.id === mood.id)) return prev;
+        // Check if exact ID already exists
+        if (incomingId && prev.some(m => String(m._id || m.id || '') === incomingId)) {
+          return prev;
+        }
+        // Check if a temp mood for the same user exists — replace it seamlessly
+        const tempIdx = prev.findIndex(m =>
+          String(m.id || m._id || '').startsWith('temp-') &&
+          String(m.userId?._id || m.userId || m.user?._id || m.user || '') === incomingUserId
+        );
+        if (tempIdx !== -1) {
+          // Replace the temp mood with the real one in-place (no flicker)
+          const next = [...prev];
+          next[tempIdx] = mood;
+          return next;
+        }
         return [mood, ...prev];
       });
-      console.log('receive_mood', mood.id);
+      if (currentUserId && mood) {
+        saveSingleMoodLocally(currentUserId, mood).catch(() => {});
+      }
+      console.log('receive_mood', incomingId);
+    });
+
+    // songAdded duplicate-safe socket listener
+    socket.on('songAdded', (newSong) => {
+      if (!newSong) return;
+      const incomingId = String(newSong._id || newSong.id || '');
+      updateMoodsAndCache(prev => {
+        if (incomingId && prev.some(m => String(m._id || m.id || '') === incomingId)) {
+          return prev;
+        }
+        return [newSong, ...prev];
+      });
     });
 
     socket.on('delete_mood', ({ id }) => {
+      const currentUserId = user?._id || user?.id || localStorage.getItem('userId');
       updateMoodsAndCache(prev => prev.filter(m => {
         const mid = m.id || m._id;
         return String(mid) !== String(id);
       }));
+      if (currentUserId && id) {
+        deleteMoodLocally(currentUserId, id).catch(() => {});
+      }
       console.log('delete_mood', id);
     });
 
@@ -717,10 +902,11 @@ const Yourmood = ({
     return () => {
       socket.off('initial_moods');
       socket.off('receive_mood');
+      socket.off('songAdded');
       socket.off('delete_mood');
       socket.off('receive_mood_like');
     };
-  }, [socket, user?._id, updateMoodsAndCache]);
+  }, [socket, user?._id, user?.id, updateMoodsAndCache]);
 
   const renderNoteBubble = (mood) => {
     if (!mood) return null;
@@ -746,52 +932,57 @@ const Yourmood = ({
         bottom: 'calc(100% - 6px)',
         left: '50%',
         transform: 'translateX(-50%)',
-        width: !isMobile ? 74 : { xs: 80, sm: 92 },
-        bgcolor: '#ffffff',
-        borderRadius: '16px',
-        py: '5px',
-        px: '8px',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.04)',
+        width: !isMobile ? 78 : { xs: 84, sm: 96 },
+        bgcolor: 'rgba(255, 255, 255, 0.98)',
+        backdropFilter: 'blur(14px)',
+        borderRadius: '20px',
+        py: '6px',
+        px: '9px',
+        border: '1.5px solid rgba(229, 46, 113, 0.16)',
+        boxShadow: '0 8px 22px rgba(229, 46, 113, 0.15), 0 2px 6px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.9)',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 10
+        zIndex: 10,
+        transition: 'all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)'
       }}>
-        {/* Curved thought bubble tail circles */}
+        {/* Curved thought bubble tail circles with 3D depth */}
         <Box sx={{
           position: 'absolute',
-          bottom: -4,
+          bottom: -4.5,
           left: '42%',
-          width: 6,
-          height: 6,
+          width: 7,
+          height: 7,
           borderRadius: '50%',
           bgcolor: '#ffffff',
-          boxShadow: '0 1.5px 3px rgba(0,0,0,0.02)'
+          border: '1.5px solid rgba(229, 46, 113, 0.2)',
+          boxShadow: '0 2px 5px rgba(229, 46, 113, 0.12)'
         }} />
         <Box sx={{
           position: 'absolute',
-          bottom: -9,
+          bottom: -9.5,
           left: '32%',
-          width: 3.5,
-          height: 3.5,
+          width: 4,
+          height: 4,
           borderRadius: '50%',
           bgcolor: '#ffffff',
-          boxShadow: '0 1.5px 3px rgba(0,0,0,0.02)'
+          border: '1.5px solid rgba(229, 46, 113, 0.2)',
+          boxShadow: '0 1.5px 4px rgba(229, 46, 113, 0.1)'
         }} />
 
         {songData && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, width: '100%', justifyContent: 'center', mb: displayText ? '3px' : 0 }}>
-            {/* Equalizer Playing Animation in brand color pink */}
-            <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: '1px', height: 10, width: 8, flexShrink: 0 }}>
-              <Box sx={{ width: 1.5, bgcolor: '#ff4d86', borderRadius: '0.3px', animation: 'eqBar1 0.6s ease-in-out infinite alternate' }} />
-              <Box sx={{ width: 1.5, bgcolor: '#ff4d86', borderRadius: '0.3px', animation: 'eqBar2 0.4s ease-in-out infinite alternate' }} />
-              <Box sx={{ width: 1.5, bgcolor: '#ff4d86', borderRadius: '0.3px', animation: 'eqBar3 0.7s ease-in-out infinite alternate' }} />
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, width: '100%', justifyContent: 'center', mb: displayText ? '3px' : 0 }}>
+            {/* Equalizer Playing Animation in Juicy brand pink */}
+            <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: '1.5px', height: 10, width: 8, flexShrink: 0 }}>
+              <Box sx={{ width: 1.5, bgcolor: '#e52e71', borderRadius: '0.5px', animation: 'eqBar1 0.6s ease-in-out infinite alternate' }} />
+              <Box sx={{ width: 1.5, bgcolor: '#e52e71', borderRadius: '0.5px', animation: 'eqBar2 0.4s ease-in-out infinite alternate' }} />
+              <Box sx={{ width: 1.5, bgcolor: '#e52e71', borderRadius: '0.5px', animation: 'eqBar3 0.7s ease-in-out infinite alternate' }} />
             </Box>
             <Typography sx={{
               fontSize: '0.65rem',
-              fontWeight: 700,
-              color: '#ff4d86',
+              fontWeight: 750,
+              color: '#e52e71',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
@@ -805,19 +996,20 @@ const Yourmood = ({
         {displayText && (
           isSingleEmoji ? (
             <Typography sx={{
-              fontSize: '1.25rem',
+              fontSize: '1.35rem',
               textAlign: 'center',
-              lineHeight: 1.1
+              lineHeight: 1.1,
+              filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))'
             }}>
               {displayText}
             </Typography>
           ) : (
             <Typography sx={{
-              fontSize: '0.65rem',
-              color: '#262626',
-              fontWeight: 400,
+              fontSize: '0.66rem',
+              color: '#172033',
+              fontWeight: 600,
               textAlign: 'center',
-              lineHeight: 1.15,
+              lineHeight: 1.2,
               wordBreak: 'break-word',
               width: '100%',
               display: '-webkit-box',
@@ -830,26 +1022,26 @@ const Yourmood = ({
           )
         )}
 
-        {/* Liked Heart Indicator Badge on Note Bubble */}
+        {/* Liked Heart Indicator Badge on Note Bubble with 3D pop */}
         {mood.likes && mood.likes.length > 0 && (
           <Box
             sx={{
               position: 'absolute',
-              bottom: -4,
-              right: -4,
+              bottom: -5,
+              right: -5,
               bgcolor: '#ffffff',
               borderRadius: '50%',
-              width: 17,
-              height: 17,
+              width: 19,
+              height: 19,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 2px 6px rgba(255, 77, 134, 0.35)',
+              boxShadow: '0 3px 8px rgba(229, 46, 113, 0.35)',
               zIndex: 12,
               border: '1.5px solid #ffffff'
             }}
           >
-            <FavoriteIcon sx={{ color: '#ff4d86', fontSize: 11 }} />
+            <FavoriteIcon sx={{ color: '#e52e71', fontSize: 11 }} />
           </Box>
         )}
       </Box>
@@ -890,18 +1082,18 @@ const Yourmood = ({
       {/* Daily mood row */}
       <Box sx={{
         display: 'flex',
-        gap: !isMobile ? 2 : { xs: 2.5, sm: 4.5 },
-        pt: !isMobile ? (hasAnyActiveNotes ? '35px' : '10px') : (hasAnyActiveNotes ? { xs: '38px', sm: '44px' } : { xs: '8px', sm: '8px' }),
-        pb: { xs: 0.5, sm: 0.5 },
+        gap: !isMobile ? 2.2 : { xs: 2.5, sm: 4.2 },
+        pt: !isMobile ? (hasAnyActiveNotes ? '36px' : '10px') : (hasAnyActiveNotes ? { xs: '38px', sm: '44px' } : { xs: '8px', sm: '8px' }),
+        pb: { xs: 0.6, sm: 0.8 },
         alignItems: 'center',
         overflowX: 'auto',
-        px: { xs: 1, sm: 1.5 },
+        px: { xs: 1.2, sm: 1.8 },
         '&::-webkit-scrollbar': { display: 'none' },
         msOverflowStyle: 'none',
         scrollbarWidth: 'none',
         transition: 'padding-top 0.2s ease-in-out'
       }}>
-        {/* Unified "Your note" item */}
+        {/* Unified "Your note" item with 3D depth */}
         <Box
           key="own-note-item"
           onClick={() => {
@@ -915,52 +1107,72 @@ const Yourmood = ({
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            minWidth: !isMobile ? 58 : { xs: 58, sm: 72 },
+            minWidth: !isMobile ? 64 : { xs: 64, sm: 78 },
             cursor: 'pointer',
-            position: 'relative'
+            position: 'relative',
+            transition: 'transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
+            '&:hover': {
+              transform: 'translateY(-2px)'
+            },
+            '&:active': {
+              transform: 'scale(0.96)'
+            }
           }}
         >
           <Box sx={{ position: 'relative' }}>
-            <Avatar
-              src={getProfileSrc(user)}
+            <Box
               sx={{
-                width: !isMobile ? 52 : { xs: 52, sm: 68 },
-                height: !isMobile ? 52 : { xs: 52, sm: 68 },
-                border: '1.5px solid rgba(0,0,0,0.06)',
-                boxShadow: '0 1px 4px rgba(0,0,0,0.05)'
+                p: '2.5px',
+                borderRadius: '50%',
+                background: ownActiveMood
+                  ? 'linear-gradient(135deg, #ff5c8d 0%, #e52e71 100%)'
+                  : 'linear-gradient(135deg, rgba(229, 46, 113, 0.35) 0%, rgba(255, 255, 255, 0.8) 100%)',
+                boxShadow: ownActiveMood
+                  ? '0 4px 14px rgba(229, 46, 113, 0.3), inset 0 1px 0 rgba(255,255,255,0.4)'
+                  : '0 3px 10px rgba(0,0,0,0.06)'
               }}
-            />
+            >
+              <Avatar
+                src={getProfileSrc(user)}
+                sx={{
+                  width: !isMobile ? 52 : { xs: 52, sm: 66 },
+                  height: !isMobile ? 52 : { xs: 52, sm: 66 },
+                  border: '2.5px solid #ffffff',
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.08)'
+                }}
+              />
+            </Box>
 
-            {/* Overlap badge if inactive */}
+            {/* 3D Overlap badge if inactive */}
             {!ownActiveMood && (
               <Box sx={{
                 position: 'absolute',
-                bottom: 0,
-                right: 0,
-                width: 22,
-                height: 22,
-                bgcolor: '#262626',
+                bottom: 1,
+                right: 1,
+                width: 24,
+                height: 24,
+                background: 'linear-gradient(135deg, #ff5c8d 0%, #e52e71 100%)',
                 borderRadius: '50%',
-                border: '2.5px solid var(--surface-color, #fff)',
+                border: '2px solid #ffffff',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 zIndex: 3,
-                boxShadow: '0 1px 4px rgba(0,0,0,0.15)'
+                boxShadow: '0 3px 10px rgba(229, 46, 113, 0.45), inset 0 1px 0 rgba(255,255,255,0.4)'
               }}>
-                <AddIcon sx={{ color: '#fff', fontSize: 13, fontWeight: 'bold' }} />
+                <AddIcon sx={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }} />
               </Box>
             )}
 
             {/* Bubble above avatar if active */}
             {ownActiveMood && renderNoteBubble(ownActiveMood)}
           </Box>
-          <Typography variant="caption" sx={{ mt: 0.8, color: 'var(--text-color, #262626)', fontWeight: 500, fontSize: '0.75rem', textAlign: 'center' }}>
+          <Typography variant="caption" sx={{ mt: 0.8, color: '#172033', fontWeight: 650, fontSize: '0.78rem', textAlign: 'center', letterSpacing: '-0.2px' }}>
             Your note
           </Typography>
         </Box>
 
-        {/* Display friends' moods */}
+        {/* Display friends' moods with 3D styling */}
         {friendsMoods
           .map((mood, index) => {
             const moodUserId = mood.userId?._id || mood.userId || mood.user?._id || mood.user;
@@ -974,50 +1186,67 @@ const Yourmood = ({
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
-                  minWidth: !isMobile ? 58 : { xs: 58, sm: 72 },
+                  minWidth: !isMobile ? 64 : { xs: 64, sm: 78 },
                   cursor: 'pointer',
-                  position: 'relative'
+                  position: 'relative',
+                  transition: 'transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                  '&:hover': {
+                    transform: 'translateY(-2px)'
+                  },
+                  '&:active': {
+                    transform: 'scale(0.96)'
+                  }
                 }}
               >
                 <Box sx={{ position: 'relative' }}>
-                  <Avatar
-                    src={mood.profilePic}
+                  <Box
                     sx={{
-                      width: !isMobile ? 52 : { xs: 52, sm: 68 },
-                      height: !isMobile ? 52 : { xs: 52, sm: 68 },
-                      border: '1.5px solid rgba(0,0,0,0.06)',
-                      boxShadow: '0 1px 4px rgba(0,0,0,0.05)'
+                      p: '2.5px',
+                      borderRadius: '50%',
+                      background: 'linear-gradient(135deg, #ff5c8d 0%, #e52e71 100%)',
+                      boxShadow: '0 4px 14px rgba(229, 46, 113, 0.3), inset 0 1px 0 rgba(255,255,255,0.4)'
                     }}
-                  />
+                  >
+                    <Avatar
+                      src={mood.profilePic}
+                      sx={{
+                        width: !isMobile ? 52 : { xs: 52, sm: 66 },
+                        height: !isMobile ? 52 : { xs: 52, sm: 66 },
+                        border: '2.5px solid #ffffff',
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.08)'
+                      }}
+                    />
+                  </Box>
                   {/* Speech Bubble above avatar */}
                   {renderNoteBubble(mood)}
 
-                  {/* Online dot badge */}
+                  {/* 3D Online dot badge */}
                   {isFriendOnline && (
                     <Box sx={{
                       position: 'absolute',
-                      bottom: 0,
-                      right: 0,
+                      bottom: 1,
+                      right: 1,
                       width: 15,
                       height: 15,
-                      bgcolor: '#31a24c',
+                      bgcolor: '#10b981',
                       borderRadius: '50%',
-                      border: '2.5px solid var(--surface-color, #fff)',
+                      border: '2px solid #ffffff',
                       zIndex: 3,
-                      boxShadow: '0 1px 4px rgba(0,0,0,0.15)'
+                      boxShadow: '0 2px 8px rgba(16, 185, 129, 0.55)'
                     }} />
                   )}
                 </Box>
                 <Typography variant="caption" sx={{
-                  mt: 0.5,
-                  color: 'var(--text-color, #262626)',
-                  fontWeight: 500,
-                  fontSize: { xs: '0.65rem', sm: '0.75rem' },
-                  maxWidth: { xs: 58, sm: 72 },
+                  mt: 0.8,
+                  color: '#172033',
+                  fontWeight: 650,
+                  fontSize: { xs: '0.72rem', sm: '0.78rem' },
+                  maxWidth: { xs: 64, sm: 78 },
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
-                  textAlign: 'center'
+                  textAlign: 'center',
+                  letterSpacing: '-0.2px'
                 }}>
                   {mood.username}
                 </Typography>
@@ -1026,7 +1255,7 @@ const Yourmood = ({
           })}
       </Box>
 
-      {/* Mood viewing dialog (Instagram-style bottom sheet) */}
+      {/* Mood viewing dialog (3D Elevated Bottom Sheet / Modal) */}
       <Dialog
         open={!!viewingMood}
         onClose={() => {
@@ -1044,75 +1273,79 @@ const Yourmood = ({
             left: 0,
             right: 0,
             m: 0,
-            borderRadius: '20px 20px 0 0',
+            borderRadius: '26px 26px 0 0',
             width: '100%',
             height: { xs: '82vh', sm: '75vh', md: '60vh' },
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
-            bgcolor: 'var(--surface-color, background.paper)',
+            bgcolor: '#fffafb',
+            boxShadow: '0 -10px 40px rgba(30, 41, 59, 0.16)',
             paddingBottom: 'env(safe-area-inset-bottom)',
             transform: viewingDrag.dragY > 0 ? `translateY(${viewingDrag.dragY}px)` : 'none',
             transition: viewingDrag.isDragging ? 'none' : 'transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)',
             touchAction: 'pan-y'
           } : {
-            borderRadius: '24px',
+            borderRadius: '26px',
             width: '480px',
             maxWidth: '90vw',
             maxHeight: '85vh',
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
-            bgcolor: 'var(--surface-color, background.paper)',
-            boxShadow: '0 12px 40px rgba(0,0,0,0.15)',
+            bgcolor: '#fffafb',
+            border: '1px solid rgba(229, 46, 113, 0.12)',
+            boxShadow: '0 24px 64px rgba(30, 41, 59, 0.18)',
           },
           ...viewingDrag.touchHandlers
         }}
-        BackdropProps={{ sx: { backgroundColor: 'rgba(0,0,0,0.35)' } }}
+        BackdropProps={{ sx: { backgroundColor: 'rgba(23, 32, 51, 0.45)', backdropFilter: 'blur(4px)' } }}
       >
         {viewingMood && (
           <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, flex: 1, overflow: 'hidden' }}>
-            {/* Fancy Header with Gradient */}
+            {/* 3D Header with Juicy pink gradient */}
             <Box
               sx={{
                 px: 2.5,
-                pt: isMobile ? 1 : 2,
-                pb: isMobile ? 1 : 2,
+                pt: isMobile ? 1.2 : 2,
+                pb: isMobile ? 1.2 : 2,
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
-                gap: isMobile ? 0.5 : 0,
+                gap: isMobile ? 0.6 : 0,
                 flexShrink: 0,
-                background: 'linear-gradient(90deg, var(--primary-color, #ff7aa3), var(--primary-color, #ff4d86))',
-                color: '#fff'
+                background: 'linear-gradient(135deg, #ff5c8d 0%, #e52e71 100%)',
+                color: '#fff',
+                boxShadow: '0 4px 18px rgba(229, 46, 113, 0.25)'
               }}
             >
               {isMobile && (
                 <Box
                   sx={{
-                    width: 42,
+                    width: 44,
                     height: 5,
-                    borderRadius: 2.5,
-                    bgcolor: 'rgba(255,255,255,0.6)',
-                    mb: 0.5
+                    borderRadius: 3,
+                    bgcolor: 'rgba(255,255,255,0.65)',
+                    mb: 0.8
                   }}
                 />
               )}
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.8, width: '100%' }}>
                 <Avatar
                   src={getProfileSrc(viewingMood.user)}
                   sx={{
-                    width: 44,
-                    height: 44,
-                    border: '2px solid rgba(255,255,255,0.8)'
+                    width: 46,
+                    height: 46,
+                    border: '2.5px solid rgba(255,255,255,0.9)',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
                   }}
                 />
                 <Box sx={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Typography noWrap sx={{ fontWeight: 700, color: 'white' }}>
+                    <Typography noWrap sx={{ fontWeight: 750, color: 'white', fontSize: '1.02rem', letterSpacing: '-0.2px' }}>
                       {viewingMood.username}
                     </Typography>
-                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.74rem' }}>
                       {formatTime(new Date(viewingMood.timestamp || Date.now()))}
                     </Typography>
                   </Box>
@@ -1123,11 +1356,12 @@ const Yourmood = ({
                       try {
                         const songData = JSON.parse(songMatch[1]);
                         return (
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: -0.2 }}>
-                            <MusicNoteIcon sx={{ fontSize: 12, color: 'white' }} />
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, mt: 0.2 }}>
+                            <MusicNoteIcon sx={{ fontSize: 13, color: 'white' }} />
                             <Box sx={{ overflow: 'hidden', whiteSpace: 'nowrap', position: 'relative', flex: 1 }}>
                               <Typography variant="caption" sx={{
                                 color: 'white',
+                                fontWeight: 600,
                                 display: 'inline-block',
                                 animation: 'marquee 10s linear infinite',
                                 '@keyframes marquee': {
@@ -1156,9 +1390,17 @@ const Yourmood = ({
                           setDeleteConfirmOpen(true);
                         }
                       }}
-                      sx={{ color: 'white' }}
+                      sx={{
+                        color: 'white',
+                        bgcolor: 'rgba(255, 255, 255, 0.2)',
+                        backdropFilter: 'blur(6px)',
+                        borderRadius: '50%',
+                        p: 0.8,
+                        border: '1px solid rgba(255, 255, 255, 0.3)',
+                        '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.3)', transform: 'scale(1.05)' }
+                      }}
                     >
-                      <DeleteIcon />
+                      <DeleteIcon sx={{ fontSize: 18 }} />
                     </IconButton>
                   )}
                   <IconButton
@@ -1167,9 +1409,17 @@ const Yourmood = ({
                       setViewingMood(null);
                       setPlayingSongUrl(null);
                     }}
-                    sx={{ color: 'white' }}
+                    sx={{
+                      color: 'white',
+                      bgcolor: 'rgba(255, 255, 255, 0.2)',
+                      backdropFilter: 'blur(6px)',
+                      borderRadius: '50%',
+                      p: 0.8,
+                      border: '1px solid rgba(255, 255, 255, 0.3)',
+                      '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.3)', transform: 'scale(1.05)' }
+                    }}
                   >
-                    <CloseIcon />
+                    <CloseIcon sx={{ fontSize: 18 }} />
                   </IconButton>
                 </Box>
               </Box>
@@ -1178,10 +1428,10 @@ const Yourmood = ({
             <Box
               ref={viewingDrag.scrollContainerRef}
               sx={{
-                px: 3, pt: 3, pb: isMobile ? 12 : 4, overflowY: 'auto', flex: 1, bgcolor: 'var(--background-color, #fafafa)'
+                px: 3, pt: 3, pb: isMobile ? 12 : 4, overflowY: 'auto', flex: 1, bgcolor: '#fffafb'
               }}
             >
-              {/* Text Content First - Instagram Style */}
+              {/* Text Content First - 3D White Card */}
               {(() => {
                 const text = viewingMood.text || '';
                 const songMatch = text.match(/‹song›(.*?)‹\/song›/);
@@ -1198,21 +1448,22 @@ const Yourmood = ({
                 return (
                   <>
                     {displayText && (
-                      <Box sx={{ mb: 4, position: 'relative' }}>
+                      <Box sx={{ mb: 3.5, position: 'relative' }}>
                         <Paper sx={{
                           p: 3,
-                          borderRadius: 3,
-                          bgcolor: 'var(--surface-color, #fff)',
+                          borderRadius: '22px',
+                          bgcolor: '#ffffff',
+                          border: '1px solid rgba(229, 46, 113, 0.12)',
                           width: '100%',
-                          boxShadow: '0 4px 20px rgba(0,0,0,0.06)'
+                          boxShadow: '0 8px 24px rgba(30, 41, 59, 0.06)'
                         }}>
                           <Typography
                             sx={{
                               whiteSpace: 'pre-wrap',
                               fontSize: '1.1rem',
                               lineHeight: 1.6,
-                              fontWeight: 500,
-                              color: 'var(--text-color, #000)'
+                              fontWeight: 600,
+                              color: '#172033'
                             }}
                           >
                             {displayText}
@@ -1243,7 +1494,7 @@ const Yourmood = ({
                 );
               })()}
 
-              {/* Large Centered Emoji with Animation */}
+              {/* Large Centered 3D Floating Emoji Sphere / Artwork */}
               <Box
                 sx={{
                   display: 'flex',
@@ -1256,16 +1507,17 @@ const Yourmood = ({
                   width: 160,
                   height: 160,
                   borderRadius: '50%',
-                  bgcolor: 'var(--surface-color, #fff)',
+                  bgcolor: '#ffffff',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   fontSize: 84,
-                  boxShadow: '0 12px 28px rgba(0,0,0,0.08)',
-                  animation: 'pulseEmoji 2s infinite ease-in-out',
+                  border: '4px solid #ffffff',
+                  boxShadow: '0 18px 40px rgba(229, 46, 113, 0.22), 0 4px 12px rgba(0,0,0,0.06)',
+                  animation: 'pulseEmoji 2.5s infinite ease-in-out',
                   '@keyframes pulseEmoji': {
                     '0%': { transform: 'scale(1)' },
-                    '50%': { transform: 'scale(1.05)' },
+                    '50%': { transform: 'scale(1.04)' },
                     '100%': { transform: 'scale(1)' }
                   },
                   overflow: 'hidden'
@@ -1296,7 +1548,7 @@ const Yourmood = ({
                     return viewingMood.emoji;
                   })()}
                 </Box>
-                {/* Heart Like Button */}
+                {/* 3D Heart Like Button */}
                 {(() => {
                   const currentUserId = user?._id || user?.id || localStorage.getItem('userId');
                   const likes = viewingMood.likes || [];
@@ -1307,24 +1559,25 @@ const Yourmood = ({
                       onClick={() => handleToggleLike(viewingMood)}
                       sx={{
                         position: 'absolute',
-                        left: !isOwnMood(viewingMood) ? -8 : 'calc(50% - 22px)',
+                        left: !isOwnMood(viewingMood) ? -8 : 'calc(50% - 24px)',
                         bottom: -8,
-                        bgcolor: 'var(--surface-color, #fff)',
+                        bgcolor: '#ffffff',
+                        border: '1.5px solid rgba(229, 46, 113, 0.2)',
                         boxShadow: isLikedByMe
-                          ? '0 3px 14px rgba(255, 77, 134, 0.4)'
-                          : '0 2px 10px rgba(0,0,0,0.12)',
+                          ? '0 6px 20px rgba(229, 46, 113, 0.45)'
+                          : '0 4px 14px rgba(30, 41, 59, 0.12)',
                         transform: 'scale(1.2)',
                         transition: 'all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
                         '&:hover': {
-                          bgcolor: 'var(--background-color, #fff0f4)',
+                          bgcolor: '#fff0f5',
                           transform: 'scale(1.35)'
                         }
                       }}
                     >
                       {isLikedByMe ? (
-                        <FavoriteIcon sx={{ color: '#ff4d86', fontSize: 20, animation: 'heartPop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }} />
+                        <FavoriteIcon sx={{ color: '#e52e71', fontSize: 20, animation: 'heartPop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)' }} />
                       ) : (
-                        <FavoriteBorderIcon sx={{ color: 'var(--primary-color, #ff4d86)', fontSize: 20 }} />
+                        <FavoriteBorderIcon sx={{ color: '#e52e71', fontSize: 20 }} />
                       )}
                     </IconButton>
                   );
@@ -1350,22 +1603,23 @@ const Yourmood = ({
                       position: 'absolute',
                       right: -8,
                       bottom: -8,
-                      bgcolor: 'var(--surface-color, #fff)',
-                      boxShadow: '0 2px 12px rgba(255,77,134,0.2)',
+                      bgcolor: '#ffffff',
+                      border: '1.5px solid rgba(229, 46, 113, 0.2)',
+                      boxShadow: '0 6px 18px rgba(229, 46, 113, 0.25)',
                       transform: 'scale(1.2)',
+                      transition: 'all 0.2s ease',
                       '&:hover': {
-                        bgcolor: 'var(--background-color, #fff0f4)',
-                        transform: 'scale(1.3)',
-                        transition: 'all 0.2s ease'
+                        bgcolor: '#fff0f5',
+                        transform: 'scale(1.35)'
                       }
                     }}
                   >
-                    <ReplyIcon sx={{ color: 'var(--primary-color, #ff4d86)' }} />
+                    <ReplyIcon sx={{ color: '#e52e71' }} />
                   </IconButton>
                 )}
               </Box>
 
-              {/* Instagram-style Likers View */}
+              {/* 3D Likers Pill View */}
               <Box sx={{ mt: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
                 {viewingMood.likes && viewingMood.likes.length > 0 ? (
                   <Box
@@ -1373,17 +1627,17 @@ const Yourmood = ({
                     sx={{
                       display: 'flex',
                       alignItems: 'center',
-                      gap: 1,
-                      bgcolor: 'rgba(255, 77, 134, 0.08)',
-                      border: '1px solid rgba(255, 77, 134, 0.25)',
-                      borderRadius: '20px',
-                      py: 0.6,
-                      px: 1.8,
+                      gap: 1.2,
+                      bgcolor: '#fff0f5',
+                      border: '1px solid rgba(229, 46, 113, 0.25)',
+                      borderRadius: '24px',
+                      py: 0.7,
+                      px: 2,
                       cursor: 'pointer',
-                      boxShadow: '0 2px 8px rgba(255,77,134,0.1)',
+                      boxShadow: '0 4px 14px rgba(229, 46, 113, 0.12)',
                       transition: 'all 0.2s ease',
                       '&:hover': {
-                        bgcolor: 'rgba(255, 77, 134, 0.16)',
+                        bgcolor: 'rgba(229, 46, 113, 0.14)',
                         transform: 'translateY(-1px)'
                       }
                     }}
@@ -1395,19 +1649,19 @@ const Yourmood = ({
                           key={liker.userId || i}
                           src={getProfileSrc(liker)}
                           sx={{
-                            width: 22,
-                            height: 22,
-                            border: '2px solid #fff',
+                            width: 24,
+                            height: 24,
+                            border: '2px solid #ffffff',
                             ml: i > 0 ? -1 : 0,
-                            boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
                           }}
                         />
                       ))}
                     </Box>
 
-                    <FavoriteIcon sx={{ color: '#ff4d86', fontSize: 16 }} />
+                    <FavoriteIcon sx={{ color: '#e52e71', fontSize: 16 }} />
 
-                    <Typography sx={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-color, #222)' }}>
+                    <Typography sx={{ fontSize: '0.84rem', fontWeight: 650, color: '#172033' }}>
                       {(() => {
                         const likers = viewingMood.likes;
                         const currentUserId = user?._id || user?.id || localStorage.getItem('userId');
@@ -1415,55 +1669,40 @@ const Yourmood = ({
                         const otherCount = likers.length - 1;
 
                         if (likers.length === 1) {
-                          return hasLiked ? 'Liked by you' : `Liked by ${likers[0].username}`;
-                        }
-                        if (hasLiked) {
+                          return hasLiked ? 'Liked by you' : `Liked by ${likers[0].username || 'someone'}`;
+                        } else if (hasLiked) {
                           return `Liked by you and ${otherCount} other${otherCount > 1 ? 's' : ''}`;
+                        } else {
+                          return `Liked by ${likers[0].username || 'someone'} and ${otherCount} other${otherCount > 1 ? 's' : ''}`;
                         }
-                        return `Liked by ${likers[0].username} and ${otherCount} other${otherCount > 1 ? 's' : ''}`;
                       })()}
                     </Typography>
                   </Box>
                 ) : (
-                  <Box
-                    onClick={() => handleToggleLike(viewingMood)}
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 0.8,
-                      py: 0.5,
-                      px: 1.5,
-                      borderRadius: '16px',
-                      bgcolor: 'rgba(0,0,0,0.03)',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                      '&:hover': { bgcolor: 'rgba(255,77,134,0.08)' }
-                    }}
-                  >
-                    <FavoriteBorderIcon sx={{ color: '#ff4d86', fontSize: 16 }} />
-                    <Typography variant="caption" sx={{ color: 'var(--text-color, #666)', fontWeight: 500 }}>
-                      Tap to like this mood
-                    </Typography>
-                  </Box>
+                  <Typography variant="caption" sx={{ color: '#718096', fontStyle: 'italic', fontSize: '0.8rem' }}>
+                    Tap heart to be the first to like
+                  </Typography>
                 )}
               </Box>
 
-              {/* Stats/Info Row */}
-              <Box sx={{
-                mt: 4,
-                display: 'flex',
-                justifyContent: 'center',
-                gap: 4,
-                color: 'var(--text-color, #666)'
-              }}>
-                <Box sx={{
+              {/* 3D Countdown & Time Info Card */}
+              <Box
+                sx={{
                   display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center'
-                }}>
-                  <Typography variant="caption">Posted</Typography>
-                  <Typography sx={{ fontWeight: 600, color: 'var(--text-color, #000)' }}>
-                    {new Date(viewingMood.timestamp).toLocaleTimeString([], {
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  p: 2,
+                  mt: 3,
+                  bgcolor: '#ffffff',
+                  borderRadius: '20px',
+                  border: '1px solid rgba(229, 46, 113, 0.12)',
+                  boxShadow: '0 4px 18px rgba(30, 41, 59, 0.05)'
+                }}
+              >
+                <Box>
+                  <Typography sx={{ fontWeight: 700, color: '#172033', fontSize: '0.92rem' }}>Status Active</Typography>
+                  <Typography variant="body2" sx={{ color: '#718096', fontSize: '0.8rem', mt: 0.3 }}>
+                    Posted {new Date(viewingMood.timestamp).toLocaleTimeString([], {
                       hour: '2-digit',
                       minute: '2-digit',
                       hour12: true
@@ -1475,23 +1714,23 @@ const Yourmood = ({
                   flexDirection: 'column',
                   alignItems: 'center'
                 }}>
-                  <Typography sx={{ fontWeight: 600, color: 'var(--text-color, #000)', fontSize: '1rem' }}>{getMoodCountdown(viewingMood.timestamp)}</Typography>
-                  <Typography sx={{ fontWeight: 600, color: 'var(--text-color, #000)', fontSize: '2.5rem', mt: 1 }}>{viewingMood.emoji}</Typography>
+                  <Typography sx={{ fontWeight: 750, color: '#e52e71', fontSize: '1rem' }}>{getMoodCountdown(viewingMood.timestamp)}</Typography>
+                  <Typography sx={{ fontSize: '2rem', mt: 0.5 }}>{viewingMood.emoji}</Typography>
                 </Box>
               </Box>
 
-              {/* Scrollable Liked Users Section (Marked Area) */}
+              {/* Scrollable Liked Users Section - 3D Card */}
               <Box
                 sx={{
                   mt: 3,
                   mx: 'auto',
                   width: '100%',
-                  maxWidth: 360,
-                  bgcolor: 'var(--surface-color, #ffffff)',
-                  borderRadius: '18px',
+                  maxWidth: 380,
+                  bgcolor: '#ffffff',
+                  borderRadius: '20px',
                   p: 2,
-                  boxShadow: '0 4px 20px rgba(0, 0, 0, 0.06)',
-                  border: '1px solid rgba(255, 77, 134, 0.18)',
+                  boxShadow: '0 6px 22px rgba(30, 41, 59, 0.06)',
+                  border: '1px solid rgba(229, 46, 113, 0.12)',
                 }}
               >
                 <Box
@@ -1505,8 +1744,8 @@ const Yourmood = ({
                   }}
                 >
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <FavoriteIcon sx={{ color: '#ff4d86', fontSize: 18 }} />
-                    <Typography sx={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-color, #111)' }}>
+                    <FavoriteIcon sx={{ color: '#e52e71', fontSize: 18 }} />
+                    <Typography sx={{ fontWeight: 750, fontSize: '0.95rem', color: '#172033' }}>
                       Liked Users ({viewingMood?.likes?.length || 0})
                     </Typography>
                   </Box>
@@ -1522,8 +1761,8 @@ const Yourmood = ({
                     gap: 1,
                     '&::-webkit-scrollbar': { width: '4px' },
                     '&::-webkit-scrollbar-track': { background: 'rgba(0,0,0,0.03)', borderRadius: '4px' },
-                    '&::-webkit-scrollbar-thumb': { background: 'rgba(255,77,134,0.3)', borderRadius: '4px' },
-                    '&::-webkit-scrollbar-thumb:hover': { background: '#ff4d86' }
+                    '&::-webkit-scrollbar-thumb': { background: 'rgba(229,46,113,0.3)', borderRadius: '4px' },
+                    '&::-webkit-scrollbar-thumb:hover': { background: '#e52e71' }
                   }}
                 >
                   {viewingMood?.likes && viewingMood.likes.length > 0 ? (
@@ -1538,11 +1777,12 @@ const Yourmood = ({
                             alignItems: 'center',
                             justifyContent: 'space-between',
                             p: 1,
-                            borderRadius: '12px',
-                            bgcolor: isMe ? 'rgba(255, 77, 134, 0.06)' : 'rgba(0, 0, 0, 0.02)',
+                            borderRadius: '14px',
+                            bgcolor: isMe ? '#fff0f5' : 'rgba(30, 41, 59, 0.02)',
+                            border: isMe ? '1px solid rgba(229, 46, 113, 0.2)' : 'none',
                             transition: 'all 0.15s ease',
                             '&:hover': {
-                              bgcolor: 'rgba(255, 77, 134, 0.12)',
+                              bgcolor: 'rgba(229, 46, 113, 0.12)',
                               transform: 'translateX(2px)'
                             }
                           }}
@@ -1552,12 +1792,12 @@ const Yourmood = ({
                               src={getProfileSrc(liker)}
                               sx={{ width: 34, height: 34, border: '1.5px solid #fff', boxShadow: '0 2px 6px rgba(0,0,0,0.1)' }}
                             />
-                            <Typography sx={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--text-color, #222)' }}>
+                            <Typography sx={{ fontWeight: 650, fontSize: '0.88rem', color: '#172033' }}>
                               {liker.username || 'User'}
                             </Typography>
                           </Box>
                           {isMe && (
-                            <Typography variant="caption" sx={{ color: '#ff4d86', fontWeight: 700, px: 1, py: 0.2, bgcolor: 'rgba(255,77,134,0.1)', borderRadius: '8px' }}>
+                            <Typography variant="caption" sx={{ color: '#e52e71', fontWeight: 750, px: 1.2, py: 0.3, bgcolor: 'rgba(229,46,113,0.12)', borderRadius: '10px' }}>
                               You
                             </Typography>
                           )}
@@ -1566,7 +1806,7 @@ const Yourmood = ({
                     })
                   ) : (
                     <Box sx={{ py: 2, textAlign: 'center' }}>
-                      <Typography variant="caption" sx={{ color: 'var(--text-color, #888)', fontStyle: 'italic' }}>
+                      <Typography variant="caption" sx={{ color: '#718096', fontStyle: 'italic' }}>
                         No likes yet. Be the first to like!
                       </Typography>
                     </Box>
@@ -1578,7 +1818,7 @@ const Yourmood = ({
         )}
       </Dialog>
 
-      {/* Bottom-sheet mood dialog - Instagram style */}
+      {/* Bottom-sheet mood dialog (Create Note) - 3D Elevated Dialog */}
       <Dialog
         open={showMoodDialog}
         onClose={() => setShowMoodDialog(false)}
@@ -1593,38 +1833,40 @@ const Yourmood = ({
             left: 0,
             right: 0,
             m: 0,
-            borderRadius: '20px 20px 0 0',
+            borderRadius: '26px 26px 0 0',
             width: '100%',
-            height: { xs: '82vh', sm: '75vh', md: '60vh' },
+            height: { xs: '84vh', sm: '78vh', md: '62vh' },
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
-            bgcolor: 'var(--surface-color, background.paper)',
+            bgcolor: '#fffafb',
+            boxShadow: '0 -10px 40px rgba(30, 41, 59, 0.16)',
             paddingBottom: 'env(safe-area-inset-bottom)',
             transform: moodDialogDrag.dragY > 0 ? `translateY(${moodDialogDrag.dragY}px)` : 'none',
             transition: moodDialogDrag.isDragging ? 'none' : 'transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)',
             touchAction: 'pan-y'
           } : {
-            borderRadius: '24px',
+            borderRadius: '26px',
             width: '480px',
             maxWidth: '90vw',
-            maxHeight: '85vh',
+            maxHeight: '86vh',
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
-            bgcolor: 'var(--surface-color, background.paper)',
-            boxShadow: '0 12px 40px rgba(0,0,0,0.15)',
+            bgcolor: '#fffafb',
+            border: '1px solid rgba(229, 46, 113, 0.12)',
+            boxShadow: '0 24px 64px rgba(30, 41, 59, 0.18)',
           },
           ...moodDialogDrag.touchHandlers
         }}
-        BackdropProps={{ sx: { backgroundColor: 'rgba(0,0,0,0.35)' } }}
+        BackdropProps={{ sx: { backgroundColor: 'rgba(23, 32, 51, 0.45)', backdropFilter: 'blur(4px)' } }}
       >
         {musicEditorSong ? (
           <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: '#121212', color: '#fff' }}>
-            <Box sx={{ px: 2, pt: isMobile ? 1 : 2.5, pb: 0.5, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              {isMobile && <Box sx={{ width: 42, height: 5, borderRadius: 2.5, bgcolor: 'rgba(255,255,255,0.3)', mb: 2 }} />}
+            <Box sx={{ px: 2.5, pt: isMobile ? 1.2 : 2.5, pb: 0.8, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              {isMobile && <Box sx={{ width: 44, height: 5, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.3)', mb: 2 }} />}
               <Box sx={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography onClick={() => { setMusicEditorSong(null); setIsAudioPlaying(true); setClipDuration(15); setShowDurationPicker(false); }} sx={{ cursor: 'pointer', fontSize: 16 }}>Cancel</Typography>
+                <Typography onClick={() => { setMusicEditorSong(null); setIsAudioPlaying(true); setClipDuration(15); setShowDurationPicker(false); }} sx={{ cursor: 'pointer', fontSize: 15, color: '#aaa', fontWeight: 600 }}>Cancel</Typography>
                 <Typography onClick={() => {
                   const finalSong = { ...musicEditorSong, duration: clipDuration };
                   setSelectedSong(finalSong);
@@ -1632,33 +1874,34 @@ const Yourmood = ({
                   setIsAudioPlaying(true);
                   setSongConfirmationMessage(`"${finalSong.trackName}" added to note ✨`);
                   setSongSnackbarOpen(true);
-                }} sx={{ cursor: 'pointer', fontSize: 16, fontWeight: 600 }}>Done</Typography>
+                }} sx={{ cursor: 'pointer', fontSize: 15, fontWeight: 750, color: '#e52e71' }}>Done</Typography>
               </Box>
             </Box>
 
             <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', p: 3 }}>
-              <Avatar src={musicEditorSong.artworkUrl100} variant="rounded" sx={{ width: 80, height: 80, mb: 3, border: '1px solid rgba(255,255,255,0.2)' }} />
-              <Typography sx={{ fontWeight: 600, fontSize: 18, mb: 0.5 }}>{musicEditorSong.trackName}</Typography>
-              <Typography sx={{ color: '#aaa', fontSize: 14, mb: 6 }}>{musicEditorSong.artistName}</Typography>
+              <Avatar src={musicEditorSong.artworkUrl100} variant="rounded" sx={{ width: 88, height: 88, mb: 2.5, borderRadius: '20px', border: '2px solid rgba(255,255,255,0.2)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }} />
+              <Typography sx={{ fontWeight: 750, fontSize: 19, mb: 0.5 }}>{musicEditorSong.trackName}</Typography>
+              <Typography sx={{ color: '#aaa', fontSize: 14, mb: 5 }}>{musicEditorSong.artistName}</Typography>
 
               <Box sx={{ width: '100%', mb: 4, display: 'flex', alignItems: 'center', gap: 2 }}>
                 {/* Clickable Clip Duration Selector */}
                 <Box
                   onClick={() => setShowDurationPicker(prev => !prev)}
                   sx={{
-                    width: 32,
-                    height: 32,
+                    width: 36,
+                    height: 36,
                     borderRadius: '50%',
                     border: '1.5px solid rgba(255,255,255,0.4)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    fontSize: 12,
-                    fontWeight: 600,
+                    fontSize: 13,
+                    fontWeight: 700,
                     color: '#fff',
                     cursor: 'pointer',
                     bgcolor: 'rgba(255,255,255,0.1)',
                     position: 'relative',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
                     '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' }
                   }}
                 >
@@ -1673,11 +1916,11 @@ const Yourmood = ({
                       transform: 'translateX(-50%)',
                       bgcolor: '#1c1c1e',
                       border: '1px solid rgba(255,255,255,0.15)',
-                      borderRadius: '8px',
+                      borderRadius: '12px',
                       py: 0.5,
-                      width: 60,
+                      width: 64,
                       zIndex: 20,
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
                       display: 'flex',
                       flexDirection: 'column'
                     }}>
@@ -1688,7 +1931,6 @@ const Yourmood = ({
                             e.stopPropagation();
                             setClipDuration(sec);
                             setShowDurationPicker(false);
-                            // Adjust start time if duration pushes it past the 30s boundary
                             if ((musicEditorSong.startTime || 0) + sec > 30) {
                               setMusicEditorSong(prev => ({ ...prev, startTime: Math.max(0, 30 - sec) }));
                             }
@@ -1696,9 +1938,9 @@ const Yourmood = ({
                           sx={{
                             py: 0.75,
                             textAlign: 'center',
-                            color: clipDuration === sec ? '#ff4d86' : '#fff',
-                            fontSize: 12,
-                            fontWeight: clipDuration === sec ? 700 : 500,
+                            color: clipDuration === sec ? '#e52e71' : '#fff',
+                            fontSize: 13,
+                            fontWeight: clipDuration === sec ? 750 : 500,
                             cursor: 'pointer',
                             '&:hover': { bgcolor: 'rgba(255,255,255,0.08)' }
                           }}
@@ -1710,70 +1952,69 @@ const Yourmood = ({
                   )}
                 </Box>
 
-                {/* Progress bar */}
-                <Box sx={{ flex: 1, height: 4, bgcolor: 'rgba(255,255,255,0.2)', position: 'relative', borderRadius: 1 }}>
-                  {/* Selected crop segment (white) */}
+                {/* Progress bar with 3D trace */}
+                <Box sx={{ flex: 1, height: 5, bgcolor: 'rgba(255,255,255,0.2)', position: 'relative', borderRadius: 2 }}>
+                  {/* Selected crop segment */}
                   <Box sx={{
                     position: 'absolute',
                     left: `${(musicEditorSong.startTime || 0) / 30 * 100}%`,
                     width: `${clipDuration / 30 * 100}%`,
                     height: '100%',
-                    bgcolor: 'rgba(255, 255, 255, 0.3)',
-                    borderRadius: 1
+                    bgcolor: 'rgba(255, 255, 255, 0.35)',
+                    borderRadius: 2
                   }} />
 
-                  {/* Current playback trace (pink fill up to current time) */}
+                  {/* Current playback trace (pink fill) */}
                   <Box sx={{
                     position: 'absolute',
                     left: `${(musicEditorSong.startTime || 0) / 30 * 100}%`,
                     width: `${Math.max(0, Math.min(clipDuration, currentPlayTime - (musicEditorSong.startTime || 0))) / 30 * 100}%`,
                     height: '100%',
-                    bgcolor: '#ff4d86',
-                    borderRadius: 1
+                    bgcolor: '#e52e71',
+                    borderRadius: 2
                   }} />
 
-                  {/* Playback trace thumb/dot */}
+                  {/* Playback trace thumb */}
                   <Box sx={{
                     position: 'absolute',
                     left: `${(currentPlayTime || 0) / 30 * 100}%`,
                     top: '50%',
                     transform: 'translate(-50%, -50%)',
-                    width: 10,
-                    height: 10,
+                    width: 12,
+                    height: 12,
                     borderRadius: '50%',
                     bgcolor: '#fff',
-                    boxShadow: '0 0 4px rgba(0,0,0,0.5)',
+                    boxShadow: '0 0 6px rgba(0,0,0,0.6)',
                     pointerEvents: 'none'
                   }} />
                 </Box>
 
-                {/* Play/Stop Audio Button */}
+                {/* 3D Play/Stop Audio Button */}
                 <Box
                   onClick={() => setIsAudioPlaying(prev => !prev)}
                   sx={{
-                    width: 32,
-                    height: 32,
+                    width: 36,
+                    height: 36,
                     borderRadius: '50%',
                     bgcolor: '#fff',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     cursor: 'pointer',
-                    '&:hover': { transform: 'scale(1.05)' },
-                    transition: 'all 0.1s ease'
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                    '&:hover': { transform: 'scale(1.08)' },
+                    transition: 'all 0.15s ease'
                   }}
                 >
                   {isAudioPlaying ? (
-                    // Stop Square Icon
-                    <Box sx={{ width: 10, height: 10, bgcolor: '#000', borderRadius: 0.5 }} />
+                    <Box sx={{ width: 11, height: 11, bgcolor: '#000', borderRadius: 0.5 }} />
                   ) : (
-                    // Play Triangle Icon
                     <Box sx={{
                       width: 0,
                       height: 0,
-                      borderTop: '5px solid transparent',
-                      borderBottom: '5px solid transparent',
-                      borderLeft: '9px solid #000',
+                      borderTop: '6px solid transparent',
+                      borderBottom: '6px solid transparent',
+                      borderLeft: '10px solid #000',
                       ml: '2px'
                     }} />
                   )}
@@ -1781,7 +2022,6 @@ const Yourmood = ({
               </Box>
 
               <Box sx={{ width: '100%', position: 'relative', display: 'flex', alignItems: 'center' }}>
-                {/* Left Arrow Button (Desktop only) */}
                 {!isMobile && (
                   <IconButton
                     onClick={() => handleNudgeScroll('left')}
@@ -1792,25 +2032,25 @@ const Yourmood = ({
                       bgcolor: 'rgba(0,0,0,0.6)',
                       color: '#fff',
                       '&:hover': { bgcolor: 'rgba(0,0,0,0.85)' },
-                      width: 28,
-                      height: 28,
+                      width: 30,
+                      height: 30,
                     }}
                   >
                     <ChevronLeftIcon sx={{ fontSize: 18 }} />
                   </IconButton>
                 )}
 
-                <Box sx={{ position: 'relative', width: '100%', height: 64, overflow: 'hidden' }}>
+                <Box sx={{ position: 'relative', width: '100%', height: 68, overflow: 'hidden' }}>
                   <Box sx={{
                     position: 'absolute',
                     left: '50%',
                     top: '50%',
                     transform: 'translate(-50%, -50%)',
-                    width: 140,
-                    height: 64,
+                    width: 144,
+                    height: 68,
                     border: '3px solid white',
-                    borderLeft: '6px solid #ff4d86',
-                    borderRadius: '8px',
+                    borderLeft: '6px solid #e52e71',
+                    borderRadius: '10px',
                     boxShadow: '0 0 0 9999px rgba(0,0,0,0.75)',
                     pointerEvents: 'none',
                     zIndex: 2
@@ -1838,17 +2078,16 @@ const Yourmood = ({
                       }
                     }}
                   >
-                    <Box sx={{ minWidth: 'calc(50% - 70px)' }} />
+                    <Box sx={{ minWidth: 'calc(50% - 72px)' }} />
                     <Box sx={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                       {Array.from({ length: 60 }).map((_, i) => (
                         <Box key={i} sx={{ width: 3, height: [12, 24, 36, 48, 20, 30, 40, 15, 25, 45][i % 10] * 1.2, bgcolor: 'rgba(255,255,255,0.9)', borderRadius: 2 }} />
                       ))}
                     </Box>
-                    <Box sx={{ minWidth: 'calc(50% - 70px)' }} />
+                    <Box sx={{ minWidth: 'calc(50% - 72px)' }} />
                   </Box>
                 </Box>
 
-                {/* Right Arrow Button (Desktop only) */}
                 {!isMobile && (
                   <IconButton
                     onClick={() => handleNudgeScroll('right')}
@@ -1859,8 +2098,8 @@ const Yourmood = ({
                       bgcolor: 'rgba(0,0,0,0.6)',
                       color: '#fff',
                       '&:hover': { bgcolor: 'rgba(0,0,0,0.85)' },
-                      width: 28,
-                      height: 28,
+                      width: 30,
+                      height: 30,
                     }}
                   >
                     <ChevronRightIcon sx={{ fontSize: 18 }} />
@@ -1891,35 +2130,50 @@ const Yourmood = ({
           </Box>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, flex: 1, overflow: 'hidden' }}>
+            {/* 3D Juicy Pink Banner */}
             <Box sx={{
-              px: 2, pt: isMobile ? 1 : 2.5, pb: 1.5, display: 'flex', flexDirection: 'column', alignItems: 'center',
-              background: 'linear-gradient(90deg, var(--primary-color, #ff7aa3), var(--primary-color, #ff4d86))',
+              px: 2.5, pt: isMobile ? 1.2 : 2.5, pb: 1.8, display: 'flex', flexDirection: 'column', alignItems: 'center',
+              background: 'linear-gradient(135deg, #ff5c8d 0%, #e52e71 100%)',
               color: '#fff',
+              boxShadow: '0 4px 18px rgba(229, 46, 113, 0.25)',
               flexShrink: 0
             }}>
               {isMobile && (
                 <Box sx={{
-                  width: 42, height: 6, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.6)', mb: 1
+                  width: 44, height: 5, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.65)', mb: 1.2
                 }} />
               )}
-              <Typography sx={{ fontWeight: 700, fontSize: 16 }}>Share your feelings</Typography>
-              <Typography variant="caption" sx={{ opacity: 0.9, mt: 0.5 }}>Post a mood — lasts 24 hours</Typography>
+              <Typography sx={{ fontWeight: 750, fontSize: '1.1rem', letterSpacing: '-0.2px' }}>Share your feelings</Typography>
+              <Typography variant="caption" sx={{ opacity: 0.9, mt: 0.4, fontSize: '0.78rem' }}>Post a mood note — lasts 24 hours</Typography>
             </Box>
 
             <Box
               ref={moodDialogDrag.scrollContainerRef}
               sx={{
-                px: 2, pt: 2, pb: 2, flex: 1, minHeight: 0, overflowY: 'auto', bgcolor: 'var(--background-color, #fafafa)'
+                px: 2.5, pt: 2.5, pb: 2.5, flex: 1, minHeight: 0, overflowY: 'auto', bgcolor: '#fffafb'
               }}
             >
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                <Avatar src={getProfileSrc(user)} sx={{ width: 52, height: 52 }} />
+              {/* User Preview 3D Card */}
+              <Box sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 2,
+                mb: 2.5,
+                p: 1.8,
+                bgcolor: '#ffffff',
+                borderRadius: '20px',
+                border: '1px solid #f1e5eb',
+                boxShadow: '0 4px 18px rgba(30, 41, 59, 0.05)'
+              }}>
+                <Avatar src={getProfileSrc(user)} sx={{ width: 54, height: 54, border: '2.5px solid #ffffff', boxShadow: '0 3px 8px rgba(0,0,0,0.1)' }} />
                 <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
                     <Box sx={{
-                      width: 44, height: 44, borderRadius: '50%', bgcolor: 'var(--surface-color, #fff)',
+                      width: 44, height: 44, borderRadius: '50%', bgcolor: '#fff0f5',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      border: '2px solid rgba(255,255,255,0.6)', fontSize: 22
+                      border: '1.5px solid rgba(229, 46, 113, 0.2)', fontSize: 22,
+                      boxShadow: '0 2px 8px rgba(229, 46, 113, 0.15)',
+                      flexShrink: 0
                     }}>
                       {selectedMood?.emoji || '🙂'}
                     </Box>
@@ -1928,7 +2182,7 @@ const Yourmood = ({
                         whiteSpace: 'nowrap',
                         overflow: 'hidden',
                         position: 'relative',
-                        lineHeight: '1.1'
+                        lineHeight: '1.2'
                       }}>
                         <Box sx={{
                           display: 'inline-block',
@@ -1936,10 +2190,10 @@ const Yourmood = ({
                           animation: moodText ? 'moodMarquee 8s linear infinite' : 'none'
                         }}>
                           <Typography sx={{
-                            fontWeight: 600, fontSize: 14, color: 'var(--text-color, #222)'
+                            fontWeight: 750, fontSize: 14, color: '#172033', letterSpacing: '-0.2px'
                           }}>{user?.username || 'You'}</Typography>
-                          <Typography variant="body2" sx={{ color: 'var(--text-color, #555)' }}>
-                            {moodText || (selectedMood ? selectedMood.name : 'No note')}
+                          <Typography variant="body2" sx={{ color: '#718096', fontSize: '0.82rem', mt: 0.2 }}>
+                            {moodText || (selectedMood ? selectedMood.name : 'No note yet')}
                           </Typography>
                         </Box>
                         <Box component="style">{`
@@ -1954,11 +2208,12 @@ const Yourmood = ({
                 </Box>
               </Box>
 
+              {/* 3D Emojis Tactile Grid */}
               <Box sx={{
                 display: 'grid',
                 gridTemplateColumns: { xs: 'repeat(5, 1fr)', sm: 'repeat(6, 1fr)', md: 'repeat(8, 1fr)' },
-                gap: 1.25,
-                mb: 2
+                gap: 1.2,
+                mb: 2.5
               }}>
                 {moodEmojis.map((m) => {
                   const isSelected = selectedMood?.emoji === m.emoji;
@@ -1978,19 +2233,25 @@ const Yourmood = ({
                         }
                       }}
                       sx={{
-                        height: isMobile ? 48 : 58,
+                        height: isMobile ? 50 : 58,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        borderRadius: '12px',
-                        fontSize: isMobile ? 20 : 22,
+                        borderRadius: '16px',
+                        fontSize: isMobile ? 22 : 24,
                         cursor: 'pointer',
-                        bgcolor: isSelected ? 'var(--background-color, #fff0f4)' : 'var(--surface-color, #fff)',
-                        border: isSelected ? '2px solid var(--primary-color, #ff4d86)' : '1px solid var(--background-color, #f0e6e8)',
-                        boxShadow: isSelected ? '0 6px 18px rgba(255,77,134,0.12)' : 'none',
+                        bgcolor: isSelected ? '#fff0f5' : '#ffffff',
+                        border: isSelected ? '2px solid #e52e71' : '1px solid #f1e5eb',
+                        boxShadow: isSelected
+                          ? '0 6px 18px rgba(229, 46, 113, 0.25)'
+                          : '0 4px 12px rgba(30, 41, 59, 0.04)',
+                        transform: isSelected ? 'scale(1.06)' : 'scale(1)',
+                        transition: 'all 0.18s cubic-bezier(0.34, 1.56, 0.64, 1)',
                         '&:hover': {
-                          bgcolor: isSelected ? 'var(--background-color, #fff0f4)' : 'var(--background-color, #f5f5f5)',
-                          transform: 'scale(1.05)'
+                          bgcolor: isSelected ? '#fff0f5' : '#ffffff',
+                          transform: isSelected ? 'scale(1.08)' : 'translateY(-2px)',
+                          boxShadow: '0 8px 20px rgba(30, 41, 59, 0.08)',
+                          borderColor: isSelected ? '#e52e71' : 'rgba(229, 46, 113, 0.3)'
                         }
                       }}
                     >
@@ -2000,6 +2261,7 @@ const Yourmood = ({
                 })}
               </Box>
 
+              {/* 3D Rounded Note Text Input */}
               <TextField
                 value={moodText}
                 onChange={(e) => setMoodText(e.target.value)}
@@ -2009,39 +2271,42 @@ const Yourmood = ({
                 minRows={2}
                 sx={{
                   '& .MuiOutlinedInput-root': {
-                    bgcolor: 'var(--background-color, #fbfbfb)',
-                    borderRadius: 2,
-                    color: 'var(--text-color, #000)',
+                    bgcolor: '#ffffff',
+                    borderRadius: '18px',
+                    color: '#172033',
+                    fontSize: '0.94rem',
+                    boxShadow: '0 2px 10px rgba(30, 41, 59, 0.03)',
                     '& fieldset': {
-                      borderColor: 'var(--primary-color, #ff4d86)',
+                      borderColor: '#f1e5eb',
                     },
                     '&:hover fieldset': {
-                      borderColor: 'var(--primary-color, #ff4d86)',
+                      borderColor: 'rgba(229, 46, 113, 0.35)',
                     },
                     '&.Mui-focused fieldset': {
-                      borderColor: 'var(--primary-color, #ff4d86)',
+                      borderColor: '#e52e71',
+                      borderWidth: '2px'
                     },
                   },
-                  mb: 2
+                  mb: 2.5
                 }}
               />
 
-              {/* MUSIC SECTION */}
-              <Box sx={{ mb: 2 }}>
+              {/* 3D MUSIC SECTION */}
+              <Box sx={{ mb: 2.5 }}>
                 {selectedSong ? (
                   <Paper
                     elevation={0}
                     sx={{
-                      p: 1.5,
-                      borderRadius: '16px',
-                      background: 'linear-gradient(135deg, rgba(255, 77, 134, 0.1) 0%, rgba(255, 122, 163, 0.05) 100%)',
-                      border: '1.5px solid rgba(255, 77, 134, 0.3)',
+                      p: 1.8,
+                      borderRadius: '20px',
+                      background: 'linear-gradient(135deg, #fff0f5 0%, #ffffff 100%)',
+                      border: '1.5px solid rgba(229, 46, 113, 0.25)',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: 1.5,
+                      gap: 1.6,
                       position: 'relative',
                       overflow: 'hidden',
-                      boxShadow: '0 4px 16px rgba(255, 77, 134, 0.12)'
+                      boxShadow: '0 6px 22px rgba(229, 46, 113, 0.14)'
                     }}
                   >
                     {/* Album Artwork & Music Icon Badge */}
@@ -2050,83 +2315,84 @@ const Yourmood = ({
                         src={selectedSong.artworkUrl100}
                         variant="rounded"
                         sx={{
-                          width: 46,
-                          height: 46,
-                          borderRadius: '12px',
-                          boxShadow: '0 2px 10px rgba(0,0,0,0.15)',
-                          border: '1px solid rgba(255, 255, 255, 0.8)'
+                          width: 48,
+                          height: 48,
+                          borderRadius: '14px',
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                          border: '1.5px solid rgba(255, 255, 255, 0.9)'
                         }}
                       />
                       <Box sx={{
                         position: 'absolute',
                         bottom: -3,
                         right: -3,
-                        bgcolor: '#ff4d86',
+                        bgcolor: '#e52e71',
                         borderRadius: '50%',
-                        width: 18,
-                        height: 18,
+                        width: 20,
+                        height: 20,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        boxShadow: '0 1px 4px rgba(0,0,0,0.2)'
+                        boxShadow: '0 2px 6px rgba(229, 46, 113, 0.4)'
                       }}>
-                        <MusicNoteIcon sx={{ color: '#fff', fontSize: 11 }} />
+                        <MusicNoteIcon sx={{ color: '#fff', fontSize: 12 }} />
                       </Box>
                     </Box>
 
                     {/* Track Info & Duration Pill */}
                     <Box sx={{ flex: 1, minWidth: 0 }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
-                        <Typography noWrap sx={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-color, #111)' }}>
+                        <Typography noWrap sx={{ fontWeight: 750, fontSize: '0.92rem', color: '#172033' }}>
                           {selectedSong.trackName}
                         </Typography>
                         <Typography
                           variant="caption"
                           sx={{
-                            bgcolor: 'rgba(255, 77, 134, 0.15)',
-                            color: '#ff4d86',
-                            fontWeight: 700,
-                            px: 0.8,
-                            py: 0.2,
+                            bgcolor: 'rgba(229, 46, 113, 0.12)',
+                            color: '#e52e71',
+                            fontWeight: 750,
+                            px: 1,
+                            py: 0.25,
                             borderRadius: '10px',
-                            fontSize: '0.65rem'
+                            fontSize: '0.68rem'
                           }}
                         >
                           {selectedSong.duration || 15}s
                         </Typography>
                       </Box>
 
-                      <Typography noWrap sx={{ fontSize: '0.78rem', color: 'var(--text-color, #666)', mt: 0.2 }}>
+                      <Typography noWrap sx={{ fontSize: '0.78rem', color: '#718096', mt: 0.3 }}>
                         {selectedSong.artistName}
                       </Typography>
 
-                      {/* Equalizer Playing Animation Indicator */}
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, mt: 0.4 }}>
+                      {/* Equalizer Indicator in Juicy pink */}
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, mt: 0.5 }}>
                         <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: '1.5px', height: 9, width: 8 }}>
-                          <Box sx={{ width: 1.5, bgcolor: '#ff4d86', borderRadius: '0.5px', animation: 'eqBar1 0.6s ease-in-out infinite alternate' }} />
-                          <Box sx={{ width: 1.5, bgcolor: '#ff4d86', borderRadius: '0.5px', animation: 'eqBar2 0.4s ease-in-out infinite alternate' }} />
-                          <Box sx={{ width: 1.5, bgcolor: '#ff4d86', borderRadius: '0.5px', animation: 'eqBar3 0.7s ease-in-out infinite alternate' }} />
+                          <Box sx={{ width: 1.5, bgcolor: '#e52e71', borderRadius: '0.5px', animation: 'eqBar1 0.6s ease-in-out infinite alternate' }} />
+                          <Box sx={{ width: 1.5, bgcolor: '#e52e71', borderRadius: '0.5px', animation: 'eqBar2 0.4s ease-in-out infinite alternate' }} />
+                          <Box sx={{ width: 1.5, bgcolor: '#e52e71', borderRadius: '0.5px', animation: 'eqBar3 0.7s ease-in-out infinite alternate' }} />
                         </Box>
-                        <Typography variant="caption" sx={{ color: '#ff4d86', fontWeight: 600, fontSize: '0.7rem' }}>
+                        <Typography variant="caption" sx={{ color: '#e52e71', fontWeight: 700, fontSize: '0.72rem' }}>
                           Music attached
                         </Typography>
                       </Box>
                     </Box>
 
-                    {/* Action Buttons */}
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    {/* 3D Action Buttons */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6 }}>
                       <IconButton
                         size="small"
                         onClick={() => setMusicEditorSong({ ...selectedSong })}
                         title="Edit clip duration"
                         sx={{
-                          bgcolor: 'rgba(255, 77, 134, 0.1)',
-                          color: '#ff4d86',
+                          bgcolor: 'rgba(229, 46, 113, 0.12)',
+                          color: '#e52e71',
                           p: 0.8,
-                          '&:hover': { bgcolor: 'rgba(255, 77, 134, 0.2)' }
+                          borderRadius: '12px',
+                          '&:hover': { bgcolor: 'rgba(229, 46, 113, 0.22)' }
                         }}
                       >
-                        <MusicNoteIcon sx={{ fontSize: 16 }} />
+                        <MusicNoteIcon sx={{ fontSize: 17 }} />
                       </IconButton>
 
                       <IconButton
@@ -2139,32 +2405,50 @@ const Yourmood = ({
                         title="Remove song"
                         sx={{
                           bgcolor: 'rgba(0, 0, 0, 0.05)',
-                          color: 'var(--text-color, #666)',
+                          color: '#718096',
                           p: 0.8,
-                          '&:hover': { bgcolor: 'rgba(255, 77, 134, 0.15)', color: '#ff4d86' }
+                          borderRadius: '12px',
+                          '&:hover': { bgcolor: 'rgba(229, 46, 113, 0.15)', color: '#e52e71' }
                         }}
                       >
-                        <CloseIcon sx={{ fontSize: 16 }} />
+                        <CloseIcon sx={{ fontSize: 17 }} />
                       </IconButton>
                     </Box>
                   </Paper>
                 ) : (
                   <Box>
                     {showMusicSearch ? (
-                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.2 }}>
                         <TextField
                           size="small"
                           placeholder="Search for a song..."
                           value={songSearchQuery}
                           onChange={(e) => handleSearchSong(e.target.value)}
                           autoFocus
+                          sx={{
+                            '& .MuiOutlinedInput-root': {
+                              bgcolor: '#ffffff',
+                              borderRadius: '16px',
+                              '& fieldset': { borderColor: '#f1e5eb' },
+                              '&:hover fieldset': { borderColor: '#e52e71' },
+                              '&.Mui-focused fieldset': { borderColor: '#e52e71' }
+                            }
+                          }}
                           InputProps={{
-                            startAdornment: <MusicNoteIcon sx={{ color: 'text.secondary', mr: 1, fontSize: 18 }} />,
-                            endAdornment: isSearchingSong ? <Typography variant="caption">...</Typography> : null
+                            startAdornment: <MusicNoteIcon sx={{ color: '#e52e71', mr: 1, fontSize: 19 }} />,
+                            endAdornment: isSearchingSong ? <Typography variant="caption" sx={{ color: '#e52e71' }}>...</Typography> : null
                           }}
                         />
                         {((songSearchResults.length > 0) || (!songSearchQuery.trim())) && (
-                          <Box sx={{ maxHeight: 150, overflowY: 'auto', border: '1px solid rgba(128, 128, 128, 0.2)', borderRadius: 1, bgcolor: 'var(--surface-color, #ffffff)' }}>
+                          <Box sx={{
+                            maxHeight: 160,
+                            overflowY: 'auto',
+                            border: '1px solid #f1e5eb',
+                            borderRadius: '16px',
+                            bgcolor: '#ffffff',
+                            boxShadow: '0 8px 24px rgba(30, 41, 59, 0.08)',
+                            p: 0.5
+                          }}>
                             {((songSearchResults.length > 0) ? songSearchResults : defaultSongs).map((song, idx) => (
                               <Box
                                 key={idx}
@@ -2176,13 +2460,16 @@ const Yourmood = ({
                                 }}
                                 sx={{
                                   display: 'flex', alignItems: 'center', gap: 1.5, p: 1,
-                                  cursor: 'pointer', '&:hover': { bgcolor: 'rgba(128, 128, 128, 0.1)' }
+                                  borderRadius: '12px',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.15s ease',
+                                  '&:hover': { bgcolor: '#fff0f5', transform: 'translateX(2px)' }
                                 }}
                               >
-                                <Avatar src={song.artworkUrl100} variant="rounded" sx={{ width: 32, height: 32 }} />
+                                <Avatar src={song.artworkUrl100} variant="rounded" sx={{ width: 36, height: 36, borderRadius: '10px' }} />
                                 <Box sx={{ flex: 1, overflow: 'hidden' }}>
-                                  <Typography noWrap sx={{ fontSize: 13, fontWeight: 500, color: 'var(--text-color, #000)' }}>{song.trackName}</Typography>
-                                  <Typography noWrap sx={{ fontSize: 11, color: 'var(--text-color, #666)', opacity: 0.8 }}>{song.artistName}</Typography>
+                                  <Typography noWrap sx={{ fontSize: 13, fontWeight: 700, color: '#172033' }}>{song.trackName}</Typography>
+                                  <Typography noWrap sx={{ fontSize: 11, color: '#718096' }}>{song.artistName}</Typography>
                                 </Box>
                               </Box>
                             ))}
@@ -2191,31 +2478,46 @@ const Yourmood = ({
                       </Box>
                     ) : (
                       <Button
-                        variant="text"
+                        variant="outlined"
                         startIcon={<MusicNoteIcon />}
                         onClick={() => setShowMusicSearch(true)}
-                        sx={{ textTransform: 'none', color: 'var(--primary-color, #ff4d86)', fontWeight: 600 }}
+                        sx={{
+                          textTransform: 'none',
+                          color: '#e52e71',
+                          borderColor: 'rgba(229, 46, 113, 0.25)',
+                          bgcolor: '#fff0f5',
+                          borderRadius: '16px',
+                          fontWeight: 700,
+                          px: 2,
+                          py: 0.8,
+                          boxShadow: '0 2px 8px rgba(229, 46, 113, 0.08)',
+                          '&:hover': {
+                            borderColor: '#e52e71',
+                            bgcolor: 'rgba(229, 46, 113, 0.12)'
+                          }
+                        }}
                       >
-                        Add Music
+                        Add Music 🎵
                       </Button>
                     )}
                   </Box>
                 )}
               </Box>
 
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-color, #777)', fontSize: 13 }}>
-                <Typography sx={{ color: 'var(--text-color, #777)' }}>Visible to friends</Typography>
-                <Typography sx={{ color: 'var(--text-color, #777)' }}>{selectedMood ? selectedMood.name : 'No emoji selected'}</Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#718096', fontSize: 13 }}>
+                <Typography sx={{ color: '#718096', fontSize: '0.82rem' }}>Visible to friends</Typography>
+                <Typography sx={{ color: '#e52e71', fontWeight: 650, fontSize: '0.82rem' }}>{selectedMood ? selectedMood.name : 'No emoji selected'}</Typography>
               </Box>
             </Box>
 
+            {/* 3D Footer Action Buttons */}
             <Box sx={{
               display: 'flex',
-              gap: 2,
+              gap: 1.5,
               p: 2,
-              pb: isMobile ? 'calc(env(safe-area-inset-bottom) + 8px)' : 2,
-              borderTop: '1px solid rgba(128, 128, 128, 0.15)',
-              bgcolor: 'var(--surface-color, #ffffff)',
+              pb: isMobile ? 'calc(env(safe-area-inset-bottom) + 10px)' : 2,
+              borderTop: '1px solid #f1e5eb',
+              bgcolor: '#ffffff',
               flexShrink: 0
             }}>
               <Button
@@ -2231,13 +2533,17 @@ const Yourmood = ({
                   setShowMoodDialog(false);
                 }}
                 sx={{
-                  borderRadius: 10,
+                  borderRadius: '16px',
                   height: 48,
-                  color: 'var(--text-color, #000)',
-                  borderColor: 'var(--text-color, #000)',
+                  color: '#718096',
+                  borderColor: '#f1e5eb',
+                  fontWeight: 700,
+                  textTransform: 'none',
+                  fontSize: '0.92rem',
                   '&:hover': {
-                    borderColor: 'var(--primary-color, #ff4d86)',
-                    bgcolor: 'rgba(255, 77, 134, 0.08)'
+                    borderColor: 'rgba(229, 46, 113, 0.3)',
+                    bgcolor: '#fff0f5',
+                    color: '#e52e71'
                   }
                 }}
               >
@@ -2249,16 +2555,22 @@ const Yourmood = ({
                 onClick={handleShareMood}
                 disabled={!selectedMood && !moodText.trim() && !selectedSong}
                 sx={{
-                  borderRadius: 10,
+                  borderRadius: '16px',
                   height: 48,
                   color: '#ffffff',
-                  bgcolor: 'var(--primary-color, #ff4d86)',
+                  background: 'linear-gradient(135deg, #ff5c8d 0%, #e52e71 100%)',
+                  fontWeight: 700,
+                  textTransform: 'none',
+                  fontSize: '0.92rem',
+                  boxShadow: '0 6px 20px rgba(229, 46, 113, 0.3)',
                   '&:hover': {
-                    bgcolor: 'var(--primary-color, #ff3373)'
+                    background: '#d02061',
+                    boxShadow: '0 8px 24px rgba(229, 46, 113, 0.4)'
                   },
                   '&.Mui-disabled': {
-                    bgcolor: 'rgba(128, 128, 128, 0.2)',
-                    color: 'rgba(128, 128, 128, 0.5)'
+                    background: '#f1e5eb',
+                    color: '#a0aec0',
+                    boxShadow: 'none'
                   }
                 }}
               >
@@ -2269,7 +2581,7 @@ const Yourmood = ({
         )}
       </Dialog>
 
-      {/* Instagram-style floating song confirmation notification */}
+      {/* Floating song confirmation notification with 3D glass look */}
       <Snackbar
         open={songSnackbarOpen}
         autoHideDuration={2500}
@@ -2283,34 +2595,34 @@ const Yourmood = ({
             display: 'flex',
             alignItems: 'center',
             gap: 1.5,
-            bgcolor: '#1c1c1e',
+            bgcolor: 'rgba(23, 32, 51, 0.92)',
             color: '#ffffff',
             borderRadius: '24px',
             px: 2.5,
             py: 1.2,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+            boxShadow: '0 12px 36px rgba(0,0,0,0.3)',
             border: '1px solid rgba(255,255,255,0.15)',
-            backdropFilter: 'blur(10px)',
+            backdropFilter: 'blur(12px)',
           }}
         >
           <Box sx={{
             width: 28,
             height: 28,
             borderRadius: '50%',
-            background: 'linear-gradient(135deg, #ff7aa3, #ff4d86)',
+            background: 'linear-gradient(135deg, #ff5c8d, #e52e71)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center'
           }}>
             <MusicNoteIcon sx={{ color: '#fff', fontSize: 16 }} />
           </Box>
-          <Typography sx={{ fontSize: '0.88rem', fontWeight: 600, fontFamily: 'Poppins, sans-serif' }}>
+          <Typography sx={{ fontSize: '0.88rem', fontWeight: 650 }}>
             {songConfirmationMessage}
           </Typography>
         </Paper>
       </Snackbar>
 
-      {/* Delete Note Confirmation Dialog */}
+      {/* 3D Delete Note Confirmation Dialog */}
       <Dialog
         open={deleteConfirmOpen}
         onClose={() => {
@@ -2319,37 +2631,39 @@ const Yourmood = ({
         }}
         PaperProps={{
           sx: {
-            borderRadius: '20px',
+            borderRadius: '24px',
             p: 1,
             width: '340px',
             maxWidth: '90vw',
-            bgcolor: 'var(--surface-color, #ffffff)',
-            boxShadow: '0 12px 36px rgba(0,0,0,0.2)',
+            bgcolor: '#ffffff',
+            border: '1px solid rgba(239, 68, 68, 0.15)',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
             textAlign: 'center'
           }
         }}
-        BackdropProps={{ sx: { backgroundColor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(3px)' } }}
+        BackdropProps={{ sx: { backgroundColor: 'rgba(23, 32, 51, 0.45)', backdropFilter: 'blur(4px)' } }}
       >
         <Box sx={{ p: 2.5, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
           <Box sx={{
-            width: 52,
-            height: 52,
+            width: 54,
+            height: 54,
             borderRadius: '50%',
-            bgcolor: 'rgba(255, 59, 48, 0.1)',
-            color: '#ff3b30',
+            bgcolor: 'rgba(239, 68, 68, 0.1)',
+            color: '#ef4444',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            mb: 2
+            mb: 2,
+            boxShadow: '0 4px 14px rgba(239, 68, 68, 0.15)'
           }}>
             <DeleteIcon sx={{ fontSize: 28 }} />
           </Box>
 
-          <Typography variant="h6" sx={{ fontWeight: 700, color: 'var(--text-color, #111)', mb: 1, fontSize: '1.15rem' }}>
+          <Typography variant="h6" sx={{ fontWeight: 750, color: '#172033', mb: 1, fontSize: '1.15rem' }}>
             Delete note?
           </Typography>
 
-          <Typography variant="body2" sx={{ color: 'var(--text-color, #666)', fontSize: '0.88rem', lineHeight: 1.4, mb: 3 }}>
+          <Typography variant="body2" sx={{ color: '#718096', fontSize: '0.88rem', lineHeight: 1.4, mb: 3 }}>
             This note will be permanently removed for you and your friends.
           </Typography>
 
@@ -2362,15 +2676,15 @@ const Yourmood = ({
                 setMoodToDeleteId(null);
               }}
               sx={{
-                borderRadius: '12px',
-                py: 1,
+                borderRadius: '16px',
+                py: 1.1,
                 textTransform: 'none',
-                fontWeight: 600,
-                color: 'var(--text-color, #333)',
-                borderColor: 'rgba(0,0,0,0.15)',
+                fontWeight: 650,
+                color: '#718096',
+                borderColor: '#f1e5eb',
                 '&:hover': {
-                  borderColor: 'rgba(0,0,0,0.3)',
-                  bgcolor: 'rgba(0,0,0,0.04)'
+                  borderColor: 'rgba(0,0,0,0.25)',
+                  bgcolor: 'rgba(0,0,0,0.03)'
                 }
               }}
             >
@@ -2382,16 +2696,16 @@ const Yourmood = ({
               variant="contained"
               onClick={confirmDelete}
               sx={{
-                borderRadius: '12px',
-                py: 1,
+                borderRadius: '16px',
+                py: 1.1,
                 textTransform: 'none',
                 fontWeight: 700,
-                bgcolor: '#ff3b30',
+                bgcolor: '#ef4444',
                 color: '#ffffff',
-                boxShadow: '0 4px 14px rgba(255, 59, 48, 0.3)',
+                boxShadow: '0 4px 14px rgba(239, 68, 68, 0.3)',
                 '&:hover': {
-                  bgcolor: '#e03126',
-                  boxShadow: '0 6px 18px rgba(255, 59, 48, 0.4)'
+                  bgcolor: '#dc2626',
+                  boxShadow: '0 6px 18px rgba(239, 68, 68, 0.4)'
                 }
               }}
             >
@@ -2401,7 +2715,7 @@ const Yourmood = ({
         </Box>
       </Dialog>
 
-      {/* Likers List Dialog (Instagram-style) */}
+      {/* 3D Likers List Dialog */}
       <Dialog
         open={showLikersDialog}
         onClose={() => setShowLikersDialog(false)}
@@ -2411,29 +2725,30 @@ const Yourmood = ({
             p: 1.5,
             width: '320px',
             maxWidth: '90vw',
-            bgcolor: 'var(--surface-color, #ffffff)',
-            boxShadow: '0 12px 36px rgba(0,0,0,0.2)'
+            bgcolor: '#ffffff',
+            border: '1px solid rgba(229, 46, 113, 0.15)',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.2)'
           }
         }}
-        BackdropProps={{ sx: { backgroundColor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(3px)' } }}
+        BackdropProps={{ sx: { backgroundColor: 'rgba(23, 32, 51, 0.45)', backdropFilter: 'blur(4px)' } }}
       >
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 1, py: 1, borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 1, py: 1, borderBottom: '1px solid #f1e5eb' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <FavoriteIcon sx={{ color: '#ff4d86', fontSize: 20 }} />
-            <Typography sx={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-color, #111)' }}>
+            <FavoriteIcon sx={{ color: '#e52e71', fontSize: 20 }} />
+            <Typography sx={{ fontWeight: 750, fontSize: '1rem', color: '#172033' }}>
               Liked by ({viewingMood?.likes?.length || 0})
             </Typography>
           </Box>
-          <IconButton size="small" onClick={() => setShowLikersDialog(false)}>
+          <IconButton size="small" onClick={() => setShowLikersDialog(false)} sx={{ color: '#718096' }}>
             <CloseIcon sx={{ fontSize: 18 }} />
           </IconButton>
         </Box>
 
-        <Box sx={{ maxHeight: 300, overflowY: 'auto', py: 1.5, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+        <Box sx={{ maxHeight: 300, overflowY: 'auto', py: 1.5, display: 'flex', flexDirection: 'column', gap: 1.2 }}>
           {(viewingMood?.likes || []).map((liker, idx) => (
-            <Box key={liker.userId || idx} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1 }}>
-              <Avatar src={getProfileSrc(liker)} sx={{ width: 40, height: 40, border: '1px solid rgba(0,0,0,0.1)' }} />
-              <Typography sx={{ fontWeight: 600, fontSize: '0.92rem', color: 'var(--text-color, #111)' }}>
+            <Box key={liker.userId || idx} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1, py: 0.5, borderRadius: '12px', transition: 'background 0.15s ease', '&:hover': { bgcolor: '#fff0f5' } }}>
+              <Avatar src={getProfileSrc(liker)} sx={{ width: 40, height: 40, border: '2px solid #ffffff', boxShadow: '0 2px 6px rgba(0,0,0,0.08)' }} />
+              <Typography sx={{ fontWeight: 650, fontSize: '0.92rem', color: '#172033' }}>
                 {liker.username}
               </Typography>
             </Box>

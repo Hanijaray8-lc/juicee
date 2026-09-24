@@ -4,12 +4,24 @@ const userSchema = new mongoose.Schema({
   name: { type: String, required: true },
   username: { type: String, required: true, unique: true, lowercase: true },
   email: { type: String, required: true, unique: true, lowercase: true },
-  phone: { type: String, default: '', sparse: true, unique: true },
+  phone: {
+    type: String,
+    sparse: true,
+    index: {
+      unique: true,
+      partialFilterExpression: { phone: { $type: 'string', $gt: '' } }
+    }
+  },
   password: { type: String, required: true },
   gender: { type: String, default: '' },
   govidproof: { type: String },
   profileImage: { type: String, default: '' },
   profileVisible: { type: Boolean, default: true },
+  dob: { type: String, default: '' },
+  about: { type: String, default: '' },
+  city: { type: String, default: '' },
+  country: { type: String, default: '' },
+  countryCode: { type: String, default: '+91' },
   friendRequests: [{
     senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     senderUsername: String,

@@ -47,10 +47,91 @@ const WHATSAPP_DARK_GREEN = '#128C7E';
 const MISSED_RED = '#ef4444';
 const GRAY_TEXT = '#64748b';
 
+// Helper to safely cache call logs without exceeding localStorage quota
+const safeCacheCallLogs = (logsToCache) => {
+    if (!logsToCache || !Array.isArray(logsToCache)) {
+        try {
+            localStorage.removeItem('cached_call_logs');
+        } catch (_) {}
+        return;
+    }
+    try {
+        // Strip heavy base64 profile images (> 500 chars) and cap to 50 items to keep storage lightweight
+        const optimized = logsToCache.slice(0, 50).map(item => ({
+            ...item,
+            image: (typeof item.image === 'string' && (item.image.startsWith('data:') || item.image.length > 500))
+                ? ''
+                : item.image
+        }));
+        localStorage.setItem('cached_call_logs', JSON.stringify(optimized));
+    } catch (e) {
+        // If quota exceeded or storage restricted, fallback to caching minified logs without images
+        try {
+            const minified = logsToCache.slice(0, 30).map(({ id, targetUserId, name, type, time, duration, status }) => ({
+                id,
+                targetUserId,
+                name,
+                image: '',
+                type,
+                time,
+                duration,
+                status
+            }));
+            localStorage.setItem('cached_call_logs', JSON.stringify(minified));
+        } catch (innerError) {
+            // If storage is completely full, remove key cleanly so it doesn't fail
+            try {
+                localStorage.removeItem('cached_call_logs');
+            } catch (_) {}
+        }
+    }
+};
+
 const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
     useSwipeBack(); // Default threshold is 80px
     const theme = useTheme();
     const isMobile = useMediaQuery('(max-width: 1024px)');
+    const [currentIsDark, setCurrentIsDark] = useState(() => {
+        try {
+            const saved = localStorage.getItem('appTheme');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                const bgCol = parsed?.colors?.background;
+                if (bgCol && bgCol.startsWith('#')) {
+                    const hex = bgCol.replace('#', '').trim();
+                    const r = parseInt(hex.substring(0, 2), 16);
+                    const g = parseInt(hex.substring(2, 4), 16);
+                    const b = parseInt(hex.substring(4, 6), 16);
+                    return (r * 299 + g * 587 + b * 114) / 1000 < 128;
+                }
+            }
+        } catch (e) {}
+        return theme.palette.mode === 'dark';
+    });
+    const isDark = currentIsDark;
+
+    useEffect(() => {
+        const handleThemeChange = () => {
+            try {
+                const saved = localStorage.getItem('appTheme');
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    const bgCol = parsed?.colors?.background;
+                    if (bgCol && bgCol.startsWith('#')) {
+                        const hex = bgCol.replace('#', '').trim();
+                        const r = parseInt(hex.substring(0, 2), 16);
+                        const g = parseInt(hex.substring(2, 4), 16);
+                        const b = parseInt(hex.substring(4, 6), 16);
+                        setCurrentIsDark((r * 299 + g * 587 + b * 114) / 1000 < 128);
+                        return;
+                    }
+                }
+            } catch (e) {}
+            setCurrentIsDark(theme.palette.mode === 'dark');
+        };
+        window.addEventListener('themeChanged', handleThemeChange);
+        return () => window.removeEventListener('themeChanged', handleThemeChange);
+    }, [theme.palette.mode]);
 
     const [logs, setLogs] = useState(() => {
         try {
@@ -104,7 +185,7 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                         status: log.status
                     }));
                     setLogs(transformedLogs);
-                    localStorage.setItem('cached_call_logs', JSON.stringify(transformedLogs));
+                    safeCacheCallLogs(transformedLogs);
                 }
             } catch (error) {
                 console.error('Error fetching call logs:', error);
@@ -265,7 +346,7 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
 
                 if (response.ok) {
                     setLogs([]);
-                    localStorage.setItem('cached_call_logs', JSON.stringify([]));
+                    safeCacheCallLogs([]);
                     toast.success('All call logs deleted successfully');
                 } else {
                     toast.error('Failed to delete call logs');
@@ -283,7 +364,7 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                 if (response.ok) {
                     setLogs(prev => {
                         const updated = prev.filter(log => log.id !== selectedLogId);
-                        localStorage.setItem('cached_call_logs', JSON.stringify(updated));
+                        safeCacheCallLogs(updated);
                         return updated;
                     });
                     toast.success('Call log deleted');
@@ -307,33 +388,45 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                 height: isMobile ? 'calc(100dvh - 120px)' : '100%',
                 display: 'flex',
                 flexDirection: 'column',
-                bgcolor: 'var(--background-color, #ffffff)',
-                fontFamily: 'Poppins, sans-serif',
+                bgcolor: 'var(--background-color, #fff7f9)',
+                backgroundImage: isDark
+                    ? 'radial-gradient(circle at 85% 10%, rgba(255, 255, 255, 0.05) 0%, transparent 40%), radial-gradient(circle at 15% 70%, rgba(255, 255, 255, 0.03) 0%, transparent 45%)'
+                    : 'radial-gradient(circle at 90% 8%, rgba(0, 0, 0, 0.03) 0%, transparent 40%), radial-gradient(circle at 10% 65%, rgba(0, 0, 0, 0.02) 0%, transparent 45%)',
+                fontFamily: 'Poppins, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
                 overflow: 'hidden',
-                boxSizing: 'border-box'
+                boxSizing: 'border-box',
+                position: 'relative'
             }}
         >
             {/* Top Bar Header Area */}
             <Box
                 sx={{
                     px: isMobile ? 2 : 3,
-                    pt: isMobile ? 1.5 : 2.5,
-                    pb: 1.5,
+                    pt: isMobile ? 1.8 : 2.5,
+                    pb: 1.8,
                     flexShrink: 0,
-                    bgcolor: 'var(--background-color, #ffffff)',
-                    borderBottom: '1px solid var(--border-color, rgba(0,0,0,0.06))'
+                    bgcolor: isDark ? 'rgba(18, 15, 23, 0.75)' : 'var(--surface-color, rgba(255, 255, 255, 0.88))',
+                    backdropFilter: 'blur(20px)',
+                    WebkitBackdropFilter: 'blur(20px)',
+                    borderBottom: isDark ? '1px solid rgba(255, 255, 255, 0.06)' : '1px solid rgba(180, 180, 180, 0.2)',
+                    position: 'relative',
+                    zIndex: 2
                 }}
             >
                 {/* Header Title + Action Controls */}
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.8 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
                         <Typography
                             variant="h5"
                             sx={{
                                 fontWeight: 800,
-                                color: 'var(--text-color, #0f172a)',
+                                background: isDark
+                                    ? 'linear-gradient(135deg, #ffffff 0%, var(--primary-color, #fda4af) 100%)'
+                                    : 'linear-gradient(135deg, var(--text-color, #1e1b2e) 0%, var(--primary-color, #ff2d6c) 100%)',
+                                WebkitBackgroundClip: 'text',
+                                WebkitTextFillColor: 'transparent',
                                 letterSpacing: '-0.5px',
-                                fontSize: isMobile ? '1.35rem' : '1.6rem'
+                                fontSize: isMobile ? '1.45rem' : '1.75rem'
                             }}
                         >
                             Calls
@@ -343,12 +436,14 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                                 label={baseLogs.length}
                                 size="small"
                                 sx={{
-                                    height: 22,
+                                    height: 24,
                                     fontSize: '0.75rem',
-                                    fontWeight: 700,
-                                    bgcolor: 'var(--primary-color, #ff4d86)',
+                                    fontWeight: 750,
+                                    background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
                                     color: '#ffffff',
-                                    borderRadius: '12px'
+                                    borderRadius: '12px',
+                                    boxShadow: '0 4px 10px rgba(0, 0, 0, 0.15)',
+                                    border: '1px solid rgba(255, 255, 255, 0.25)'
                                 }}
                             />
                         )}
@@ -361,17 +456,22 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                                 onClick={triggerDeleteAllConfirm}
                                 size="small"
                                 sx={{
-                                    color: 'var(--text-color, #64748b)',
-                                    bgcolor: 'var(--surface-color, #ffffff)',
-                                    border: '1px solid var(--border-color, rgba(0, 0, 0, 0.08))',
-                                    borderRadius: 2.5,
-                                    p: 1,
-                                    transition: 'all 0.2s ease',
+                                    color: '#ef4444',
+                                    bgcolor: isDark ? 'rgba(239, 68, 68, 0.12)' : 'rgba(239, 68, 68, 0.08)',
+                                    border: isDark ? '1px solid rgba(239, 68, 68, 0.25)' : '1px solid rgba(239, 68, 68, 0.2)',
+                                    borderRadius: '14px',
+                                    p: 1.1,
+                                    boxShadow: isDark ? '0 4px 12px rgba(0,0,0,0.25)' : '0 4px 12px rgba(239, 68, 68, 0.12)',
+                                    transition: 'all 0.22s cubic-bezier(0.4, 0, 0.2, 1)',
                                     '&:hover': {
-                                        color: '#ef4444',
-                                        bgcolor: 'rgba(239, 68, 68, 0.08)',
-                                        borderColor: 'rgba(239, 68, 68, 0.3)',
-                                        transform: 'scale(1.05)'
+                                        color: '#ffffff',
+                                        background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                                        borderColor: '#ef4444',
+                                        transform: 'translateY(-2px)',
+                                        boxShadow: '0 6px 18px rgba(239, 68, 68, 0.35)'
+                                    },
+                                    '&:active': {
+                                        transform: 'scale(0.96)'
                                     }
                                 }}
                             >
@@ -382,29 +482,34 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                 </Box>
 
                 {/* Filter Tabs / Pills */}
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2, mb: 1.6 }}>
                     <Chip
                         label={`All (${baseLogs.length})`}
                         onClick={() => setActiveFilter('all')}
                         sx={{
-                            fontWeight: 600,
-                            fontSize: '0.8rem',
+                            fontWeight: 700,
+                            fontSize: '0.82rem',
                             cursor: 'pointer',
-                            borderRadius: '10px',
-                            transition: 'all 0.2s ease',
-                            bgcolor: activeFilter === 'all'
-                                ? 'var(--primary-color, #ff4d86)'
-                                : 'var(--surface-color, #f1f5f9)',
+                            borderRadius: '20px',
+                            px: 1,
+                            transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                            background: activeFilter === 'all'
+                                ? 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))'
+                                : isDark ? 'rgba(255, 255, 255, 0.06)' : 'var(--surface-color, rgba(255, 255, 255, 0.85))',
                             color: activeFilter === 'all'
                                 ? '#ffffff'
-                                : 'var(--text-color, #64748b)',
+                                : isDark ? '#94a3b8' : '#64748b',
                             border: activeFilter === 'all'
-                                ? '1px solid transparent'
-                                : '1px solid var(--border-color, rgba(0,0,0,0.06))',
+                                ? '1px solid rgba(255, 255, 255, 0.3)'
+                                : isDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(180, 180, 180, 0.2)',
+                            boxShadow: activeFilter === 'all'
+                                ? '0 6px 16px rgba(0, 0, 0, 0.18)'
+                                : isDark ? '0 2px 6px rgba(0,0,0,0.2)' : '0 2px 8px rgba(0, 0, 0, 0.04)',
                             '&:hover': {
-                                bgcolor: activeFilter === 'all'
-                                    ? 'var(--primary-color, #ff3373)'
-                                    : 'rgba(0,0,0,0.05)'
+                                transform: 'translateY(-1px)',
+                                background: activeFilter === 'all'
+                                    ? 'var(--primary-gradient, linear-gradient(135deg, #f72363 0%, #ff4d84 100%))'
+                                    : isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 1)'
                             }
                         }}
                     />
@@ -412,23 +517,28 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                         label={`Missed ${missedCount > 0 ? `(${missedCount})` : ''}`}
                         onClick={() => setActiveFilter('missed')}
                         sx={{
-                            fontWeight: 600,
-                            fontSize: '0.8rem',
+                            fontWeight: 700,
+                            fontSize: '0.82rem',
                             cursor: 'pointer',
-                            borderRadius: '10px',
-                            transition: 'all 0.2s ease',
-                            bgcolor: activeFilter === 'missed'
-                                ? '#ef4444'
-                                : 'var(--surface-color, #f1f5f9)',
+                            borderRadius: '20px',
+                            px: 1,
+                            transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                            background: activeFilter === 'missed'
+                                ? 'linear-gradient(135deg, #ef4444 0%, #f87171 100%)'
+                                : isDark ? 'rgba(255, 255, 255, 0.06)' : 'var(--surface-color, rgba(255, 255, 255, 0.85))',
                             color: activeFilter === 'missed'
                                 ? '#ffffff'
-                                : missedCount > 0 ? '#ef4444' : 'var(--text-color, #64748b)',
+                                : missedCount > 0 ? '#ef4444' : isDark ? '#94a3b8' : '#64748b',
                             border: activeFilter === 'missed'
-                                ? '1px solid transparent'
-                                : '1px solid var(--border-color, rgba(0,0,0,0.06))',
+                                ? '1px solid rgba(255, 255, 255, 0.3)'
+                                : isDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(180, 180, 180, 0.2)',
+                            boxShadow: activeFilter === 'missed'
+                                ? '0 6px 16px rgba(239, 68, 68, 0.35)'
+                                : isDark ? '0 2px 6px rgba(0,0,0,0.2)' : '0 2px 8px rgba(0, 0, 0, 0.04)',
                             '&:hover': {
-                                bgcolor: activeFilter === 'missed'
-                                    ? '#dc2626'
+                                transform: 'translateY(-1px)',
+                                background: activeFilter === 'missed'
+                                    ? 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)'
                                     : 'rgba(239, 68, 68, 0.08)'
                             }
                         }}
@@ -440,13 +550,13 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                     <TextField
                         fullWidth
                         size="small"
-                        placeholder="Search call logs..."
+                        placeholder="Search call history..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         InputProps={{
                             startAdornment: (
                                 <InputAdornment position="start">
-                                    <SearchIcon sx={{ color: 'var(--text-color, #94a3b8)', fontSize: 20 }} />
+                                    <SearchIcon sx={{ color: 'var(--primary-color, #ff4d86)', fontSize: 20 }} />
                                 </InputAdornment>
                             ),
                             endAdornment: searchQuery ? (
@@ -461,19 +571,25 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                                 </InputAdornment>
                             ) : null,
                             sx: {
-                                borderRadius: 3,
-                                bgcolor: 'var(--surface-color, #f8fafc)',
+                                borderRadius: '24px',
+                                bgcolor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'var(--surface-color, rgba(255, 255, 255, 0.9))',
+                                backdropFilter: 'blur(10px)',
                                 fontSize: '0.88rem',
                                 color: 'var(--text-color, #0f172a)',
+                                boxShadow: isDark ? '0 4px 16px rgba(0,0,0,0.25)' : '0 4px 18px rgba(0, 0, 0, 0.05)',
+                                transition: 'all 0.25s ease',
                                 '& .MuiOutlinedInput-notchedOutline': {
-                                    borderColor: 'var(--border-color, rgba(0,0,0,0.08))'
+                                    borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(180, 180, 180, 0.25)'
                                 },
                                 '&:hover .MuiOutlinedInput-notchedOutline': {
-                                    borderColor: 'var(--primary-color, #ff4d86)'
+                                    borderColor: 'var(--primary-color, #ff2d6c)'
                                 },
-                                '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                                    borderColor: 'var(--primary-color, #ff4d86)',
-                                    borderWidth: '1.5px'
+                                '&.Mui-focused': {
+                                    boxShadow: '0 6px 22px rgba(0, 0, 0, 0.12)',
+                                    '& .MuiOutlinedInput-notchedOutline': {
+                                        borderColor: 'var(--primary-color, #ff2d6c)',
+                                        borderWidth: '1.5px'
+                                    }
                                 }
                             }
                         }}
@@ -488,20 +604,12 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                     overflowY: 'auto',
                     p: isMobile ? 1.5 : 2.5,
                     pt: 1.5,
-                    /* Custom sleek scrollbar */
+                    /* Clean scrollable area without pink side bar */
                     '&::-webkit-scrollbar': {
-                        width: '6px'
+                        display: 'none'
                     },
-                    '&::-webkit-scrollbar-track': {
-                        bgcolor: 'transparent'
-                    },
-                    '&::-webkit-scrollbar-thumb': {
-                        bgcolor: 'rgba(0,0,0,0.12)',
-                        borderRadius: '10px'
-                    },
-                    '&::-webkit-scrollbar-thumb:hover': {
-                        bgcolor: 'rgba(0,0,0,0.2)'
-                    }
+                    msOverflowStyle: 'none',
+                    scrollbarWidth: 'none'
                 }}
             >
                 {loading ? (
@@ -509,7 +617,7 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                         <CircularProgress
                             size={40}
                             thickness={4}
-                            sx={{ color: 'var(--primary-color, #ff4d86)' }}
+                            sx={{ color: 'var(--primary-color, #ff2d6c)' }}
                         />
                         <Typography sx={{ fontSize: '0.9rem', color: GRAY_TEXT, fontWeight: 500 }}>
                             Loading calls...
@@ -531,33 +639,37 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                         >
                             <Box
                                 sx={{
-                                    width: 80,
-                                    height: 80,
+                                    width: 86,
+                                    height: 86,
                                     borderRadius: '50%',
-                                    bgcolor: activeFilter === 'missed'
-                                        ? 'rgba(239, 68, 68, 0.1)'
-                                        : 'var(--surface-color, rgba(255, 77, 134, 0.08))',
+                                    background: activeFilter === 'missed'
+                                        ? 'linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(239, 68, 68, 0.05) 100%)'
+                                        : 'linear-gradient(135deg, rgba(0, 0, 0, 0.05) 0%, transparent 100%)',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     mb: 2.5,
-                                    border: '1px dashed var(--border-color, rgba(255, 77, 134, 0.3))'
+                                    border: activeFilter === 'missed'
+                                        ? '1.5px dashed rgba(239, 68, 68, 0.3)'
+                                        : '1.5px dashed var(--primary-color, rgba(255, 45, 108, 0.3))',
+                                    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.06)'
                                 }}
                             >
                                 {activeFilter === 'missed' ? (
-                                    <PhoneMissedIcon sx={{ fontSize: 38, color: '#ef4444' }} />
+                                    <PhoneMissedIcon sx={{ fontSize: 40, color: '#ef4444' }} />
                                 ) : (
-                                    <PhoneInTalkIcon sx={{ fontSize: 38, color: 'var(--primary-color, #ff4d86)' }} />
+                                    <PhoneInTalkIcon sx={{ fontSize: 40, color: 'var(--primary-color, #ff2d6c)' }} />
                                 )}
                             </Box>
 
                             <Typography
                                 variant="h6"
                                 sx={{
-                                    fontWeight: 700,
+                                    fontWeight: 750,
                                     color: 'var(--text-color, #0f172a)',
                                     mb: 0.8,
-                                    fontSize: '1.1rem'
+                                    fontSize: '1.15rem',
+                                    letterSpacing: '-0.3px'
                                 }}
                             >
                                 {searchQuery
@@ -569,7 +681,7 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
 
                             <Typography
                                 sx={{
-                                    fontSize: '0.85rem',
+                                    fontSize: '0.86rem',
                                     color: GRAY_TEXT,
                                     maxWidth: 320,
                                     lineHeight: 1.5
@@ -588,15 +700,16 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                                     size="small"
                                     onClick={() => setSearchQuery('')}
                                     sx={{
-                                        mt: 2,
-                                        borderRadius: 2,
+                                        mt: 2.5,
+                                        borderRadius: '20px',
                                         textTransform: 'none',
-                                        fontWeight: 600,
-                                        color: 'var(--primary-color, #ff4d86)',
-                                        borderColor: 'var(--primary-color, #ff4d86)',
+                                        fontWeight: 650,
+                                        color: 'var(--primary-color, #ff2d6c)',
+                                        borderColor: 'var(--primary-color, rgba(255, 45, 108, 0.4))',
+                                        px: 2.5,
                                         '&:hover': {
-                                            borderColor: 'var(--primary-color, #ff3373)',
-                                            bgcolor: 'rgba(255, 77, 134, 0.05)'
+                                            borderColor: 'var(--primary-color, #ff2d6c)',
+                                            bgcolor: 'rgba(0, 0, 0, 0.05)'
                                         }
                                     }}
                                 >
@@ -607,7 +720,7 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                     </Fade>
                 ) : (
                     /* Call Logs List */
-                    <List disablePadding sx={{ display: 'flex', flexDirection: 'column', gap: 1.2 }}>
+                    <List disablePadding sx={{ display: 'flex', flexDirection: 'column', gap: 1.4 }}>
                         {filteredLogs.map((log, index) => {
                             const isMissed = log.type === 'missed';
                             return (
@@ -615,24 +728,29 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                                     key={log.id || index}
                                     onClick={() => setSelectedCallUser(log)}
                                     sx={{
-                                        bgcolor: 'var(--surface-color, #ffffff)',
-                                        borderRadius: 3.5,
-                                        px: isMobile ? 1.5 : 2,
-                                        py: 1.2,
-                                        border: '1px solid var(--border-color, rgba(0,0,0,0.06))',
-                                        boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+                                        bgcolor: isDark ? 'rgba(28, 22, 38, 0.75)' : 'var(--surface-color, rgba(255, 255, 255, 0.88))',
+                                        backdropFilter: 'blur(14px)',
+                                        WebkitBackdropFilter: 'blur(14px)',
+                                        borderRadius: '22px',
+                                        px: isMobile ? 1.6 : 2.2,
+                                        py: 1.3,
+                                        border: isDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(180, 180, 180, 0.2)',
+                                        boxShadow: isDark
+                                            ? '0 8px 24px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255,255,255,0.06)'
+                                            : '0 8px 24px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.9)',
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'space-between',
                                         cursor: 'pointer',
-                                        transition: 'all 0.22s cubic-bezier(0.4, 0, 0.2, 1)',
+                                        transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
                                         '&:hover': {
-                                            bgcolor: 'var(--surface-color, #ffffff)',
-                                            borderColor: isMissed
-                                                ? 'rgba(239, 68, 68, 0.3)'
-                                                : 'var(--primary-color, rgba(255, 77, 134, 0.35))',
                                             transform: 'translateY(-2px)',
-                                            boxShadow: '0 6px 18px rgba(0,0,0,0.08)'
+                                            borderColor: isMissed
+                                                ? 'rgba(239, 68, 68, 0.45)'
+                                                : 'var(--primary-color, rgba(255, 45, 108, 0.45))',
+                                            boxShadow: isDark
+                                                ? '0 12px 30px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255,255,255,0.1)'
+                                                : '0 12px 32px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 1)'
                                         },
                                         '&:active': {
                                             transform: 'scale(0.99)'
@@ -641,28 +759,38 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                                 >
                                     {/* Left: Avatar with Call Type Badge + Name & Info */}
                                     <Box sx={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 0 }}>
-                                        <ListItemAvatar sx={{ minWidth: 54 }}>
+                                        <ListItemAvatar sx={{ minWidth: 56 }}>
                                             <Box sx={{ position: 'relative', display: 'inline-block' }}>
-                                                <Avatar
-                                                    src={log.image}
-                                                    alt={log.name}
+                                                <Box
                                                     sx={{
-                                                        width: 46,
-                                                        height: 46,
-                                                        fontSize: '1.1rem',
-                                                        fontWeight: 700,
-                                                        bgcolor: !log.image
-                                                            ? 'var(--primary-color, #ff4d86)'
-                                                            : 'transparent',
-                                                        color: '#ffffff',
-                                                        border: isMissed
-                                                            ? '2px solid rgba(239, 68, 68, 0.4)'
-                                                            : '2px solid var(--border-color, rgba(0,0,0,0.06))',
-                                                        boxShadow: '0 2px 6px rgba(0,0,0,0.08)'
+                                                        p: '2.5px',
+                                                        borderRadius: '50%',
+                                                        background: isMissed
+                                                            ? 'linear-gradient(135deg, #ef4444 0%, #fda4af 100%)'
+                                                            : 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff8da1 100%))',
+                                                        boxShadow: isMissed
+                                                            ? '0 4px 12px rgba(239, 68, 68, 0.3)'
+                                                            : '0 4px 12px rgba(0, 0, 0, 0.12)'
                                                     }}
                                                 >
-                                                    {(!log.image && log.name) ? log.name[0].toUpperCase() : '?'}
-                                                </Avatar>
+                                                    <Avatar
+                                                        src={log.image}
+                                                        alt={log.name}
+                                                        sx={{
+                                                            width: 44,
+                                                            height: 44,
+                                                            fontSize: '1.1rem',
+                                                            fontWeight: 700,
+                                                            bgcolor: !log.image
+                                                                ? 'var(--primary-color, #ff4d86)'
+                                                                : 'transparent',
+                                                            color: '#ffffff',
+                                                            border: isDark ? '2px solid #1c1626' : '2px solid #ffffff'
+                                                        }}
+                                                    >
+                                                        {(!log.image && log.name) ? log.name[0].toUpperCase() : '?'}
+                                                    </Avatar>
+                                                </Box>
                                                 {/* Mini status indicator badge on bottom-right of avatar */}
                                                 {renderCallTypeBadge(log.type)}
                                             </Box>
@@ -675,8 +803,8 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                                                     <Typography
                                                         noWrap
                                                         sx={{
-                                                            fontWeight: 650,
-                                                            fontSize: isMobile ? '0.94rem' : '1.02rem',
+                                                            fontWeight: 700,
+                                                            fontSize: isMobile ? '0.96rem' : '1.04rem',
                                                             color: isMissed
                                                                 ? '#ef4444'
                                                                 : 'var(--text-color, #0f172a)',
@@ -694,7 +822,7 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                                                         <Typography
                                                             sx={{
                                                                 fontSize: '0.78rem',
-                                                                fontWeight: 500,
+                                                                fontWeight: 600,
                                                                 color: isMissed ? '#ef4444' : GRAY_TEXT
                                                             }}
                                                         >
@@ -720,13 +848,14 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                                                             icon={<AccessTimeIcon sx={{ fontSize: '11px !important', color: 'inherit' }} />}
                                                             label={formatDuration(log.duration)}
                                                             sx={{
-                                                                height: 18,
+                                                                height: 19,
                                                                 fontSize: '0.68rem',
                                                                 fontWeight: 600,
-                                                                bgcolor: 'var(--background-color, rgba(0,0,0,0.04))',
-                                                                color: GRAY_TEXT,
-                                                                borderRadius: '6px',
-                                                                '& .MuiChip-label': { px: 0.6 }
+                                                                bgcolor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0, 0, 0, 0.05)',
+                                                                color: 'var(--primary-color, #ff2d6c)',
+                                                                borderRadius: '8px',
+                                                                border: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(180, 180, 180, 0.2)',
+                                                                '& .MuiChip-label': { px: 0.7 }
                                                             }}
                                                         />
                                                     ) : null}
@@ -740,7 +869,7 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                                         sx={{
                                             display: 'flex',
                                             alignItems: 'center',
-                                            gap: isMobile ? 0.6 : 1,
+                                            gap: isMobile ? 0.7 : 1,
                                             ml: 1,
                                             flexShrink: 0
                                         }}
@@ -751,16 +880,19 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                                                 size="small"
                                                 onClick={(e) => handleQuickCall(log, 'audio', e)}
                                                 sx={{
-                                                    color: WHATSAPP_GREEN,
-                                                    bgcolor: 'rgba(37, 211, 102, 0.1)',
+                                                    color: '#ffffff',
+                                                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                                                    boxShadow: '0 4px 12px rgba(16, 185, 129, 0.35)',
                                                     borderRadius: '50%',
-                                                    p: 0.9,
-                                                    transition: 'all 0.2s ease',
+                                                    p: 1,
+                                                    transition: 'all 0.22s cubic-bezier(0.4, 0, 0.2, 1)',
                                                     '&:hover': {
-                                                        bgcolor: WHATSAPP_GREEN,
-                                                        color: '#ffffff',
-                                                        transform: 'scale(1.1)',
-                                                        boxShadow: '0 4px 12px rgba(37, 211, 102, 0.35)'
+                                                        background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                                                        transform: 'scale(1.12)',
+                                                        boxShadow: '0 6px 16px rgba(16, 185, 129, 0.5)'
+                                                    },
+                                                    '&:active': {
+                                                        transform: 'scale(0.96)'
                                                     }
                                                 }}
                                             >
@@ -774,16 +906,19 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                                                 size="small"
                                                 onClick={(e) => handleQuickCall(log, 'video', e)}
                                                 sx={{
-                                                    color: 'var(--primary-color, #ff4d86)',
-                                                    bgcolor: 'var(--surface-color, rgba(255, 77, 134, 0.1))',
+                                                    color: '#ffffff',
+                                                    background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
+                                                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
                                                     borderRadius: '50%',
-                                                    p: 0.9,
-                                                    transition: 'all 0.2s ease',
+                                                    p: 1,
+                                                    transition: 'all 0.22s cubic-bezier(0.4, 0, 0.2, 1)',
                                                     '&:hover': {
-                                                        bgcolor: 'var(--primary-color, #ff4d86)',
-                                                        color: '#ffffff',
-                                                        transform: 'scale(1.1)',
-                                                        boxShadow: '0 4px 12px rgba(255, 77, 134, 0.35)'
+                                                        filter: 'brightness(1.08)',
+                                                        transform: 'scale(1.12)',
+                                                        boxShadow: '0 6px 16px rgba(0, 0, 0, 0.25)'
+                                                    },
+                                                    '&:active': {
+                                                        transform: 'scale(0.96)'
                                                     }
                                                 }}
                                             >
@@ -797,14 +932,22 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                                                 size="small"
                                                 onClick={(e) => triggerDeleteSingleConfirm(log.id, e)}
                                                 sx={{
-                                                    color: 'var(--text-color, #94a3b8)',
+                                                    color: '#ef4444',
+                                                    bgcolor: isDark ? 'rgba(239, 68, 68, 0.1)' : 'rgba(239, 68, 68, 0.08)',
+                                                    border: isDark ? '1px solid rgba(239, 68, 68, 0.2)' : '1px solid rgba(239, 68, 68, 0.15)',
+                                                    boxShadow: isDark ? '0 2px 8px rgba(0,0,0,0.2)' : '0 2px 6px rgba(239, 68, 68, 0.1)',
                                                     borderRadius: '50%',
-                                                    p: 0.8,
-                                                    transition: 'all 0.2s ease',
+                                                    p: 1,
+                                                    transition: 'all 0.22s cubic-bezier(0.4, 0, 0.2, 1)',
                                                     '&:hover': {
-                                                        color: '#ef4444',
-                                                        bgcolor: 'rgba(239, 68, 68, 0.1)',
-                                                        transform: 'scale(1.08)'
+                                                        color: '#ffffff',
+                                                        background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                                                        borderColor: '#ef4444',
+                                                        transform: 'scale(1.12)',
+                                                        boxShadow: '0 4px 14px rgba(239, 68, 68, 0.4)'
+                                                    },
+                                                    '&:active': {
+                                                        transform: 'scale(0.96)'
                                                     }
                                                 }}
                                             >
@@ -825,16 +968,17 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                 onClose={() => setSelectedCallUser(null)}
                 PaperProps={{
                     sx: {
-                        borderRadius: 4.5,
-                        p: 3,
+                        borderRadius: '28px',
+                        p: 3.5,
                         width: '92%',
-                        maxWidth: 360,
-                        bgcolor: 'var(--surface-color, #ffffff)',
+                        maxWidth: 380,
+                        bgcolor: isDark ? 'rgba(26, 20, 36, 0.95)' : 'var(--surface-color, rgba(255, 255, 255, 0.95))',
+                        backdropFilter: 'blur(20px)',
                         color: 'var(--text-color, #0f172a)',
-                        boxShadow: '0 20px 50px rgba(0,0,0,0.18)',
+                        boxShadow: isDark ? '0 24px 60px rgba(0,0,0,0.5)' : '0 24px 60px rgba(0, 0, 0, 0.12)',
                         textAlign: 'center',
                         position: 'relative',
-                        border: '1px solid var(--border-color, rgba(0,0,0,0.08))'
+                        border: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(180, 180, 180, 0.2)'
                     }
                 }}
             >
@@ -845,13 +989,13 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                         position: 'absolute',
                         top: 14,
                         right: 14,
-                        color: 'var(--text-color, #94a3b8)',
-                        bgcolor: 'var(--background-color, rgba(0,0,0,0.04))',
+                        color: isDark ? '#94a3b8' : '#a0aec0',
+                        bgcolor: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0,0,0,0.04)',
                         borderRadius: '50%',
                         p: 0.8,
                         '&:hover': {
-                            bgcolor: 'rgba(0,0,0,0.08)',
-                            color: 'var(--text-color, #0f172a)'
+                            bgcolor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0,0,0,0.08)',
+                            color: isDark ? '#ffffff' : '#0f172a'
                         }
                     }}
                 >
@@ -862,22 +1006,31 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                     <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', pt: 1 }}>
                         {/* Avatar with Glow Ring */}
                         <Box sx={{ position: 'relative', mb: 2 }}>
-                            <Avatar
-                                src={selectedCallUser.image}
-                                alt={selectedCallUser.name}
+                            <Box
                                 sx={{
-                                    width: 86,
-                                    height: 86,
-                                    fontSize: 34,
-                                    fontWeight: 700,
-                                    bgcolor: !selectedCallUser.image ? 'var(--primary-color, #ff4d86)' : 'transparent',
-                                    color: '#ffffff',
-                                    border: '3px solid var(--primary-color, #ff4d86)',
-                                    boxShadow: '0 8px 24px rgba(255, 77, 134, 0.25)'
+                                    p: '4px',
+                                    borderRadius: '50%',
+                                    background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff8da1 100%))',
+                                    boxShadow: '0 8px 28px rgba(0, 0, 0, 0.15)',
+                                    display: 'inline-block'
                                 }}
                             >
-                                {(!selectedCallUser.image && selectedCallUser.name) ? selectedCallUser.name[0].toUpperCase() : '?'}
-                            </Avatar>
+                                <Avatar
+                                    src={selectedCallUser.image}
+                                    alt={selectedCallUser.name}
+                                    sx={{
+                                        width: 86,
+                                        height: 86,
+                                        fontSize: 34,
+                                        fontWeight: 700,
+                                        bgcolor: !selectedCallUser.image ? 'var(--primary-color, #ff4d86)' : 'transparent',
+                                        color: '#ffffff',
+                                        border: isDark ? '3px solid #1a1424' : '3px solid #ffffff'
+                                    }}
+                                >
+                                    {(!selectedCallUser.image && selectedCallUser.name) ? selectedCallUser.name[0].toUpperCase() : '?'}
+                                </Avatar>
+                            </Box>
                         </Box>
 
                         {/* Contact Name */}
@@ -900,15 +1053,16 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 gap: 0.8,
-                                px: 1.5,
-                                py: 0.6,
+                                px: 1.8,
+                                py: 0.7,
                                 borderRadius: '20px',
-                                bgcolor: 'var(--background-color, #f1f5f9)',
+                                bgcolor: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)',
+                                border: isDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(180, 180, 180, 0.2)',
                                 mb: 3
                             }}
                         >
                             {getCallIcon(selectedCallUser.type, 15)}
-                            <Typography sx={{ fontSize: '0.82rem', fontWeight: 600, color: selectedCallUser.type === 'missed' ? '#ef4444' : GRAY_TEXT }}>
+                            <Typography sx={{ fontSize: '0.82rem', fontWeight: 650, color: selectedCallUser.type === 'missed' ? '#ef4444' : GRAY_TEXT }}>
                                 {selectedCallUser.type === 'missed'
                                     ? 'Missed call'
                                     : selectedCallUser.type === 'incoming'
@@ -922,7 +1076,7 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                             {selectedCallUser.duration && selectedCallUser.type !== 'missed' && (
                                 <>
                                     <Typography sx={{ fontSize: '0.78rem', color: 'rgba(100, 116, 139, 0.6)' }}>•</Typography>
-                                    <Typography sx={{ fontSize: '0.82rem', fontWeight: 600, color: GRAY_TEXT }}>
+                                    <Typography sx={{ fontSize: '0.82rem', fontWeight: 650, color: 'var(--primary-color, #ff2d6c)' }}>
                                         {formatDuration(selectedCallUser.duration)}
                                     </Typography>
                                 </>
@@ -941,19 +1095,18 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                                 }}
                                 startIcon={<PhoneIcon />}
                                 sx={{
-                                    py: 1.3,
-                                    borderRadius: 3,
+                                    py: 1.4,
+                                    borderRadius: '16px',
                                     fontWeight: 700,
-                                    fontSize: '0.9rem',
+                                    fontSize: '0.92rem',
                                     textTransform: 'none',
-                                    bgcolor: '#25D366',
-                                    backgroundImage: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
+                                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
                                     color: '#ffffff',
-                                    boxShadow: '0 6px 18px rgba(37, 211, 102, 0.3)',
-                                    transition: 'all 0.2s ease',
+                                    boxShadow: '0 6px 20px rgba(16, 185, 129, 0.35)',
+                                    transition: 'all 0.22s ease',
                                     '&:hover': {
-                                        backgroundImage: 'linear-gradient(135deg, #22be5b 0%, #0e7266 100%)',
-                                        boxShadow: '0 8px 24px rgba(37, 211, 102, 0.45)',
+                                        background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                                        boxShadow: '0 8px 24px rgba(16, 185, 129, 0.5)',
                                         transform: 'translateY(-2px)'
                                     },
                                     '&:active': {
@@ -974,19 +1127,18 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                                 }}
                                 startIcon={<VideocamIcon />}
                                 sx={{
-                                    py: 1.3,
-                                    borderRadius: 3,
+                                    py: 1.4,
+                                    borderRadius: '16px',
                                     fontWeight: 700,
-                                    fontSize: '0.9rem',
+                                    fontSize: '0.92rem',
                                     textTransform: 'none',
-                                    bgcolor: 'var(--primary-color, #ff4d86)',
-                                    backgroundImage: 'linear-gradient(135deg, #ff4d86 0%, #ff175e 100%)',
+                                    background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
                                     color: '#ffffff',
-                                    boxShadow: '0 6px 18px rgba(255, 77, 134, 0.3)',
-                                    transition: 'all 0.2s ease',
+                                    boxShadow: '0 6px 20px rgba(0, 0, 0, 0.2)',
+                                    transition: 'all 0.22s ease',
                                     '&:hover': {
-                                        backgroundImage: 'linear-gradient(135deg, #ff3373 0%, #e60047 100%)',
-                                        boxShadow: '0 8px 24px rgba(255, 77, 134, 0.45)',
+                                        filter: 'brightness(1.08)',
+                                        boxShadow: '0 8px 24px rgba(0, 0, 0, 0.3)',
                                         transform: 'translateY(-2px)'
                                     },
                                     '&:active': {
@@ -1005,17 +1157,19 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                             onClick={() => handleOpenChat(selectedCallUser)}
                             startIcon={<ChatBubbleOutlineIcon />}
                             sx={{
-                                py: 1.1,
-                                borderRadius: 3,
-                                fontWeight: 600,
-                                fontSize: '0.88rem',
+                                py: 1.2,
+                                borderRadius: '16px',
+                                fontWeight: 650,
+                                fontSize: '0.9rem',
                                 textTransform: 'none',
-                                color: 'var(--text-color, #0f172a)',
-                                borderColor: 'var(--border-color, rgba(0,0,0,0.12))',
+                                color: isDark ? '#f8fafc' : '#0f172a',
+                                borderColor: isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(180, 180, 180, 0.25)',
+                                bgcolor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0, 0, 0, 0.02)',
                                 '&:hover': {
-                                    borderColor: 'var(--primary-color, #ff4d86)',
-                                    bgcolor: 'rgba(255, 77, 134, 0.05)',
-                                    color: 'var(--primary-color, #ff4d86)'
+                                    borderColor: 'var(--primary-color, #ff2d6c)',
+                                    bgcolor: 'rgba(0, 0, 0, 0.04)',
+                                    color: 'var(--primary-color, #ff2d6c)',
+                                    transform: 'translateY(-1px)'
                                 }
                             }}
                         >
@@ -1031,12 +1185,13 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                 onClose={() => setConfirmOpen(false)}
                 PaperProps={{
                     sx: {
-                        borderRadius: 4,
-                        p: 2,
-                        minWidth: 290,
-                        maxWidth: 380,
-                        bgcolor: 'var(--surface-color, #ffffff)',
-                        boxShadow: '0 20px 40px rgba(0,0,0,0.18)',
+                        borderRadius: '24px',
+                        p: 2.5,
+                        minWidth: 300,
+                        maxWidth: 400,
+                        bgcolor: isDark ? '#1a1424' : '#ffffff',
+                        border: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(255, 105, 150, 0.2)',
+                        boxShadow: '0 24px 60px rgba(0,0,0,0.3)',
                         textAlign: 'center'
                     }
                 }}
@@ -1044,18 +1199,19 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                 <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', pt: 1 }}>
                     <Box
                         sx={{
-                            width: 54,
-                            height: 54,
+                            width: 58,
+                            height: 58,
                             borderRadius: '50%',
-                            bgcolor: 'rgba(239, 68, 68, 0.1)',
+                            bgcolor: 'rgba(239, 68, 68, 0.12)',
                             color: '#ef4444',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            mb: 1.5
+                            mb: 1.8,
+                            boxShadow: '0 4px 14px rgba(239, 68, 68, 0.2)'
                         }}
                     >
-                        <WarningAmberRoundedIcon sx={{ fontSize: 32 }} />
+                        <WarningAmberRoundedIcon sx={{ fontSize: 34 }} />
                     </Box>
 
                     <DialogTitle
@@ -1063,14 +1219,14 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                             fontWeight: 750,
                             p: 0,
                             mb: 1,
-                            fontSize: '1.2rem',
+                            fontSize: '1.25rem',
                             color: 'var(--text-color, #0f172a)'
                         }}
                     >
                         {deleteType === 'all' ? 'Clear Call History?' : 'Delete Call Log?'}
                     </DialogTitle>
 
-                    <DialogContent sx={{ p: 0, px: 1, mb: 2 }}>
+                    <DialogContent sx={{ p: 0, px: 1, mb: 2.5 }}>
                         <DialogContentText
                             sx={{
                                 fontSize: '0.88rem',
@@ -1089,13 +1245,14 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                             fullWidth
                             onClick={() => setConfirmOpen(false)}
                             sx={{
-                                borderRadius: 2.5,
-                                py: 1,
-                                color: 'var(--text-color, #64748b)',
-                                bgcolor: 'var(--background-color, #f1f5f9)',
+                                borderRadius: '18px',
+                                py: 1.2,
+                                color: isDark ? '#94a3b8' : '#64748b',
+                                bgcolor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
                                 textTransform: 'none',
                                 fontWeight: 650,
-                                '&:hover': { bgcolor: 'rgba(0,0,0,0.08)' }
+                                transition: 'all 0.2s ease',
+                                '&:hover': { bgcolor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)' }
                             }}
                         >
                             Cancel
@@ -1105,16 +1262,22 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                             onClick={handleConfirmDelete}
                             variant="contained"
                             sx={{
-                                borderRadius: 2.5,
-                                py: 1,
-                                bgcolor: '#ef4444',
+                                borderRadius: '18px',
+                                py: 1.2,
+                                background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
                                 color: '#ffffff',
                                 textTransform: 'none',
-                                fontWeight: 650,
-                                boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)',
+                                fontWeight: 700,
+                                fontSize: '0.92rem',
+                                boxShadow: '0 6px 18px rgba(239, 68, 68, 0.35)',
+                                transition: 'all 0.22s ease',
                                 '&:hover': {
-                                    bgcolor: '#dc2626',
-                                    boxShadow: '0 6px 16px rgba(239, 68, 68, 0.4)'
+                                    background: 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)',
+                                    boxShadow: '0 8px 24px rgba(239, 68, 68, 0.45)',
+                                    transform: 'translateY(-1px)'
+                                },
+                                '&:active': {
+                                    transform: 'scale(0.98)'
                                 }
                             }}
                         >

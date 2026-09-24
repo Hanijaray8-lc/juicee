@@ -247,9 +247,9 @@ async function sendCallNotification(recipientUser, caller, callType = 'audio', s
       // Signaling is delivered in real-time over Socket.IO (activeOutgoingCalls),
       // so signal is kept empty in FCM push to ensure 100% reliable delivery for video calls.
       signal: '',
-      sound: 'receiver',
+      sound: 'reciver',
     },
-    channelId: 'call_notifications_v3',
+    channelId: 'call_notifications_v6',
   };
 
   return sendNotificationToUser(recipientUser, notification);

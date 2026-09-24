@@ -228,6 +228,7 @@ export const usePushNotifications = (user, setUnread, videoCallRef, navigate) =>
                 }
               }
               if (intent.action === 'accept') {
+                localStorage.setItem('pendingCallAccept', JSON.stringify({ ...intent, signal: parsedSignal }));
                 sessionStorage.setItem('pendingCallAccept', JSON.stringify({ ...intent, signal: parsedSignal }));
               }
               if (videoCallRef.current) {
@@ -237,6 +238,19 @@ export const usePushNotifications = (user, setUnread, videoCallRef, navigate) =>
                   callType: intent.callType,
                   signal: parsedSignal
                 });
+                if (intent.action === 'accept') {
+                  console.log('🚀 [FCM] Directly answering call from notification Answer action');
+                  setTimeout(() => {
+                    const pending = localStorage.getItem('pendingCallAccept') || sessionStorage.getItem('pendingCallAccept');
+                    if (pending) {
+                      localStorage.removeItem('pendingCallAccept');
+                      sessionStorage.removeItem('pendingCallAccept');
+                      if (videoCallRef.current?.answerCall) {
+                        videoCallRef.current.answerCall();
+                      }
+                    }
+                  }, 60);
+                }
               }
             }
           };

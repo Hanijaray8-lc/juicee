@@ -40,12 +40,40 @@ import { io } from 'socket.io-client';
 import * as XLSX from 'xlsx';
 import { Capacitor } from '@capacitor/core';
 import API_BASE_URL from './config/apiConfig';
+import {
+  saveRecentSearchesLocally,
+  getRecentSearchesLocally,
+  saveCachedUsersLocally,
+  searchCachedUsersLocally,
+  getLastLoginsLocally,
+  saveFriendsLocally,
+  getFriendsLocally,
+  getBlockedUsersLocally,
+  saveBlockedUsersLocally
+} from './db/offlineDb';
+import { getProfileImageSrc } from './utils/imageUtils';
 
 const SearchPage = () => {
   const [search, setSearch] = useState('');
   const [filteredUsers, setFilteredUsers] = useState([]);
-  const [friendRequests, setFriendRequests] = useState({});
-  const [lastLoginUsers, setLastLoginUsers] = useState([]);
+  const [friendRequests, setFriendRequests] = useState(() => {
+    try {
+      const currentUserId = localStorage.getItem('userId');
+      if (!currentUserId) return {};
+      const saved = localStorage.getItem(`juicy_cached_sent_requests_${currentUserId}`);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+  const [lastLoginUsers, setLastLoginUsers] = useState(() => {
+    try {
+      const cached = localStorage.getItem('cached_last_logins');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
   const [recentSearches, setRecentSearches] = useState(() => {
     try {
       const currentUserId = localStorage.getItem('userId');
@@ -56,9 +84,35 @@ const SearchPage = () => {
       return [];
     }
   });
-  const [blockedUsers, setBlockedUsers] = useState([]);
-  const [blockedBy, setBlockedBy] = useState([]);
-  
+  const [blockedUsers, setBlockedUsers] = useState(() => {
+    try {
+      const currentUserId = localStorage.getItem('userId');
+      if (!currentUserId) return [];
+      const saved = localStorage.getItem(`juicy_cached_blocked_${currentUserId}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return parsed.map(u => (typeof u === 'string' ? u : (u.userId || u._id || u.id)));
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  });
+  const [blockedBy, setBlockedBy] = useState(() => {
+    try {
+      const currentUserId = localStorage.getItem('userId');
+      if (!currentUserId) return [];
+      const saved = localStorage.getItem(`juicy_cached_blocked_by_${currentUserId}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return parsed.map(u => (typeof u === 'string' ? u : (u.userId || u._id || u.id)));
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  });
+
   // New state for profile dialog
   const [selectedUser, setSelectedUser] = useState(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -69,7 +123,7 @@ const SearchPage = () => {
   const [syncError, setSyncError] = useState('');
   const [syncSuccess, setSyncSuccess] = useState('');
   const [snackbarOpen, setSnackbarOpen] = useState(false);
-  
+
   // Menu for contact sync options
   const [anchorEl, setAnchorEl] = useState(null);
   const open = Boolean(anchorEl);
@@ -77,11 +131,61 @@ const SearchPage = () => {
   // Socket state
   const [socket, setSocket] = useState(null);
 
-  // User's friends
-  const [userFriends, setUserFriends] = useState([]);
+  // User's friends - initialized from cache for instant 0ms rendering
+  const [userFriends, setUserFriends] = useState(() => {
+    try {
+      const currentUserId = localStorage.getItem('userId');
+      if (!currentUserId) return [];
+      const saved = localStorage.getItem(`juicy_cached_friends_${currentUserId}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
 
   const theme = useTheme();
   const isMobile = useMediaQuery('(max-width: 1024px)');
+  const [currentIsDark, setCurrentIsDark] = useState(() => {
+    try {
+      const saved = localStorage.getItem('appTheme');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const bgCol = parsed?.colors?.background;
+        if (bgCol && bgCol.startsWith('#')) {
+          const hex = bgCol.replace('#', '').trim();
+          const r = parseInt(hex.substring(0, 2), 16);
+          const g = parseInt(hex.substring(2, 4), 16);
+          const b = parseInt(hex.substring(4, 6), 16);
+          return (r * 299 + g * 587 + b * 114) / 1000 < 128;
+        }
+      }
+    } catch (e) {}
+    return theme.palette.mode === 'dark';
+  });
+  const isDark = currentIsDark;
+
+  useEffect(() => {
+    const handleThemeChange = () => {
+      try {
+        const saved = localStorage.getItem('appTheme');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          const bgCol = parsed?.colors?.background;
+          if (bgCol && bgCol.startsWith('#')) {
+            const hex = bgCol.replace('#', '').trim();
+            const r = parseInt(hex.substring(0, 2), 16);
+            const g = parseInt(hex.substring(2, 4), 16);
+            const b = parseInt(hex.substring(4, 6), 16);
+            setCurrentIsDark((r * 299 + g * 587 + b * 114) / 1000 < 128);
+            return;
+          }
+        }
+      } catch (e) {}
+      setCurrentIsDark(theme.palette.mode === 'dark');
+    };
+    window.addEventListener('themeChanged', handleThemeChange);
+    return () => window.removeEventListener('themeChanged', handleThemeChange);
+  }, [theme.palette.mode]);
 
   // Check if browser supports Contact Picker API
   const supportsContactPicker = 'contacts' in navigator && 'ContactsManager' in window;
@@ -140,10 +244,10 @@ const SearchPage = () => {
             receiverId: user._id
           })
         });
-        
+
         const requestData = await response.json();
         setFriendRequests((prev) => ({ ...prev, [userId]: true }));
-        
+
         // Emit socket event to notify friend request to recipient in real-time
         if (socket && socket.connected) {
           socket.emit('send_friend_request', {
@@ -155,7 +259,7 @@ const SearchPage = () => {
             timestamp: new Date()
           });
         }
-        
+
         // Update selected user if dialog is open
         if (selectedUser && selectedUser._id === userId) {
           setSelectedUser({ ...selectedUser, friendRequestSent: true });
@@ -169,16 +273,32 @@ const SearchPage = () => {
   // Remove from recent searches by userId
   const handleRemoveRecent = (userId, e) => {
     e.stopPropagation(); // Prevent opening profile
-    setRecentSearches((prev) => prev.filter((u) => u._id !== userId));
+    setRecentSearches((prev) => {
+      const updated = prev.filter((u) => u._id !== userId);
+      const currentUserId = localStorage.getItem('userId');
+      if (currentUserId) {
+        try {
+          localStorage.setItem(`recentSearches_${currentUserId}`, JSON.stringify(updated));
+        } catch (err) { }
+        saveRecentSearchesLocally(currentUserId, updated);
+      }
+      return updated;
+    });
   };
 
   const handleCancelRequest = async (userId) => {
     setFriendRequests((prev) => {
       const updated = { ...prev };
       delete updated[userId];
+      const currentUserId = localStorage.getItem('userId');
+      if (currentUserId) {
+        try {
+          localStorage.setItem(`juicy_cached_sent_requests_${currentUserId}`, JSON.stringify(updated));
+        } catch (e) { }
+      }
       return updated;
     });
-    
+
     // Cancel friend request in backend
     const currentUserId = localStorage.getItem('userId');
     try {
@@ -187,7 +307,7 @@ const SearchPage = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ receiverId: userId })
       });
-      
+
       // Update selected user if dialog is open
       if (selectedUser && selectedUser._id === userId) {
         setSelectedUser({ ...selectedUser, friendRequestSent: false });
@@ -199,18 +319,27 @@ const SearchPage = () => {
 
   // Remove friend
   const handleRemoveFriend = async (userId) => {
-    // Remove from local state
-    setUserFriends((prev) => prev.filter(f => f._id !== userId));
-    
-    // Remove from backend
     const currentUserId = localStorage.getItem('userId');
+    // Remove from local state and SQLite
+    setUserFriends((prev) => {
+      const updated = prev.filter(f => f._id !== userId);
+      if (currentUserId) {
+        try {
+          localStorage.setItem(`juicy_cached_friends_${currentUserId}`, JSON.stringify(updated));
+        } catch (e) { }
+        saveFriendsLocally(currentUserId, updated);
+      }
+      return updated;
+    });
+
+    // Remove from backend
     try {
       await fetch(`${API_BASE_URL}/api/user/${currentUserId}/remove-friend`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ friendId: userId })
       });
-      
+
       // Notify ChatPage and other clients about friend removal via socket
       if (socket && socket.connected) {
         socket.emit('friend_removed', {
@@ -218,18 +347,25 @@ const SearchPage = () => {
           currentUserId: currentUserId
         });
       }
-      
+
       // Update selected user if dialog is open
       if (selectedUser && selectedUser._id === userId) {
         setSelectedUser({ ...selectedUser });
       }
     } catch (err) {
       console.error('Error removing friend:', err);
-      // Restore the friend in local state if delete failed
+      // Restore the friend in local state and SQLite if delete failed
       setUserFriends((prev) => {
         const user = userFriends.find(f => f._id === userId);
         if (user) {
-          return [...prev, user];
+          const restored = [...prev, user];
+          if (currentUserId) {
+            try {
+              localStorage.setItem(`juicy_cached_friends_${currentUserId}`, JSON.stringify(restored));
+            } catch (e) { }
+            saveFriendsLocally(currentUserId, restored);
+          }
+          return restored;
         }
         return prev;
       });
@@ -247,7 +383,7 @@ const SearchPage = () => {
   const extractFromVCF = (content) => {
     const phones = [];
     const lines = content.split('\n');
-    
+
     for (const line of lines) {
       if (line.startsWith('TEL;') || line.startsWith('TEL:')) {
         const match = line.match(/[+\d\s-()]+/g);
@@ -302,7 +438,7 @@ const SearchPage = () => {
         const sheetName = workbook.SheetNames[0];
         const sheet = workbook.Sheets[sheetName];
         const data = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-        
+
         data.forEach(row => {
           if (Array.isArray(row)) {
             row.forEach(cell => {
@@ -354,16 +490,16 @@ const SearchPage = () => {
   const searchUsersByPhones = async (phoneNumbers) => {
     try {
       const currentUserId = localStorage.getItem('userId');
-      
+
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-      
+
       const response = await fetch(`${API_BASE_URL}/api/search-by-phones`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          phoneNumbers, 
-          userId: currentUserId 
+        body: JSON.stringify({
+          phoneNumbers,
+          userId: currentUserId
         }),
         signal: controller.signal
       });
@@ -385,16 +521,17 @@ const SearchPage = () => {
 
       // Filter out blocked users and ensure profile visibility
       if (Array.isArray(matchedUsers)) {
-        matchedUsers = matchedUsers.filter(u => 
-          String(u._id) !== String(currentUserId) && 
-          !blockedUsers.includes(u._id) && 
+        matchedUsers = matchedUsers.filter(u =>
+          String(u._id) !== String(currentUserId) &&
+          !blockedUsers.includes(u._id) &&
           !blockedBy.includes(u._id) &&
           u.profileVisible !== false
         );
       }
 
       setSyncedUsers(matchedUsers);
-      
+      saveCachedUsersLocally(matchedUsers);
+
       if (matchedUsers.length === 0) {
         setSyncError(`No app users found among ${phoneNumbers.length} contacts.`);
       } else {
@@ -405,13 +542,13 @@ const SearchPage = () => {
     } catch (err) {
       console.error('Error searching users:', err);
       let errorMsg = err?.message || 'Unknown error occurred';
-      
+
       if (err.name === 'AbortError') {
         errorMsg = 'Request timed out. Check your internet connection.';
       } else if (errorMsg.includes('Failed to fetch')) {
         errorMsg = 'Cannot reach server. Make sure you\'re connected to the internet and the server is running.';
       }
-      
+
       setSyncError(`Error: ${errorMsg}`);
     }
   };
@@ -429,12 +566,12 @@ const SearchPage = () => {
 
       const props = ['name', 'tel'];
       const opts = { multiple: true };
-      
+
       // @ts-ignore - Contact Picker API types
       const contacts = await navigator.contacts.select(props, opts);
-      
+
       const phoneNumbers = [];
-      
+
       for (const contact of contacts) {
         if (contact.tel && Array.isArray(contact.tel)) {
           for (const number of contact.tel) {
@@ -475,11 +612,11 @@ const SearchPage = () => {
     if (!file) return;
 
     setIsSyncingContacts(true);
-    
+
     try {
       const content = await file.text();
       const phoneNumbers = extractFromVCF(content);
-      
+
       if (phoneNumbers.length > 0) {
         await searchUsersByPhones([...new Set(phoneNumbers)]);
       } else {
@@ -503,11 +640,11 @@ const SearchPage = () => {
       const Contacts = ContactsModule.Contacts;
 
       const perm = await Contacts.requestPermissions();
-      const granted = 
-        (perm === 'granted') || 
-        (perm === 'limited') || 
+      const granted =
+        (perm === 'granted') ||
+        (perm === 'limited') ||
         (perm && perm.contacts && (perm.contacts === 'granted' || perm.contacts === 'limited'));
-      
+
       if (!granted) return [];
 
       const result = await Contacts.getContacts();
@@ -542,7 +679,7 @@ const SearchPage = () => {
     try {
       let phoneNumbers = [];
       const isNative = typeof window !== 'undefined' && Capacitor && Capacitor.getPlatform && Capacitor.getPlatform() !== 'web';
-      
+
       if (isNative && method !== 'file') {
         phoneNumbers = await fetchAndroidContacts();
         if (phoneNumbers.length > 0) {
@@ -605,7 +742,7 @@ const SearchPage = () => {
   // Initialize socket connection
   useEffect(() => {
     const socketUrl = API_BASE_URL;
-    
+
     const newSocket = io(socketUrl, {
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 10,
@@ -614,9 +751,9 @@ const SearchPage = () => {
       reconnection: true,
       autoConnect: true
     });
-    
+
     setSocket(newSocket);
-    
+
     return () => {
       if (newSocket) {
         newSocket.disconnect();
@@ -624,97 +761,188 @@ const SearchPage = () => {
     };
   }, []);
 
-  // Fetch users based on search
+  // Load recent searches and friends from SQLite on mount
   useEffect(() => {
+    const currentUserId = localStorage.getItem('userId');
+    if (!currentUserId) return;
+
+    // SQLite Recent Searches
+    getRecentSearchesLocally(currentUserId)
+      .then((searches) => {
+        if (Array.isArray(searches) && searches.length > 0) {
+          setRecentSearches(searches);
+        }
+      })
+      .catch(e => console.warn('SQLite recent searches notice:', e));
+
+    // SQLite Friends List
+    getFriendsLocally(currentUserId)
+      .then((friends) => {
+        if (Array.isArray(friends) && friends.length > 0) {
+          setUserFriends(friends);
+        }
+      })
+      .catch(e => console.warn('SQLite friends notice:', e));
+
+    // SQLite Blocked Users
+    getBlockedUsersLocally(currentUserId)
+      .then((blocked) => {
+        if (Array.isArray(blocked) && blocked.length > 0) {
+          const ids = blocked.map(u => (typeof u === 'string' ? u : (u.userId || u._id || u.id)));
+          setBlockedUsers(ids);
+        }
+      })
+      .catch(e => console.warn('SQLite blocked notice:', e));
+  }, []);
+
+  // Fetch users based on search (offline-first SQLite query + online API search)
+  useEffect(() => {
+    let isCancelled = false;
     const fetchUsers = async () => {
-      if (search.trim() === '') {
+      const q = search.trim();
+      if (q === '') {
         setFilteredUsers([]);
         return;
       }
 
+      const currentUserId = localStorage.getItem('userId');
+
+      // 1. Instant offline search from local SQLite
       try {
-        const currentUserId = localStorage.getItem('userId');
-        const API_URL = API_BASE_URL;
-        const res = await fetch(`${API_URL}/api/users/search?q=${search}&userId=${currentUserId}`);
-        let data = await res.json();
-        if (Array.isArray(data) && currentUserId) {
-          data = data.filter(u => String(u._id) !== String(currentUserId));
-          data = data.filter(u => u.profileVisible !== false);
+        const localMatches = await searchCachedUsersLocally(q);
+        if (!isCancelled && Array.isArray(localMatches) && localMatches.length > 0) {
+          const filteredLocal = localMatches
+            .filter(u => String(u._id) !== String(currentUserId))
+            .filter(u => !blockedUsers.includes(u._id) && !blockedBy.includes(u._id));
+          if (filteredLocal.length > 0) {
+            setFilteredUsers(filteredLocal);
+          }
         }
-        setFilteredUsers(data);
+      } catch (err) {
+        console.warn('SQLite search notice:', err);
+      }
+
+      // 2. Online search from backend API
+      try {
+        const API_URL = API_BASE_URL;
+        const res = await fetch(`${API_URL}/api/users/search?q=${encodeURIComponent(q)}&userId=${currentUserId}`);
+        let data = await res.json();
+        if (!isCancelled && Array.isArray(data)) {
+          if (currentUserId) {
+            data = data.filter(u => String(u._id) !== String(currentUserId));
+            data = data.filter(u => u.profileVisible !== false);
+          }
+          setFilteredUsers(data);
+          // Cache discovered users into SQLite for offline availability
+          saveCachedUsersLocally(data);
+        }
       } catch (error) {
-        console.error('Error fetching users:', error);
-        setFilteredUsers([]);
+        console.warn('Network search unavailable, retaining offline SQLite results:', error);
       }
     };
 
     fetchUsers();
-  }, [search]);
+    return () => {
+      isCancelled = true;
+    };
+  }, [search, blockedUsers, blockedBy]);
 
-  // Fetch last registered users
+  // Fetch last registered users (offline-first SQLite + online API)
   useEffect(() => {
+    let isCancelled = false;
     const fetchLastLogins = async () => {
       try {
         const limit = isMobile ? 15 : 20;
         const currentUserId = localStorage.getItem('userId');
         const API_URL = API_BASE_URL;
 
-        // Instant load from local cache if available
+        // 1. Instant load from local SQLite cache
+        try {
+          const sqliteUsers = await getLastLoginsLocally(limit);
+          if (!isCancelled && Array.isArray(sqliteUsers) && sqliteUsers.length > 0) {
+            const filteredSqlite = sqliteUsers.filter(u => String(u._id) !== String(currentUserId));
+            if (filteredSqlite.length > 0) {
+              setLastLoginUsers(filteredSqlite);
+            }
+          }
+        } catch (e) { }
+
+        // Fallback to localStorage cache if state empty
         const cached = localStorage.getItem('cached_last_logins');
         if (cached) {
           try {
-            setLastLoginUsers(JSON.parse(cached));
-          } catch (e) {}
+            const parsed = JSON.parse(cached);
+            if (!isCancelled && Array.isArray(parsed) && parsed.length > 0) {
+              setLastLoginUsers(prev => (prev.length === 0 ? parsed : prev));
+            }
+          } catch (e) { }
         }
 
+        // 2. Fetch fresh last logins from backend
         const res = await fetch(`${API_URL}/api/last-logins?limit=${limit}`);
         let data = await res.json();
-        if (Array.isArray(data) && currentUserId) {
-          data = data.filter(u => String(u._id) !== String(currentUserId));
-          data = data.filter(u => u.profileVisible !== false);
+        if (!isCancelled && Array.isArray(data)) {
+          if (currentUserId) {
+            data = data.filter(u => String(u._id) !== String(currentUserId));
+            data = data.filter(u => u.profileVisible !== false);
+          }
+          setLastLoginUsers(data);
+          try { localStorage.setItem('cached_last_logins', JSON.stringify(data)); } catch (e) { }
+          // Cache in SQLite
+          saveCachedUsersLocally(data);
         }
-        setLastLoginUsers(data);
-        try { localStorage.setItem('cached_last_logins', JSON.stringify(data)); } catch (e) {}
       } catch (error) {
-        console.error('Error fetching last logins:', error);
+        console.warn('Network last logins fetch failed, using offline SQLite cache:', error);
       }
     };
     fetchLastLogins();
+    return () => {
+      isCancelled = true;
+    };
   }, [isMobile]);
 
-  // Fetch user's friends list
+  // Fetch user's friends list (network sync + SQLite persist)
   useEffect(() => {
     const fetchUserFriends = async () => {
       const currentUserId = localStorage.getItem('userId');
       if (!currentUserId) return;
-      
+
       try {
         const API_URL = API_BASE_URL;
         const res = await fetch(`${API_URL}/api/user/${currentUserId}/friends`);
         const data = await res.json();
-        
+
         let friends = Array.isArray(data) ? data : [];
-        friends = friends.filter(u => 
-          !blockedUsers.includes(u._id) && 
+        friends = friends.filter(u =>
+          !blockedUsers.includes(u._id) &&
           !blockedBy.includes(u._id)
         );
-        
+
         setUserFriends(friends);
+        try {
+          localStorage.setItem(`juicy_cached_friends_${currentUserId}`, JSON.stringify(friends));
+        } catch (e) { }
+        // Also cache friends into SQLite
+        saveFriendsLocally(currentUserId, friends);
+        if (friends.length > 0) {
+          saveCachedUsersLocally(friends);
+        }
       } catch (error) {
-        console.error('Error fetching user friends:', error);
-        setUserFriends([]);
+        console.warn('Network friend fetch failed, retaining SQLite local cache:', error);
       }
     };
-    
+
     fetchUserFriends();
   }, [blockedUsers, blockedBy]);
 
-  // Save recentSearches to localStorage
+  // Save recentSearches to localStorage and SQLite
   useEffect(() => {
     try {
       const currentUserId = localStorage.getItem('userId');
       if (!currentUserId) return;
       localStorage.setItem(`recentSearches_${currentUserId}`, JSON.stringify(recentSearches));
+      // Persist to local SQLite
+      saveRecentSearchesLocally(currentUserId, recentSearches);
     } catch (e) {
       console.error('Failed to save recent searches', e);
     }
@@ -756,7 +984,8 @@ const SearchPage = () => {
         const same = validated.length === parsed.length && validated.every((v, i) => v._id === (parsed[i] && parsed[i]._id));
         if (!same) {
           setRecentSearches(validated);
-          try { localStorage.setItem(key, JSON.stringify(validated)); } catch {}
+          try { localStorage.setItem(key, JSON.stringify(validated)); } catch { }
+          saveRecentSearchesLocally(currentUserId, validated);
         }
       } catch (err) {
         console.error('validateRecent error', err);
@@ -786,22 +1015,34 @@ const SearchPage = () => {
           });
         }
         setFriendRequests(sentRequests);
+        try {
+          localStorage.setItem(`juicy_cached_sent_requests_${currentUserId}`, JSON.stringify(sentRequests));
+        } catch (e) { }
       } catch (err) {
-        console.error('Error fetching sent friend requests:', err);
+        console.warn('Network friend requests notice:', err);
       }
     };
     fetchSentRequests();
   }, []);
 
-  // Fetch blocked users
+  // Fetch blocked users from network + persist to SQLite
   useEffect(() => {
     const userId = localStorage.getItem('userId');
     if (!userId) return;
     const API_URL = API_BASE_URL;
     fetch(`${API_URL}/api/user/${userId}/blocked`)
       .then(res => res.json())
-      .then(data => setBlockedUsers(data.map(u => u.userId)))
-      .catch(err => console.error('Error fetching blocked users:', err));
+      .then(data => {
+        if (Array.isArray(data)) {
+          const ids = data.map(u => (typeof u === 'string' ? u : (u.userId || u._id || u.id)));
+          setBlockedUsers(ids);
+          try {
+            localStorage.setItem(`juicy_cached_blocked_${userId}`, JSON.stringify(data));
+          } catch (e) { }
+          saveBlockedUsersLocally(userId, data);
+        }
+      })
+      .catch(err => console.warn('Network blocked fetch notice, using local SQLite cache:', err));
   }, []);
 
   // Fetch users who have blocked me
@@ -811,46 +1052,62 @@ const SearchPage = () => {
     const API_URL = API_BASE_URL;
     fetch(`${API_URL}/api/user/${userId}/blocked-by`)
       .then(res => res.json())
-      .then(data => setBlockedBy(data.map(u => u.userId)))
-      .catch(err => console.error('Error fetching blocked by:', err));
+      .then(data => {
+        if (Array.isArray(data)) {
+          const ids = data.map(u => (typeof u === 'string' ? u : (u.userId || u._id || u.id)));
+          setBlockedBy(ids);
+          try {
+            localStorage.setItem(`juicy_cached_blocked_by_${userId}`, JSON.stringify(data));
+          } catch (e) { }
+        }
+      })
+      .catch(err => console.warn('Network blocked-by notice:', err));
   }, []);
 
   // Filter suggestions
   const filteredSuggestions = lastLoginUsers.filter(
-    user => !blockedUsers.includes(user._id) && 
-            !blockedBy.includes(user._id) &&
-            !userFriends.some(f => String(f._id) === String(user._id))
+    user => !blockedUsers.includes(user._id) &&
+      !blockedBy.includes(user._id) &&
+      !userFriends.some(f => String(f._id) === String(user._id))
   );
 
-  // Helper to render avatar with default theme colors
+  // Helper to render avatar with 3D glossy theme ring
   const renderAvatar = (user, size = 44) => {
-    if (user && user.profileImage) {
-      return (
-        <Avatar 
-          src={user.profileImage} 
-          sx={{ 
-            width: size, 
-            height: size, 
-            boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-            border: '2px solid var(--surface-color, #ffffff)' 
-          }} 
-        />
-      );
-    }
     return (
-      <Avatar 
-        sx={{ 
-          width: size, 
-          height: size, 
-          bgcolor: 'var(--primary-color, #f06292)', 
-          color: '#ffffff',
-          fontWeight: 700,
-          boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-          border: '2px solid var(--surface-color, #ffffff)'
+      <Box
+        sx={{
+          p: '2px',
+          borderRadius: '50%',
+          background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff8da1 100%))',
+          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+          display: 'inline-flex'
         }}
       >
-        {user?.username?.charAt(0)?.toUpperCase() || '?'}
-      </Avatar>
+        {user && (user.profileImage || user.profilePic) ? (
+          <Avatar
+            src={getProfileImageSrc(user.profileImage || user.profilePic)}
+            sx={{
+              width: size,
+              height: size,
+              border: isDark ? '2px solid #1c1626' : '2px solid #ffffff'
+            }}
+          />
+        ) : (
+          <Avatar
+            sx={{
+              width: size,
+              height: size,
+              background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
+              color: '#ffffff',
+              fontWeight: 700,
+              fontSize: size > 50 ? '1.15rem' : '0.95rem',
+              border: isDark ? '2px solid #1c1626' : '2px solid #ffffff'
+            }}
+          >
+            {user?.username?.charAt(0)?.toUpperCase() || '?'}
+          </Avatar>
+        )}
+      </Box>
     );
   };
 
@@ -866,9 +1123,12 @@ const SearchPage = () => {
         overflow: 'hidden',
         p: 0,
         m: 0,
-        bgcolor: 'var(--background-color, #fff6f8)',
+        bgcolor: isDark ? '#120f17' : 'var(--background-color, #fff7f9)',
+        backgroundImage: isDark
+          ? 'radial-gradient(circle at 85% 10%, rgba(255, 255, 255, 0.05) 0%, transparent 40%), radial-gradient(circle at 15% 70%, rgba(255, 255, 255, 0.03) 0%, transparent 45%)'
+          : 'radial-gradient(circle at 90% 8%, rgba(0, 0, 0, 0.03) 0%, transparent 40%), radial-gradient(circle at 10% 65%, rgba(0, 0, 0, 0.02) 0%, transparent 45%)',
         color: 'var(--text-color, #000000)',
-        fontFamily: 'var(--app-font, "Poppins", sans-serif)',
+        fontFamily: 'Poppins, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
       }}
     >
       <Box
@@ -896,24 +1156,38 @@ const SearchPage = () => {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
             <Box
               sx={{
-                width: 42,
-                height: 42,
-                borderRadius: '12px',
-                bgcolor: 'var(--primary-color, #f06292)',
+                width: 44,
+                height: 44,
+                borderRadius: '16px',
+                background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
                 color: '#ffffff',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: '0 4px 14px rgba(0,0,0,0.12)',
+                boxShadow: '0 6px 18px rgba(0, 0, 0, 0.2)',
+                border: '1px solid rgba(255, 255, 255, 0.25)'
               }}
             >
               <SearchIcon fontSize="medium" />
             </Box>
             <Box>
-              <Typography variant="h6" sx={{ fontWeight: 700, color: 'var(--text-color, #000)', lineHeight: 1.2 }}>
+              <Typography
+                variant="h6"
+                sx={{
+                  fontWeight: 800,
+                  background: isDark
+                    ? 'linear-gradient(135deg, #ffffff 0%, var(--primary-color, #fda4af) 100%)'
+                    : 'linear-gradient(135deg, #1e1b2e 0%, var(--primary-color, #ff2d6c) 100%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  lineHeight: 1.2,
+                  letterSpacing: '-0.3px',
+                  fontSize: isMobile ? '1.25rem' : '1.45rem'
+                }}
+              >
                 Search & Connect
               </Typography>
-              <Typography variant="caption" sx={{ color: 'var(--text-color, #000)', opacity: 0.6 }}>
+              <Typography variant="caption" sx={{ color: isDark ? '#94a3b8' : '#64748b', fontWeight: 500 }}>
                 Find people, sync contacts & manage friends
               </Typography>
             </Box>
@@ -939,23 +1213,24 @@ const SearchPage = () => {
           <Paper
             elevation={0}
             sx={{
-              p: '4px 8px',
+              p: '6px 12px',
               display: 'flex',
               alignItems: 'center',
-              borderRadius: '16px',
-              bgcolor: 'var(--surface-color, #ffffff)',
-              border: '1px solid rgba(128,128,128,0.18)',
-              boxShadow: '0 4px 15px rgba(0,0,0,0.04)',
-              transition: 'all 0.2s ease',
+              borderRadius: '24px',
+              bgcolor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'var(--surface-color, rgba(255, 255, 255, 0.88))',
+              backdropFilter: 'blur(12px)',
+              border: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(125, 125, 125, 0.18)',
+              boxShadow: isDark ? '0 4px 18px rgba(0,0,0,0.25)' : '0 4px 18px rgba(0, 0, 0, 0.06)',
+              transition: 'all 0.25s ease',
               '&:focus-within': {
-                borderColor: 'var(--primary-color, #f06292)',
-                boxShadow: '0 4px 20px rgba(240, 98, 146, 0.18)',
+                borderColor: 'var(--primary-color, #ff2d6c)',
+                boxShadow: '0 6px 22px rgba(0, 0, 0, 0.15)',
               },
               mb: 3
             }}
           >
-            <InputAdornment position="start" sx={{ pl: 1.5 }}>
-              <SearchIcon sx={{ color: 'var(--primary-color, #f06292)' }} />
+            <InputAdornment position="start" sx={{ pl: 1 }}>
+              <SearchIcon sx={{ color: 'var(--primary-color, #ff2d6c)' }} />
             </InputAdornment>
             <TextField
               value={search}
@@ -974,7 +1249,7 @@ const SearchPage = () => {
               }}
             />
             {search && (
-              <IconButton onClick={() => setSearch('')} size="small" sx={{ mr: 1, color: 'var(--text-color, #000)', opacity: 0.6 }}>
+              <IconButton onClick={() => setSearch('')} size="small" sx={{ mr: 1, color: 'var(--primary-color, #ff2d6c)', opacity: 0.8 }}>
                 <CloseIcon fontSize="small" />
               </IconButton>
             )}
@@ -990,33 +1265,36 @@ const SearchPage = () => {
           {/* SEARCH RESULTS MODE */}
           {search.trim() !== '' && (
             <Box sx={{ width: '100%', mb: 3 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1.5, color: 'var(--text-color, #000)', opacity: 0.7, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <SearchIcon fontSize="small" sx={{ color: 'var(--primary-color, #f06292)' }} />
+              <Typography variant="subtitle2" sx={{ mb: 1.5, color: isDark ? '#f8fafc' : '#0f172a', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box sx={{ p: 0.6, borderRadius: '50%', background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))', color: '#fff', display: 'flex' }}>
+                  <SearchIcon sx={{ fontSize: 16 }} />
+                </Box>
                 Search Results ({filteredUsers.length})
               </Typography>
               {filteredUsers.length > 0 ? (
                 <Paper
                   elevation={0}
                   sx={{
-                    bgcolor: 'var(--surface-color, #ffffff)',
-                    borderRadius: 3,
-                    p: 1,
-                    border: '1px solid rgba(128,128,128,0.12)',
-                    boxShadow: '0 4px 16px rgba(0,0,0,0.03)'
+                    bgcolor: isDark ? 'rgba(28, 22, 38, 0.75)' : 'var(--surface-color, rgba(255, 255, 255, 0.82))',
+                    backdropFilter: 'blur(14px)',
+                    borderRadius: '24px',
+                    p: 1.2,
+                    border: isDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(125, 125, 125, 0.15)',
+                    boxShadow: isDark ? '0 8px 24px rgba(0,0,0,0.35)' : '0 8px 24px rgba(0, 0, 0, 0.06)'
                   }}
                 >
                   <List disablePadding>
                     {filteredUsers.map((user, index) => (
                       <React.Fragment key={user._id}>
-                        <ListItem 
-                          sx={{ 
-                            px: 2, 
+                        <ListItem
+                          sx={{
+                            px: 2,
                             py: 1.5,
-                            borderRadius: 2,
+                            borderRadius: '16px',
                             bgcolor: 'transparent',
-                            transition: 'all 0.2s ease',
+                            transition: 'all 0.22s ease',
                             cursor: 'pointer',
-                            '&:hover': { bgcolor: 'rgba(240, 98, 146, 0.06)' }
+                            '&:hover': { bgcolor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(125, 125, 125, 0.06)' }
                           }}
                           onClick={() => handleOpenProfile(user)}
                           secondaryAction={
@@ -1031,7 +1309,7 @@ const SearchPage = () => {
                                     e.stopPropagation();
                                     handleRemoveFriend(user._id);
                                   }}
-                                  sx={{ textTransform: 'none', borderRadius: 5, px: 2 }}
+                                  sx={{ textTransform: 'none', borderRadius: '20px', px: 2, fontWeight: 650, borderColor: 'rgba(239, 68, 68, 0.4)' }}
                                 >
                                   Remove
                                 </Button>
@@ -1045,16 +1323,17 @@ const SearchPage = () => {
                                     handleAddFriend(user._id);
                                   }}
                                   sx={{
-                                    bgcolor: 'var(--primary-color, #f06292)',
+                                    background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
                                     color: '#ffffff',
                                     '&:hover': {
-                                      bgcolor: 'var(--primary-color, #f06292)',
-                                      filter: 'brightness(0.9)'
+                                      opacity: 0.9,
+                                      boxShadow: '0 6px 16px rgba(0, 0, 0, 0.3)'
                                     },
                                     textTransform: 'none',
-                                    borderRadius: 5,
-                                    boxShadow: 'none',
-                                    px: 2
+                                    borderRadius: '20px',
+                                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
+                                    fontWeight: 650,
+                                    px: 2.2
                                   }}
                                 >
                                   Add
@@ -1065,10 +1344,12 @@ const SearchPage = () => {
                                     label="Requested"
                                     size="small"
                                     variant="outlined"
-                                    sx={{ 
-                                      borderColor: 'var(--primary-color, #f06292)', 
-                                      color: 'var(--primary-color, #f06292)',
-                                      fontWeight: 600
+                                    sx={{
+                                      borderColor: 'var(--primary-color, #ff2d6c)',
+                                      bgcolor: 'rgba(125, 125, 125, 0.08)',
+                                      color: 'var(--primary-color, #ff2d6c)',
+                                      fontWeight: 650,
+                                      borderRadius: '16px'
                                     }}
                                   />
                                   <Button
@@ -1079,7 +1360,7 @@ const SearchPage = () => {
                                       e.stopPropagation();
                                       handleCancelRequest(user._id);
                                     }}
-                                    sx={{ textTransform: 'none', borderRadius: 5 }}
+                                    sx={{ textTransform: 'none', borderRadius: '20px', fontWeight: 650, borderColor: 'rgba(239, 68, 68, 0.4)' }}
                                   >
                                     Cancel
                                   </Button>
@@ -1093,7 +1374,7 @@ const SearchPage = () => {
                           </ListItemAvatar>
                           <ListItemText
                             primary={
-                              <Typography fontWeight={600} color="var(--text-color, #000000)">
+                              <Typography fontWeight={700} color="var(--text-color, #000000)">
                                 {user.name || user.username}
                               </Typography>
                             }
@@ -1105,7 +1386,7 @@ const SearchPage = () => {
                           />
                         </ListItem>
                         {index < filteredUsers.length - 1 && (
-                          <Divider sx={{ my: 0.5, opacity: 0.4 }} />
+                          <Divider sx={{ my: 0.5, opacity: isDark ? 0.08 : 0.15 }} />
                         )}
                       </React.Fragment>
                     ))}
@@ -1115,14 +1396,15 @@ const SearchPage = () => {
                 <Paper
                   elevation={0}
                   sx={{
-                    bgcolor: 'var(--surface-color, #ffffff)',
-                    borderRadius: 3,
+                    bgcolor: isDark ? 'rgba(28, 22, 38, 0.75)' : 'rgba(255, 255, 255, 0.82)',
+                    backdropFilter: 'blur(14px)',
+                    borderRadius: '24px',
                     p: 4,
                     textAlign: 'center',
-                    border: '1px solid rgba(128,128,128,0.12)'
+                    border: isDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(255, 105, 150, 0.15)'
                   }}
                 >
-                  <Typography variant="body1" color="var(--text-color, #000000)" sx={{ opacity: 0.7 }}>
+                  <Typography variant="body1" color="var(--text-color, #000000)" sx={{ opacity: 0.7, fontWeight: 500 }}>
                     No users found matching "{search.trim()}"
                   </Typography>
                 </Paper>
@@ -1136,32 +1418,35 @@ const SearchPage = () => {
               {/* Your Friends Section */}
               {userFriends.length > 0 && (
                 <Box sx={{ width: '100%', mb: 3.5 }}>
-                  <Typography variant="subtitle2" sx={{ mb: 1.5, color: 'var(--text-color, #000)', opacity: 0.7, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <GroupIcon fontSize="small" sx={{ color: 'var(--primary-color, #f06292)' }} />
+                  <Typography variant="subtitle2" sx={{ mb: 1.5, color: isDark ? '#f8fafc' : '#0f172a', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Box sx={{ p: 0.6, borderRadius: '50%', background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))', color: '#fff', display: 'flex' }}>
+                      <GroupIcon sx={{ fontSize: 16 }} />
+                    </Box>
                     Your Friends ({userFriends.length})
                   </Typography>
                   <Paper
                     elevation={0}
                     sx={{
-                      bgcolor: 'var(--surface-color, #ffffff)',
-                      borderRadius: 3,
-                      p: 1,
-                      border: '1px solid rgba(128,128,128,0.12)',
-                      boxShadow: '0 4px 16px rgba(0,0,0,0.03)'
+                      bgcolor: isDark ? 'rgba(28, 22, 38, 0.75)' : 'var(--surface-color, rgba(255, 255, 255, 0.82))',
+                      backdropFilter: 'blur(14px)',
+                      borderRadius: '24px',
+                      p: 1.2,
+                      border: isDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(125, 125, 125, 0.15)',
+                      boxShadow: isDark ? '0 8px 24px rgba(0,0,0,0.35)' : '0 8px 24px rgba(0, 0, 0, 0.06)'
                     }}
                   >
                     <List disablePadding>
                       {userFriends.map((user, index) => (
                         <React.Fragment key={user._id}>
-                          <ListItem 
-                            sx={{ 
-                              px: 2, 
+                          <ListItem
+                            sx={{
+                              px: 2,
                               py: 1.5,
-                              borderRadius: 2,
+                              borderRadius: '16px',
                               cursor: 'pointer',
                               bgcolor: 'transparent',
-                              transition: 'all 0.2s ease',
-                              '&:hover': { bgcolor: 'rgba(240, 98, 146, 0.06)' }
+                              transition: 'all 0.22s ease',
+                              '&:hover': { bgcolor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(125, 125, 125, 0.06)' }
                             }}
                             onClick={() => handleOpenProfile(user)}
                             secondaryAction={
@@ -1170,10 +1455,11 @@ const SearchPage = () => {
                                 size="small"
                                 variant="outlined"
                                 sx={{
-                                  borderColor: 'var(--primary-color, #f06292)',
-                                  color: 'var(--primary-color, #f06292)',
-                                  fontWeight: 600,
-                                  borderRadius: 5
+                                  borderColor: 'rgba(16, 185, 129, 0.35)',
+                                  bgcolor: 'rgba(16, 185, 129, 0.08)',
+                                  color: '#10b981',
+                                  fontWeight: 650,
+                                  borderRadius: '16px'
                                 }}
                               />
                             }
@@ -1183,7 +1469,7 @@ const SearchPage = () => {
                             </ListItemAvatar>
                             <ListItemText
                               primary={
-                                <Typography fontWeight={600} color="var(--text-color, #000000)">
+                                <Typography fontWeight={700} color="var(--text-color, #000000)">
                                   {user.name || user.username}
                                 </Typography>
                               }
@@ -1202,7 +1488,7 @@ const SearchPage = () => {
                             />
                           </ListItem>
                           {index < userFriends.length - 1 && (
-                            <Divider sx={{ my: 0.5, opacity: 0.4 }} />
+                            <Divider sx={{ my: 0.5, opacity: isDark ? 0.08 : 0.15 }} />
                           )}
                         </React.Fragment>
                       ))}
@@ -1214,18 +1500,21 @@ const SearchPage = () => {
               {/* Synced Contacts Section */}
               {syncedUsers.length > 0 && (
                 <Box sx={{ width: '100%', mb: 3.5 }}>
-                  <Typography variant="subtitle2" sx={{ mb: 1.5, color: 'var(--text-color, #000)', opacity: 0.7, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <PermContactCalendarIcon fontSize="small" sx={{ color: 'var(--primary-color, #f06292)' }} />
+                  <Typography variant="subtitle2" sx={{ mb: 1.5, color: isDark ? '#f8fafc' : '#0f172a', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Box sx={{ p: 0.6, borderRadius: '50%', background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))', color: '#fff', display: 'flex' }}>
+                      <PermContactCalendarIcon sx={{ fontSize: 16 }} />
+                    </Box>
                     Synced Contacts ({syncedUsers.length})
                   </Typography>
                   <Paper
                     elevation={0}
                     sx={{
-                      bgcolor: 'var(--surface-color, #ffffff)',
-                      borderRadius: 3,
-                      p: 1,
-                      border: '1px solid rgba(128,128,128,0.12)',
-                      boxShadow: '0 4px 16px rgba(0,0,0,0.03)'
+                      bgcolor: isDark ? 'rgba(28, 22, 38, 0.75)' : 'var(--surface-color, rgba(255, 255, 255, 0.82))',
+                      backdropFilter: 'blur(14px)',
+                      borderRadius: '24px',
+                      p: 1.2,
+                      border: isDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(125, 125, 125, 0.15)',
+                      boxShadow: isDark ? '0 8px 24px rgba(0,0,0,0.35)' : '0 8px 24px rgba(0, 0, 0, 0.06)'
                     }}
                   >
                     <List disablePadding>
@@ -1235,11 +1524,11 @@ const SearchPage = () => {
                             sx={{
                               px: 2,
                               py: 1.5,
-                              borderRadius: 2,
+                              borderRadius: '16px',
                               cursor: 'pointer',
                               bgcolor: 'transparent',
-                              transition: 'all 0.2s ease',
-                              '&:hover': { bgcolor: 'rgba(240, 98, 146, 0.06)' }
+                              transition: 'all 0.22s ease',
+                              '&:hover': { bgcolor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(125, 125, 125, 0.06)' }
                             }}
                             onClick={() => handleOpenProfile(user)}
                             secondaryAction={
@@ -1253,12 +1542,17 @@ const SearchPage = () => {
                                     handleAddFriend(user._id);
                                   }}
                                   sx={{
-                                    bgcolor: 'var(--primary-color, #f06292)',
+                                    background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
                                     color: '#ffffff',
+                                    '&:hover': {
+                                      opacity: 0.9,
+                                      boxShadow: '0 6px 16px rgba(0, 0, 0, 0.3)'
+                                    },
                                     textTransform: 'none',
-                                    borderRadius: 5,
-                                    boxShadow: 'none',
-                                    px: 2
+                                    borderRadius: '20px',
+                                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
+                                    fontWeight: 650,
+                                    px: 2.2
                                   }}
                                 >
                                   Add
@@ -1269,9 +1563,11 @@ const SearchPage = () => {
                                   size="small"
                                   variant="outlined"
                                   sx={{
-                                    borderColor: 'var(--primary-color, #f06292)',
-                                    color: 'var(--primary-color, #f06292)',
-                                    fontWeight: 600
+                                    borderColor: userFriends.some(f => String(f._id) === String(user._id)) ? 'rgba(16, 185, 129, 0.35)' : 'var(--primary-color, #ff2d6c)',
+                                    bgcolor: userFriends.some(f => String(f._id) === String(user._id)) ? 'rgba(16, 185, 129, 0.08)' : 'rgba(125, 125, 125, 0.08)',
+                                    color: userFriends.some(f => String(f._id) === String(user._id)) ? '#10b981' : 'var(--primary-color, #ff2d6c)',
+                                    fontWeight: 650,
+                                    borderRadius: '16px'
                                   }}
                                 />
                               )
@@ -1282,7 +1578,7 @@ const SearchPage = () => {
                             </ListItemAvatar>
                             <ListItemText
                               primary={
-                                <Typography fontWeight={600} color="var(--text-color, #000000)">
+                                <Typography fontWeight={700} color="var(--text-color, #000000)">
                                   {user.name || user.username}
                                 </Typography>
                               }
@@ -1294,7 +1590,7 @@ const SearchPage = () => {
                             />
                           </ListItem>
                           {index < syncedUsers.length - 1 && (
-                            <Divider sx={{ my: 0.5, opacity: 0.4 }} />
+                            <Divider sx={{ my: 0.5, opacity: isDark ? 0.08 : 0.15 }} />
                           )}
                         </React.Fragment>
                       ))}
@@ -1306,39 +1602,42 @@ const SearchPage = () => {
               {/* Recent Searches Section */}
               {recentSearches.length > 0 && (
                 <Box sx={{ width: '100%', mb: 3.5 }}>
-                  <Typography variant="subtitle2" sx={{ mb: 1.5, color: 'var(--text-color, #000)', opacity: 0.7, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <HistoryIcon fontSize="small" sx={{ color: 'var(--primary-color, #f06292)' }} />
+                  <Typography variant="subtitle2" sx={{ mb: 1.5, color: isDark ? '#f8fafc' : '#0f172a', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Box sx={{ p: 0.6, borderRadius: '50%', background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))', color: '#fff', display: 'flex' }}>
+                      <HistoryIcon sx={{ fontSize: 16 }} />
+                    </Box>
                     Recent Searches
                   </Typography>
                   <Paper
                     elevation={0}
                     sx={{
-                      bgcolor: 'var(--surface-color, #ffffff)',
-                      borderRadius: 3,
-                      p: 1,
-                      border: '1px solid rgba(128,128,128,0.12)',
-                      boxShadow: '0 4px 16px rgba(0,0,0,0.03)'
+                      bgcolor: isDark ? 'rgba(28, 22, 38, 0.75)' : 'var(--surface-color, rgba(255, 255, 255, 0.82))',
+                      backdropFilter: 'blur(14px)',
+                      borderRadius: '24px',
+                      p: 1.2,
+                      border: isDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(125, 125, 125, 0.15)',
+                      boxShadow: isDark ? '0 8px 24px rgba(0,0,0,0.35)' : '0 8px 24px rgba(0, 0, 0, 0.06)'
                     }}
                   >
                     <List disablePadding>
                       {recentSearches.map((user, index) => (
                         <React.Fragment key={user._id}>
                           <ListItem
-                            sx={{ 
-                              px: 2, 
+                            sx={{
+                              px: 2,
                               py: 1.5,
-                              borderRadius: 2,
+                              borderRadius: '16px',
                               cursor: 'pointer',
                               bgcolor: 'transparent',
-                              transition: 'all 0.2s ease',
-                              '&:hover': { bgcolor: 'rgba(240, 98, 146, 0.06)' }
+                              transition: 'all 0.22s ease',
+                              '&:hover': { bgcolor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(125, 125, 125, 0.06)' }
                             }}
                             onClick={() => handleOpenProfile(user)}
                             secondaryAction={
-                              <IconButton 
-                                edge="end" 
+                              <IconButton
+                                edge="end"
                                 onClick={(e) => handleRemoveRecent(user._id, e)}
-                                sx={{ color: 'var(--text-color, #000000)', opacity: 0.5 }}
+                                sx={{ color: isDark ? '#94a3b8' : '#a0aec0', transition: 'all 0.2s', '&:hover': { color: '#ef4444' } }}
                               >
                                 <CloseIcon fontSize="small" />
                               </IconButton>
@@ -1349,7 +1648,7 @@ const SearchPage = () => {
                             </ListItemAvatar>
                             <ListItemText
                               primary={
-                                <Typography fontWeight={600} color="var(--text-color, #000000)">
+                                <Typography fontWeight={700} color="var(--text-color, #000000)">
                                   {user.name || user.username}
                                 </Typography>
                               }
@@ -1368,7 +1667,7 @@ const SearchPage = () => {
                             />
                           </ListItem>
                           {index < recentSearches.length - 1 && (
-                            <Divider sx={{ my: 0.5, opacity: 0.4 }} />
+                            <Divider sx={{ my: 0.5, opacity: isDark ? 0.08 : 0.15 }} />
                           )}
                         </React.Fragment>
                       ))}
@@ -1380,8 +1679,10 @@ const SearchPage = () => {
               {/* Suggested Users Section */}
               {filteredSuggestions.length > 0 && (
                 <Box sx={{ width: '100%', mb: 3.5 }}>
-                  <Typography variant="subtitle2" sx={{ mb: 2, color: 'var(--text-color, #000)', opacity: 0.7, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <AutoAwesomeIcon fontSize="small" sx={{ color: 'var(--primary-color, #f06292)' }} />
+                  <Typography variant="subtitle2" sx={{ mb: 2, color: isDark ? '#f8fafc' : '#0f172a', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Box sx={{ p: 0.6, borderRadius: '50%', background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))', color: '#fff', display: 'flex' }}>
+                      <AutoAwesomeIcon sx={{ fontSize: 16 }} />
+                    </Box>
                     Suggested Users
                   </Typography>
                   <Box
@@ -1403,24 +1704,25 @@ const SearchPage = () => {
                           display: 'flex',
                           flexDirection: 'column',
                           alignItems: 'center',
-                          bgcolor: 'var(--surface-color, #ffffff)',
-                          borderRadius: 3,
-                          p: 2,
+                          bgcolor: isDark ? 'rgba(28, 22, 38, 0.75)' : 'var(--surface-color, rgba(255, 255, 255, 0.82))',
+                          backdropFilter: 'blur(14px)',
+                          borderRadius: '24px',
+                          p: 2.2,
                           cursor: 'pointer',
-                          border: '1px solid rgba(128,128,128,0.12)',
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.02)',
-                          transition: 'all 0.25s ease',
+                          border: isDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(125, 125, 125, 0.15)',
+                          boxShadow: isDark ? '0 8px 24px rgba(0,0,0,0.35)' : '0 8px 24px rgba(0, 0, 0, 0.06)',
+                          transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
                           '&:hover': {
                             transform: 'translateY(-4px)',
-                            boxShadow: '0 8px 24px rgba(0,0,0,0.08)',
-                            borderColor: 'var(--primary-color, #f06292)'
+                            boxShadow: isDark ? '0 14px 32px rgba(0,0,0,0.45)' : '0 14px 32px rgba(0, 0, 0, 0.12)',
+                            borderColor: 'var(--primary-color, #ff2d6c)'
                           }
                         }}
                         onClick={() => handleOpenProfile(user)}
                       >
                         {renderAvatar(user, 56)}
                         <Typography
-                          fontWeight={600}
+                          fontWeight={700}
                           fontSize={14}
                           sx={{
                             mt: 1.5,
@@ -1460,18 +1762,18 @@ const SearchPage = () => {
                               handleAddFriend(user._id);
                             }}
                             sx={{
-                              bgcolor: 'var(--primary-color, #f06292)',
+                              background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
                               color: '#ffffff',
-                              '&:hover': { 
-                                bgcolor: 'var(--primary-color, #f06292)',
-                                filter: 'brightness(0.9)'
+                              '&:hover': {
+                                opacity: 0.9,
+                                boxShadow: '0 6px 16px rgba(0, 0, 0, 0.3)'
                               },
                               textTransform: 'none',
-                              fontSize: '0.75rem',
-                              fontWeight: 600,
-                              py: 0.6,
-                              boxShadow: 'none',
-                              borderRadius: 5
+                              fontSize: '0.78rem',
+                              fontWeight: 700,
+                              py: 0.7,
+                              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
+                              borderRadius: '20px'
                             }}
                             fullWidth
                           >
@@ -1486,7 +1788,7 @@ const SearchPage = () => {
                               e.stopPropagation();
                               handleCancelRequest(user._id);
                             }}
-                            sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0.6, borderRadius: 5 }}
+                            sx={{ textTransform: 'none', fontSize: '0.78rem', py: 0.7, borderRadius: '20px', fontWeight: 650, borderColor: 'rgba(239, 68, 68, 0.4)' }}
                             fullWidth
                           >
                             Cancel
@@ -1510,27 +1812,29 @@ const SearchPage = () => {
         fullWidth
         PaperProps={{
           sx: {
-            borderRadius: 4,
-            bgcolor: 'var(--surface-color, #ffffff)',
+            borderRadius: '28px',
+            bgcolor: isDark ? 'rgba(26, 20, 36, 0.95)' : 'var(--surface-color, rgba(255, 255, 255, 0.96))',
+            backdropFilter: 'blur(20px)',
             color: 'var(--text-color, #000000)',
-            boxShadow: '0 12px 40px rgba(0,0,0,0.18)',
-            p: 1
+            boxShadow: isDark ? '0 24px 60px rgba(0,0,0,0.5)' : '0 24px 60px rgba(0, 0, 0, 0.18)',
+            border: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(125, 125, 125, 0.2)',
+            p: 1.5
           }
         }}
       >
         {selectedUser && (
           <>
-            <DialogTitle sx={{ 
-              pb: 1, 
-              display: 'flex', 
+            <DialogTitle sx={{
+              pb: 1,
+              display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              borderBottom: '1px solid rgba(128,128,128,0.12)'
+              borderBottom: isDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(125, 125, 125, 0.12)'
             }}>
-              <Typography variant="h6" fontWeight={700} color="var(--text-color, #000000)">
+              <Typography variant="h6" fontWeight={750} color="var(--text-color, #000000)">
                 User Profile
               </Typography>
-              <IconButton onClick={handleCloseProfile} size="small" sx={{ color: 'var(--text-color, #000000)', opacity: 0.6 }}>
+              <IconButton onClick={handleCloseProfile} size="small" sx={{ color: isDark ? '#94a3b8' : '#a0aec0' }}>
                 <CloseIcon />
               </IconButton>
             </DialogTitle>
@@ -1538,59 +1842,68 @@ const SearchPage = () => {
               <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 2 }}>
                 {/* Profile Image */}
                 <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2.5 }}>
-                  {selectedUser.profileImage ? (
-                    <Avatar
-                      src={selectedUser.profileImage}
-                      sx={{
-                        width: 110,
-                        height: 110,
-                        border: '4px solid var(--primary-color, #f06292)',
-                        boxShadow: '0 6px 20px rgba(0,0,0,0.12)'
-                      }}
-                    />
-                  ) : (
-                    <Avatar
-                      sx={{
-                        width: 110,
-                        height: 110,
-                        bgcolor: 'var(--primary-color, #f06292)',
-                        color: '#ffffff',
-                        fontSize: 42,
-                        fontWeight: 700,
-                        boxShadow: '0 6px 20px rgba(0,0,0,0.12)'
-                      }}
-                    >
-                      {selectedUser.username?.charAt(0)?.toUpperCase()}
-                    </Avatar>
-                  )}
+                  <Box
+                    sx={{
+                      p: '4px',
+                      borderRadius: '50%',
+                      background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff8da1 100%))',
+                      boxShadow: '0 8px 28px rgba(0, 0, 0, 0.25)',
+                      display: 'inline-block'
+                    }}
+                  >
+                    {selectedUser && (selectedUser.profileImage || selectedUser.profilePic) ? (
+                      <Avatar
+                        src={getProfileImageSrc(selectedUser.profileImage || selectedUser.profilePic)}
+                        sx={{
+                          width: 104,
+                          height: 104,
+                          border: isDark ? '3px solid #1a1424' : '3px solid #ffffff'
+                        }}
+                      />
+                    ) : (
+                      <Avatar
+                        sx={{
+                          width: 104,
+                          height: 104,
+                          background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
+                          color: '#ffffff',
+                          fontSize: 40,
+                          fontWeight: 700,
+                          border: isDark ? '3px solid #1a1424' : '3px solid #ffffff'
+                        }}
+                      >
+                        {selectedUser.username?.charAt(0)?.toUpperCase()}
+                      </Avatar>
+                    )}
+                  </Box>
                 </Box>
-                
+
                 {/* User Info */}
-                <Typography variant="h6" fontWeight={700} sx={{ mb: 0.5 }} color="var(--text-color, #000000)">
+                <Typography variant="h6" fontWeight={750} sx={{ mb: 0.5 }} color="var(--text-color, #000000)">
                   {selectedUser.name || selectedUser.username}
                 </Typography>
-                
+
                 <Typography variant="body2" color="var(--text-color, #000000)" sx={{ opacity: 0.6, mb: 2 }}>
                   @{selectedUser.username}
                 </Typography>
-                
+
                 {/* Bio */}
                 {selectedUser.bio && (
                   <Paper
                     elevation={0}
                     sx={{
-                      p: 1.5,
+                      p: 1.8,
                       mb: 3,
-                      bgcolor: 'rgba(240, 98, 146, 0.05)',
-                      borderRadius: 3,
+                      bgcolor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(125, 125, 125, 0.05)',
+                      borderRadius: '18px',
                       width: '100%',
                       textAlign: 'center',
-                      border: '1px solid rgba(240, 98, 146, 0.15)'
+                      border: isDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(125, 125, 125, 0.15)'
                     }}
                   >
-                    <Typography 
-                      variant="body2" 
-                      sx={{ 
+                    <Typography
+                      variant="body2"
+                      sx={{
                         color: 'var(--text-color, #000000)',
                         fontStyle: 'italic'
                       }}
@@ -1599,7 +1912,7 @@ const SearchPage = () => {
                     </Typography>
                   </Paper>
                 )}
-                
+
                 {/* Action Buttons */}
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, width: '100%' }}>
                   {userFriends.some(f => String(f._id) === String(selectedUser._id)) ? (
@@ -1609,7 +1922,7 @@ const SearchPage = () => {
                       color="error"
                       startIcon={<PersonRemoveIcon />}
                       onClick={() => handleRemoveFriend(selectedUser._id)}
-                      sx={{ borderRadius: 5, py: 1, textTransform: 'none', fontWeight: 600 }}
+                      sx={{ borderRadius: '16px', py: 1.2, textTransform: 'none', fontWeight: 650, borderColor: 'rgba(239, 68, 68, 0.4)' }}
                     >
                       Remove Friend
                     </Button>
@@ -1620,7 +1933,7 @@ const SearchPage = () => {
                       color="error"
                       startIcon={<PersonRemoveIcon />}
                       onClick={() => handleCancelRequest(selectedUser._id)}
-                      sx={{ borderRadius: 5, py: 1, textTransform: 'none', fontWeight: 600 }}
+                      sx={{ borderRadius: '16px', py: 1.2, textTransform: 'none', fontWeight: 650, borderColor: 'rgba(239, 68, 68, 0.4)' }}
                     >
                       Cancel Request
                     </Button>
@@ -1631,32 +1944,32 @@ const SearchPage = () => {
                       startIcon={<PersonAddIcon />}
                       onClick={() => handleAddFriend(selectedUser._id)}
                       sx={{
-                        bgcolor: 'var(--primary-color, #f06292)',
+                        background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
                         color: '#ffffff',
                         '&:hover': {
-                          bgcolor: 'var(--primary-color, #f06292)',
-                          filter: 'brightness(0.9)'
+                          opacity: 0.9,
+                          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)'
                         },
-                        borderRadius: 5,
-                        py: 1,
-                        boxShadow: 'none',
+                        borderRadius: '16px',
+                        py: 1.3,
+                        boxShadow: '0 6px 18px rgba(0, 0, 0, 0.25)',
                         textTransform: 'none',
-                        fontWeight: 600
+                        fontWeight: 700
                       }}
                     >
                       Add Friend
                     </Button>
                   )}
-                  
+
                   <Button
                     fullWidth
                     variant="text"
                     onClick={handleCloseProfile}
-                    sx={{ 
-                      color: 'var(--text-color, #000000)',
-                      opacity: 0.7,
-                      borderRadius: 5,
-                      textTransform: 'none'
+                    sx={{
+                      color: isDark ? '#94a3b8' : '#64748b',
+                      borderRadius: '16px',
+                      textTransform: 'none',
+                      fontWeight: 600
                     }}
                   >
                     Close
@@ -1675,16 +1988,16 @@ const SearchPage = () => {
         onClose={() => setSnackbarOpen(false)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert 
-          onClose={() => setSnackbarOpen(false)} 
-          severity="success" 
-          sx={{ 
-            width: '100%', 
-            borderRadius: 3, 
-            bgcolor: 'var(--surface-color, #ffffff)', 
+        <Alert
+          onClose={() => setSnackbarOpen(false)}
+          severity="success"
+          sx={{
+            width: '100%',
+            borderRadius: '18px',
+            bgcolor: isDark ? '#1a1424' : 'var(--surface-color, #ffffff)',
             color: 'var(--text-color, #000000)',
-            border: '1px solid var(--primary-color, #f06292)',
-            boxShadow: '0 8px 25px rgba(0,0,0,0.15)'
+            border: '1.5px solid var(--primary-color, #ff2d6c)',
+            boxShadow: '0 12px 30px rgba(0, 0, 0, 0.25)'
           }}
         >
           {syncSuccess}

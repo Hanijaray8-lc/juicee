@@ -1,37 +1,41 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   Box,
   Typography,
   Avatar,
   Button,
   IconButton,
-  Card,
-  CardContent,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   Snackbar,
   Alert,
-  Divider,
-  List,
-  ListItem,
-  ListItemAvatar,
-  ListItemText,
   Chip,
-  Fab,
   Paper,
+  InputBase,
+  Skeleton,
+  Tooltip,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DeleteIcon from '@mui/icons-material/Delete';
 import BrushIcon from '@mui/icons-material/Brush';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import GestureIcon from '@mui/icons-material/Gesture';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
+import SearchIcon from '@mui/icons-material/Search';
+import ClearIcon from '@mui/icons-material/Clear';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import FilterListIcon from '@mui/icons-material/FilterList';
 import { useNavigate } from 'react-router-dom';
 import API_BASE_URL from './config/apiConfig';
-import { UserGuideModal } from './UserGuideModal';
+import {
+  getFriendsLocally,
+  saveFriendsLocally,
+  getContactGesturesLocally,
+  saveContactGesturesLocally,
+} from './db/offlineDb';
+import { getProfileImageSrc } from './utils/imageUtils';
 
 // ==========================================
 // GESTURE MATCHER MATHEMATICAL UTILITIES
@@ -142,80 +146,156 @@ export function matchGestures(points1, points2) {
 // ==========================================
 
 const FinderPage = () => {
-  const [friends, setFriends] = useState([]);
-  const [savedGestures, setSavedGestures] = useState({});
-  const [drawingUser, setDrawingUser] = useState(null);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [points, setPoints] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
-
-  const canvasRef = useRef(null);
   const userId = localStorage.getItem('userId');
   const navigate = useNavigate();
 
-  // Load friends and gestures
-  useEffect(() => {
+  // Instant synchronous initial load to eliminate any load buffer / white screen
+  const [friends, setFriends] = useState(() => {
+    if (!userId) return [];
+    try {
+      const cached = localStorage.getItem(`juicy_cached_friends_${userId}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return [];
+  });
+
+  const [savedGestures, setSavedGestures] = useState(() => {
+    try {
+      const saved = localStorage.getItem('juicy_contact_gestures');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {}
+    return {};
+  });
+
+  // Only show initial skeleton if we have neither cached friends nor cached gestures
+  const [initialLoading, setInitialLoading] = useState(() => {
+    if (!userId) return false;
+    try {
+      const cachedFriends = localStorage.getItem(`juicy_cached_friends_${userId}`);
+      return !cachedFriends;
+    } catch (e) {
+      return false;
+    }
+  });
+
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeFilter, setActiveFilter] = useState('all'); // 'all', 'mapped', 'unmapped'
+  const [drawingUser, setDrawingUser] = useState(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [points, setPoints] = useState([]);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+
+  const canvasRef = useRef(null);
+
+  // Sync to Native Capacitor Plugin
+  const syncToNative = (gesturesObj) => {
+    if (typeof window !== 'undefined' && window.Capacitor && window.Capacitor.Plugins) {
+      const { AudioRoute } = window.Capacitor.Plugins;
+      if (AudioRoute && typeof AudioRoute.setLockedContacts === 'function') {
+        const contacts = Object.keys(gesturesObj);
+        AudioRoute.setLockedContacts({ contacts })
+          .then(() => console.log('📱 Synced locked contacts to native:', contacts))
+          .catch(err => console.error('📱 Error syncing locked contacts to native:', err));
+      }
+    }
+  };
+
+  // 1. FAST SQLITE INITIAL LOAD & 2. BACKGROUND SERVER SYNC
+  const loadData = useCallback(async (isManualRefresh = false) => {
     if (!userId) {
-      setLoading(false);
+      setInitialLoading(false);
       return;
     }
 
-    // Fetch friends list
-    fetch(`${API_BASE_URL}/api/user/${userId}/friends`)
-      .then(res => res.json())
-      .then(data => {
-        setFriends(Array.isArray(data) ? data : []);
-      })
-      .catch(err => {
-        console.error('Failed to load friends:', err);
-        setSnackbar({ open: true, message: 'Failed to load friends list', severity: 'error' });
-      });
+    if (isManualRefresh) {
+      setIsRefreshing(true);
+    }
 
-    // Fetch user gestures from backend AND sync to localStorage
-    fetch(`${API_BASE_URL}/api/user/${userId}`)
-      .then(res => {
-        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-        return res.json();
-      })
-      .then(user => {
-        if (user && user.gestures) {
-          setSavedGestures(user.gestures);
-          localStorage.setItem('juicy_contact_gestures', JSON.stringify(user.gestures));
-        } else {
-          // Fallback to localStorage if backend has none
-          const saved = localStorage.getItem('juicy_contact_gestures');
-          if (saved) {
-            try {
-              setSavedGestures(JSON.parse(saved));
-            } catch (e) {
-              console.error('Failed to parse gestures:', e);
-            }
-          }
-        }
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error('Failed to load user profile gestures:', err);
-        // Fallback to localStorage on error
-        const saved = localStorage.getItem('juicy_contact_gestures');
-        if (saved) {
+    // Step A: Load from SQLite immediately (offline-first instant response)
+    try {
+      const [sqliteFriends, sqliteGestures] = await Promise.all([
+        getFriendsLocally(userId),
+        getContactGesturesLocally(userId),
+      ]);
+
+      if (Array.isArray(sqliteFriends) && sqliteFriends.length > 0) {
+        setFriends(sqliteFriends);
+        try {
+          localStorage.setItem(`juicy_cached_friends_${userId}`, JSON.stringify(sqliteFriends));
+        } catch (e) {}
+        setInitialLoading(false);
+      }
+
+      if (sqliteGestures && Object.keys(sqliteGestures).length > 0) {
+        setSavedGestures(sqliteGestures);
+        try {
+          localStorage.setItem('juicy_contact_gestures', JSON.stringify(sqliteGestures));
+        } catch (e) {}
+      }
+    } catch (sqliteErr) {
+      console.warn('⚠️ SQLite fast load notice in finder:', sqliteErr);
+    }
+
+    // Step B: Parallel Background Sync from Backend (non-blocking)
+    try {
+      const [friendsRes, userRes] = await Promise.allSettled([
+        fetch(`${API_BASE_URL}/api/user/${userId}/friends`),
+        fetch(`${API_BASE_URL}/api/user/${userId}`),
+      ]);
+
+      // Process Friends Response
+      if (friendsRes.status === 'fulfilled' && friendsRes.value.ok) {
+        const friendsData = await friendsRes.value.json();
+        if (Array.isArray(friendsData)) {
+          setFriends(friendsData);
+          // Persist fresh friends list to SQLite & localStorage
+          saveFriendsLocally(userId, friendsData);
           try {
-            setSavedGestures(JSON.parse(saved));
-          } catch (e) {
-            console.error('Failed to parse gestures:', e);
-          }
+            localStorage.setItem(`juicy_cached_friends_${userId}`, JSON.stringify(friendsData));
+          } catch (e) {}
         }
-        setLoading(false);
-      });
+      }
+
+      // Process User & Gestures Response
+      if (userRes.status === 'fulfilled' && userRes.value.ok) {
+        const userData = await userRes.value.json();
+        if (userData && userData.gestures) {
+          setSavedGestures(userData.gestures);
+          // Persist fresh gestures to SQLite & localStorage
+          saveContactGesturesLocally(userId, userData.gestures, 'synced');
+          syncToNative(userData.gestures);
+        }
+      }
+
+      if (isManualRefresh) {
+        setSnackbar({ open: true, message: 'Contacts & gestures updated', severity: 'success' });
+      }
+    } catch (networkErr) {
+      console.warn('⚠️ Background network sync notice in finder:', networkErr);
+      if (isManualRefresh) {
+        setSnackbar({ open: true, message: 'Using offline data', severity: 'info' });
+      }
+    } finally {
+      setInitialLoading(false);
+      setIsRefreshing(false);
+    }
   }, [userId]);
+
+  useEffect(() => {
+    loadData(false);
+  }, [loadData]);
 
   // Set up canvas styling when drawing user modal opens
   useEffect(() => {
     if (drawingUser && canvasRef.current) {
       const canvas = canvasRef.current;
       const ctx = canvas.getContext('2d');
-      // clear canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.lineWidth = 6;
       ctx.lineCap = 'round';
@@ -288,26 +368,37 @@ const FinderPage = () => {
     setPoints([]);
   };
 
-  const saveGesture = () => {
+  // Optimistic Offline-First Save
+  const saveGesture = async () => {
     if (points.length < 8) {
       setSnackbar({ open: true, message: 'Gesture is too short. Draw a longer stroke.', severity: 'warning' });
       return;
     }
 
     const normalized = normalizeGesture(points, 32, 200);
+    const friendId = drawingUser._id || drawingUser.id;
+    const friendName = drawingUser.username || drawingUser.name || 'Friend';
 
     const updated = {
       ...savedGestures,
-      [drawingUser._id]: {
-        username: drawingUser.username || drawingUser.name,
+      [friendId]: {
+        username: friendName,
         points: normalized
       }
     };
 
+    // 1. Optimistically update React state immediately (0ms delay)
     setSavedGestures(updated);
-    localStorage.setItem('juicy_contact_gestures', JSON.stringify(updated));
+    setDrawingUser(null);
+    setSnackbar({ open: true, message: `Gesture saved for ${friendName}!`, severity: 'success' });
 
-    // Sync to Backend
+    // 2. Instantly persist to SQLite and localStorage
+    await saveContactGesturesLocally(userId, updated, 'pending');
+
+    // 3. Sync to Native Android Plugin
+    syncToNative(updated);
+
+    // 4. Background Sync to Backend
     fetch(`${API_BASE_URL}/api/user/${userId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -317,31 +408,31 @@ const FinderPage = () => {
         if (!res.ok) throw new Error('Failed to update gestures on backend');
         return res.json();
       })
-      .then(data => console.log('✅ Gestures synced to backend successfully:', data))
-      .catch(err => console.error('❌ Failed to sync gestures to backend:', err));
-
-    // Sync to Android native
-    if (typeof window !== 'undefined' && window.Capacitor && window.Capacitor.Plugins) {
-      const { AudioRoute } = window.Capacitor.Plugins;
-      if (AudioRoute && typeof AudioRoute.setLockedContacts === 'function') {
-        AudioRoute.setLockedContacts({ contacts: Object.keys(updated) })
-          .then(() => console.log('📱 Synced locked contacts to native successfully'))
-          .catch(err => console.error('📱 Error syncing locked contacts to native:', err));
-      }
-    }
-
-    setDrawingUser(null);
-    setSnackbar({ open: true, message: `Gesture saved for ${drawingUser.username || drawingUser.name}!`, severity: 'success' });
+      .then(() => {
+        // Mark SQLite status as synced
+        saveContactGesturesLocally(userId, updated, 'synced');
+      })
+      .catch(err => {
+        console.warn('⚠️ Background gesture sync notice (saved offline in SQLite):', err);
+      });
   };
 
-  const deleteGesture = (friendId, username) => {
+  // Optimistic Offline-First Delete
+  const deleteGesture = async (friendId, username) => {
     const updated = { ...savedGestures };
     delete updated[friendId];
 
+    // 1. Optimistically update React state immediately
     setSavedGestures(updated);
-    localStorage.setItem('juicy_contact_gestures', JSON.stringify(updated));
+    setSnackbar({ open: true, message: `Gesture removed for ${username}`, severity: 'info' });
 
-    // Sync to Backend
+    // 2. Instantly persist to SQLite and localStorage
+    await saveContactGesturesLocally(userId, updated, 'pending');
+
+    // 3. Sync to Native Android Plugin
+    syncToNative(updated);
+
+    // 4. Background Sync to Backend
     fetch(`${API_BASE_URL}/api/user/${userId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -351,24 +442,40 @@ const FinderPage = () => {
         if (!res.ok) throw new Error('Failed to update gestures on backend');
         return res.json();
       })
-      .then(data => console.log('✅ Gestures updated on backend after deletion:', data))
-      .catch(err => console.error('❌ Failed to sync gestures deletion to backend:', err));
-
-    // Sync to Android native
-    if (typeof window !== 'undefined' && window.Capacitor && window.Capacitor.Plugins) {
-      const { AudioRoute } = window.Capacitor.Plugins;
-      if (AudioRoute && typeof AudioRoute.setLockedContacts === 'function') {
-        AudioRoute.setLockedContacts({ contacts: Object.keys(updated) })
-          .then(() => console.log('📱 Synced locked contacts to native successfully after deletion'))
-          .catch(err => console.error('📱 Error syncing locked contacts to native:', err));
-      }
-    }
-
-    setSnackbar({ open: true, message: `Gesture deleted for ${username}`, severity: 'info' });
+      .then(() => {
+        saveContactGesturesLocally(userId, updated, 'synced');
+      })
+      .catch(err => {
+        console.warn('⚠️ Background gesture delete notice (updated offline in SQLite):', err);
+      });
   };
 
-  // Stats for the header
-  const mappedCount = friends.filter(f => !!savedGestures[f._id]).length;
+  // Filtered and Searched Friends List
+  const filteredFriends = useMemo(() => {
+    return friends.filter(friend => {
+      const friendId = friend._id || friend.id;
+      const isMapped = !!savedGestures[friendId];
+
+      if (activeFilter === 'mapped' && !isMapped) return false;
+      if (activeFilter === 'unmapped' && isMapped) return false;
+
+      if (searchQuery.trim()) {
+        const query = searchQuery.trim().toLowerCase();
+        const name = (friend.name || '').toLowerCase();
+        const uname = (friend.username || '').toLowerCase();
+        return name.includes(query) || uname.includes(query);
+      }
+
+      return true;
+    });
+  }, [friends, savedGestures, activeFilter, searchQuery]);
+
+  // Stats
+  const mappedCount = useMemo(() => {
+    return friends.filter(f => !!savedGestures[f._id || f.id]).length;
+  }, [friends, savedGestures]);
+
+  const unmappedCount = friends.length - mappedCount;
 
   return (
     <Box sx={{
@@ -380,24 +487,24 @@ const FinderPage = () => {
       position: 'relative',
       overflow: 'hidden'
     }}>
-      {/* Decorative top gradient blob */}
+      {/* Decorative top background gradients */}
       <Box sx={{
         position: 'absolute',
         top: -80,
         right: -60,
-        width: 220,
-        height: 220,
+        width: 240,
+        height: 240,
         borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(240,98,146,0.12) 0%, transparent 70%)',
+        background: 'radial-gradient(circle, rgba(240,98,146,0.15) 0%, transparent 70%)',
         pointerEvents: 'none',
         zIndex: 0
       }} />
       <Box sx={{
         position: 'absolute',
-        top: 40,
-        left: -40,
-        width: 140,
-        height: 140,
+        top: 60,
+        left: -50,
+        width: 160,
+        height: 160,
         borderRadius: '50%',
         background: 'radial-gradient(circle, rgba(240,98,146,0.08) 0%, transparent 70%)',
         pointerEvents: 'none',
@@ -409,66 +516,179 @@ const FinderPage = () => {
         position: 'sticky',
         top: 0,
         zIndex: 10,
-        bgcolor: 'rgba(250,245,247,0.92)',
-        backdropFilter: 'blur(12px)',
-        borderBottom: '1px solid rgba(240,98,146,0.08)',
+        bgcolor: 'rgba(250,245,247,0.96)',
+        backdropFilter: 'blur(16px)',
+        borderBottom: '1px solid rgba(240,98,146,0.1)',
         px: { xs: 2, sm: 3 },
         pt: { xs: 2, sm: 2.5 },
-        pb: 2
+        pb: 1.5
       }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+        {/* Top title and back row */}
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5 }}>
           <IconButton 
             onClick={() => navigate('/chat?tab=settings')} 
             sx={{
               color: '#f06292',
               mr: 1.5,
               bgcolor: 'rgba(240,98,146,0.08)',
-              '&:hover': { bgcolor: 'rgba(240,98,146,0.15)' }
+              '&:hover': { bgcolor: 'rgba(240,98,146,0.18)' }
             }}
           >
             <ArrowBackIcon />
           </IconButton>
-          <Box sx={{ flex: 1 }}>
-            <Typography variant="h6" sx={{
-              fontWeight: 800,
-              color: '#1a1a2e',
-              letterSpacing: '-0.5px',
-              lineHeight: 1.2
-            }}>
-              Contact Gestures
-            </Typography>
+          
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Typography variant="h6" sx={{
+                fontWeight: 800,
+                color: '#1a1a2e',
+                letterSpacing: '-0.4px',
+                lineHeight: 1.2
+              }}>
+                Contact Gestures
+              </Typography>
+            </Box>
             <Typography variant="caption" sx={{ 
               color: '#888', 
               display: 'block', 
-              mt: 0.3,
+              mt: 0.2,
               fontWeight: 500 
             }}>
-              Draw signs to open chats instantly
+              Instant gesture shortcuts powered by SQLite
             </Typography>
           </Box>
-          <Chip
-            icon={<GestureIcon sx={{ fontSize: 16, color: '#f06292 !important' }} />}
-            label={`${mappedCount}/${friends.length}`}
-            size="small"
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Tooltip title="Refresh from server">
+              <IconButton
+                size="small"
+                onClick={() => loadData(true)}
+                disabled={isRefreshing}
+                sx={{
+                  color: '#f06292',
+                  bgcolor: 'rgba(240,98,146,0.08)',
+                  '&:hover': { bgcolor: 'rgba(240,98,146,0.18)' },
+                  animation: isRefreshing ? 'spin 1s linear infinite' : 'none',
+                  '@keyframes spin': {
+                    '0%': { transform: 'rotate(0deg)' },
+                    '100%': { transform: 'rotate(360deg)' }
+                  }
+                }}
+              >
+                <RefreshIcon sx={{ fontSize: 18 }} />
+              </IconButton>
+            </Tooltip>
+
+            <Chip
+              icon={<GestureIcon sx={{ fontSize: 15, color: '#f06292 !important' }} />}
+              label={`${mappedCount}/${friends.length}`}
+              size="small"
+              sx={{
+                bgcolor: 'rgba(240,98,146,0.1)',
+                color: '#f06292',
+                fontWeight: 700,
+                border: '1px solid rgba(240,98,146,0.25)',
+                '& .MuiChip-label': { px: 1 }
+              }}
+            />
+          </Box>
+        </Box>
+
+        {/* Search and Filters */}
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.2 }}>
+          {/* Search Box */}
+          <Paper
+            elevation={0}
             sx={{
-              bgcolor: 'rgba(240,98,146,0.1)',
-              color: '#f06292',
-              fontWeight: 700,
-              border: '1px solid rgba(240,98,146,0.2)',
-              '& .MuiChip-label': { px: 1 }
+              display: 'flex',
+              alignItems: 'center',
+              px: 1.5,
+              py: 0.5,
+              borderRadius: 2.5,
+              bgcolor: '#ffffff',
+              border: '1.5px solid rgba(240,98,146,0.15)',
+              transition: 'all 0.2s ease',
+              '&:focus-within': {
+                borderColor: '#f06292',
+                boxShadow: '0 0 0 3px rgba(240,98,146,0.1)'
+              }
             }}
-          />
+          >
+            <SearchIcon sx={{ color: '#f06292', mr: 1, fontSize: 20 }} />
+            <InputBase
+              placeholder="Search friends to map gestures..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              sx={{
+                flex: 1,
+                fontSize: '0.88rem',
+                fontFamily: `'Poppins', sans-serif`,
+                color: '#1a1a2e'
+              }}
+            />
+            {searchQuery && (
+              <IconButton size="small" onClick={() => setSearchQuery('')} sx={{ p: 0.5, color: '#888' }}>
+                <ClearIcon sx={{ fontSize: 16 }} />
+              </IconButton>
+            )}
+          </Paper>
+
+          {/* Filter Chips Bar */}
+          <Box sx={{ display: 'flex', gap: 1, overflowX: 'auto', py: 0.2 }}>
+            <Chip
+              label={`All (${friends.length})`}
+              size="small"
+              onClick={() => setActiveFilter('all')}
+              sx={{
+                fontWeight: activeFilter === 'all' ? 700 : 500,
+                bgcolor: activeFilter === 'all' ? '#f06292' : 'rgba(0,0,0,0.04)',
+                color: activeFilter === 'all' ? '#fff' : '#666',
+                border: activeFilter === 'all' ? 'none' : '1px solid rgba(0,0,0,0.06)',
+                '&:hover': {
+                  bgcolor: activeFilter === 'all' ? '#e91e63' : 'rgba(240,98,146,0.08)'
+                }
+              }}
+            />
+            <Chip
+              label={`Mapped (${mappedCount})`}
+              size="small"
+              onClick={() => setActiveFilter('mapped')}
+              sx={{
+                fontWeight: activeFilter === 'mapped' ? 700 : 500,
+                bgcolor: activeFilter === 'mapped' ? '#4caf50' : 'rgba(76,175,80,0.08)',
+                color: activeFilter === 'mapped' ? '#fff' : '#2e7d32',
+                border: activeFilter === 'mapped' ? 'none' : '1px solid rgba(76,175,80,0.2)',
+                '&:hover': {
+                  bgcolor: activeFilter === 'mapped' ? '#43a047' : 'rgba(76,175,80,0.15)'
+                }
+              }}
+            />
+            <Chip
+              label={`Not Set (${unmappedCount})`}
+              size="small"
+              onClick={() => setActiveFilter('unmapped')}
+              sx={{
+                fontWeight: activeFilter === 'unmapped' ? 700 : 500,
+                bgcolor: activeFilter === 'unmapped' ? '#ff9800' : 'rgba(255,152,0,0.08)',
+                color: activeFilter === 'unmapped' ? '#fff' : '#e65100',
+                border: activeFilter === 'unmapped' ? 'none' : '1px solid rgba(255,152,0,0.2)',
+                '&:hover': {
+                  bgcolor: activeFilter === 'unmapped' ? '#f57c00' : 'rgba(255,152,0,0.15)'
+                }
+              }}
+            />
+          </Box>
         </Box>
 
         {/* Progress indicator */}
         {friends.length > 0 && (
-          <Box sx={{ width: '100%', height: 3, bgcolor: 'rgba(240,98,146,0.1)', borderRadius: 2, overflow: 'hidden' }}>
+          <Box sx={{ width: '100%', height: 3, bgcolor: 'rgba(240,98,146,0.1)', borderRadius: 2, overflow: 'hidden', mt: 1.5 }}>
             <Box sx={{
-              width: `${friends.length > 0 ? (mappedCount / friends.length) * 100 : 0}%`,
+              width: `${(mappedCount / friends.length) * 100}%`,
               height: '100%',
               bgcolor: '#f06292',
               borderRadius: 2,
-              transition: 'width 0.5s ease'
+              transition: 'width 0.4s ease'
             }} />
           </Box>
         )}
@@ -482,44 +702,46 @@ const FinderPage = () => {
         position: 'relative',
         zIndex: 1,
         overflowY: 'auto',
-        scrollbarWidth: 'none', // Hide scrollbar for Firefox
-        msOverflowStyle: 'none', // Hide scrollbar for IE/Edge
+        scrollbarWidth: 'none',
+        msOverflowStyle: 'none',
         '&::-webkit-scrollbar': {
-          display: 'none', // Hide scrollbar for Chrome/Safari/Webkit
+          display: 'none',
         }
       }}>
-        {loading ? (
-          <Box sx={{ 
-            display: 'flex', 
-            flexDirection: 'column', 
-            alignItems: 'center', 
-            justifyContent: 'center',
-            mt: 8,
-            gap: 2
-          }}>
-            <Box sx={{
-              width: 48,
-              height: 48,
-              borderRadius: '50%',
-              border: '3px solid rgba(240,98,146,0.15)',
-              borderTop: '3px solid #f06292',
-              animation: 'spin 0.8s linear infinite',
-              '@keyframes spin': {
-                '0%': { transform: 'rotate(0deg)' },
-                '100%': { transform: 'rotate(360deg)' }
-              }
-            }} />
-            <Typography sx={{ color: '#888', fontWeight: 500, fontSize: '0.9rem' }}>
-              Loading friends...
-            </Typography>
+        {/* SKELETON LOADER (Only on initial cold-start when no SQLite cache exists yet) */}
+        {initialLoading && friends.length === 0 ? (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {[1, 2, 3, 4].map(idx => (
+              <Paper
+                key={idx}
+                elevation={0}
+                sx={{
+                  borderRadius: 3,
+                  p: 2,
+                  bgcolor: '#ffffff',
+                  border: '1px solid rgba(0,0,0,0.04)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 2
+                }}
+              >
+                <Skeleton variant="circular" width={52} height={52} sx={{ bgcolor: 'rgba(240,98,146,0.08)' }} />
+                <Box sx={{ flex: 1 }}>
+                  <Skeleton variant="text" width="60%" height={24} />
+                  <Skeleton variant="text" width="30%" height={18} />
+                </Box>
+                <Skeleton variant="rounded" width={72} height={32} sx={{ borderRadius: 2 }} />
+              </Paper>
+            ))}
           </Box>
         ) : friends.length === 0 ? (
+          /* Empty Friends State */
           <Box sx={{
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            mt: 10,
+            mt: 8,
             gap: 2,
             textAlign: 'center'
           }}>
@@ -532,41 +754,87 @@ const FinderPage = () => {
               alignItems: 'center',
               justifyContent: 'center'
             }}>
-              <GestureIcon sx={{ fontSize: 36, color: '#f06292', opacity: 0.5 }} />
+              <GestureIcon sx={{ fontSize: 38, color: '#f06292', opacity: 0.6 }} />
             </Box>
             <Typography sx={{
-              color: '#666',
-              fontWeight: 600,
-              fontSize: '1rem'
+              color: '#1a1a2e',
+              fontWeight: 700,
+              fontSize: '1.05rem'
             }}>
-              No friends yet
+              No friends found
             </Typography>
             <Typography sx={{
-              color: '#999',
+              color: '#888',
               fontSize: '0.85rem',
-              maxWidth: 240,
+              maxWidth: 260,
               lineHeight: 1.5
             }}>
-              Add friends first to configure your shortcut gestures
+              Add contacts or friends first to configure rapid gesture shortcuts
             </Typography>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => navigate('/chat?tab=search')}
+              sx={{
+                mt: 1,
+                borderRadius: 2.5,
+                color: '#f06292',
+                borderColor: '#f06292',
+                textTransform: 'none',
+                fontWeight: 600
+              }}
+            >
+              Search & Add Friends
+            </Button>
+          </Box>
+        ) : filteredFriends.length === 0 ? (
+          /* No search/filter match */
+          <Box sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            mt: 6,
+            gap: 1.5,
+            textAlign: 'center'
+          }}>
+            <FilterListIcon sx={{ fontSize: 36, color: '#f06292', opacity: 0.4 }} />
+            <Typography sx={{ color: '#666', fontWeight: 600, fontSize: '0.95rem' }}>
+              No contacts match your filter
+            </Typography>
+            <Button
+              size="small"
+              onClick={() => {
+                setSearchQuery('');
+                setActiveFilter('all');
+              }}
+              sx={{ color: '#f06292', textTransform: 'none', fontWeight: 600 }}
+            >
+              Reset Filters
+            </Button>
           </Box>
         ) : (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {friends.map((friend) => {
-              const isMapped = !!savedGestures[friend._id];
+          /* FRIENDS LIST - Rendered instantly from SQLite */
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.8 }}>
+            {filteredFriends.map((friend) => {
+              const friendId = friend._id || friend.id;
+              const isMapped = !!savedGestures[friendId];
+              const displayName = friend.username || friend.name || 'Friend';
+
               return (
                 <Paper
-                  key={friend._id}
+                  key={friendId}
                   elevation={0}
                   sx={{
                     borderRadius: 3,
                     overflow: 'hidden',
                     bgcolor: '#ffffff',
                     border: '1px solid rgba(0,0,0,0.04)',
-                    transition: 'all 0.25s ease',
-                    '&:active': {
-                      transform: 'scale(0.98)',
-                      bgcolor: '#fff0f3'
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+                    transition: 'all 0.2s ease',
+                    '&:hover': {
+                      boxShadow: '0 4px 14px rgba(240,98,146,0.08)',
+                      borderColor: 'rgba(240,98,146,0.15)'
                     }
                   }}
                 >
@@ -576,17 +844,19 @@ const FinderPage = () => {
                     p: 2,
                     gap: 2
                   }}>
-                    {/* Avatar with status ring */}
+                    {/* Avatar with status indicator ring */}
                     <Box sx={{ position: 'relative', flexShrink: 0 }}>
                       <Avatar
-                        src={friend.profilePic || friend.image}
+                        src={getProfileImageSrc(friend.profilePic || friend.profileImage || friend.image)}
                         sx={{ 
                           width: 52, 
                           height: 52,
                           border: isMapped ? '2.5px solid #4caf50' : '2.5px solid transparent',
                           boxShadow: isMapped ? '0 0 0 3px rgba(76,175,80,0.15)' : 'none'
                         }}
-                      />
+                      >
+                        {displayName.charAt(0).toUpperCase()}
+                      </Avatar>
                       {isMapped && (
                         <Box sx={{
                           position: 'absolute',
@@ -606,7 +876,7 @@ const FinderPage = () => {
                       )}
                     </Box>
 
-                    {/* Info */}
+                    {/* Contact Info */}
                     <Box sx={{ flex: 1, minWidth: 0 }}>
                       <Typography sx={{ 
                         fontWeight: 700, 
@@ -617,13 +887,13 @@ const FinderPage = () => {
                         overflow: 'hidden',
                         textOverflow: 'ellipsis'
                       }}>
-                        {friend.username || friend.name}
+                        {displayName}
                       </Typography>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
                         {isMapped ? (
                           <Chip
                             size="small"
-                            label="Mapped"
+                            label="Gesture Mapped"
                             sx={{
                               height: 22,
                               fontSize: '0.7rem',
@@ -658,39 +928,42 @@ const FinderPage = () => {
                         size="small"
                         onClick={() => setDrawingUser(friend)}
                         disableElevation
+                        startIcon={isMapped ? <BrushIcon sx={{ fontSize: 15 }} /> : <GestureIcon sx={{ fontSize: 15 }} />}
                         sx={{
                           borderRadius: 2.5,
                           textTransform: 'none',
                           fontWeight: 700,
-                          px: 2,
+                          px: 1.8,
                           py: 0.6,
                           fontSize: '0.8rem',
                           minWidth: 0,
                           color: isMapped ? '#f06292' : '#ffffff',
-                          borderColor: isMapped ? 'rgba(240,98,146,0.3)' : 'transparent',
+                          borderColor: isMapped ? 'rgba(240,98,146,0.35)' : 'transparent',
                           bgcolor: isMapped ? 'transparent' : '#f06292',
                           '&:hover': {
-                            bgcolor: isMapped ? 'rgba(240,98,146,0.06)' : '#e91e63',
-                            borderColor: isMapped ? 'rgba(240,98,146,0.5)' : 'transparent'
+                            bgcolor: isMapped ? 'rgba(240,98,146,0.08)' : '#e91e63',
+                            borderColor: isMapped ? 'rgba(240,98,146,0.6)' : 'transparent'
                           }
                         }}
                       >
                         {isMapped ? "Redraw" : "Draw"}
                       </Button>
                       {isMapped && (
-                        <IconButton
-                          size="small"
-                          onClick={() => deleteGesture(friend._id, friend.username || friend.name)}
-                          sx={{
-                            width: 34,
-                            height: 34,
-                            color: '#d32f2f',
-                            bgcolor: 'rgba(211,47,47,0.06)',
-                            '&:hover': { bgcolor: 'rgba(211,47,47,0.12)' }
-                          }}
-                        >
-                          <DeleteIcon sx={{ fontSize: 18 }} />
-                        </IconButton>
+                        <Tooltip title="Delete Gesture">
+                          <IconButton
+                            size="small"
+                            onClick={() => deleteGesture(friendId, displayName)}
+                            sx={{
+                              width: 34,
+                              height: 34,
+                              color: '#d32f2f',
+                              bgcolor: 'rgba(211,47,47,0.06)',
+                              '&:hover': { bgcolor: 'rgba(211,47,47,0.14)' }
+                            }}
+                          >
+                            <DeleteIcon sx={{ fontSize: 18 }} />
+                          </IconButton>
+                        </Tooltip>
                       )}
                     </Box>
                   </Box>
@@ -709,11 +982,11 @@ const FinderPage = () => {
         fullWidth
         PaperProps={{
           sx: {
-            borderRadius: 3,
+            borderRadius: 3.5,
             m: { xs: 1.5, sm: 2 },
             bgcolor: '#ffffff',
             overflow: 'hidden',
-            boxShadow: '0 20px 60px rgba(0,0,0,0.15)'
+            boxShadow: '0 20px 60px rgba(0,0,0,0.18)'
           }
         }}
       >
@@ -728,7 +1001,7 @@ const FinderPage = () => {
           gap: 1
         }}>
           <AutoFixHighIcon sx={{ color: '#f06292', fontSize: 22 }} />
-          Map Gesture
+          Map Quick Gesture
         </DialogTitle>
         
         <DialogContent sx={{ px: 2.5, pb: 1 }}>
@@ -738,7 +1011,7 @@ const FinderPage = () => {
             lineHeight: 1.6,
             fontSize: '0.85rem'
           }}>
-            Draw a unique gesture for <b style={{ color: '#f06292' }}>{drawingUser?.username || drawingUser?.name}</b> in one continuous stroke.
+            Draw a unique sign for <b style={{ color: '#f06292' }}>{drawingUser?.username || drawingUser?.name}</b> in one continuous stroke.
           </Typography>
 
           <Box
@@ -793,9 +1066,9 @@ const FinderPage = () => {
                   pointerEvents: 'none',
                   textAlign: 'center'
                 }}>
-                  <GestureIcon sx={{ fontSize: 40, color: 'rgba(240,98,146,0.2)', mb: 1 }} />
-                  <Typography sx={{ color: 'rgba(240,98,146,0.35)', fontSize: '0.8rem', fontWeight: 500 }}>
-                    Start drawing here
+                  <GestureIcon sx={{ fontSize: 40, color: 'rgba(240,98,146,0.25)', mb: 1 }} />
+                  <Typography sx={{ color: 'rgba(240,98,146,0.4)', fontSize: '0.85rem', fontWeight: 500 }}>
+                    Start drawing gesture here
                   </Typography>
                 </Box>
               )}
@@ -814,14 +1087,13 @@ const FinderPage = () => {
           <Button
             onClick={() => setDrawingUser(null)}
             variant="outlined"
-            fullWidth
             sx={{
               borderRadius: 2.5,
               textTransform: 'none',
               fontWeight: 700,
               color: '#666',
               borderColor: 'rgba(0,0,0,0.12)',
-              py: 1,
+              py: 0.9,
               flex: { xs: '1 1 100%', sm: '0 0 auto' },
               '&:hover': { borderColor: 'rgba(0,0,0,0.25)', bgcolor: 'rgba(0,0,0,0.02)' }
             }}
@@ -831,14 +1103,13 @@ const FinderPage = () => {
           <Button
             onClick={clearCanvas}
             variant="outlined"
-            fullWidth
             sx={{
               borderRadius: 2.5,
               textTransform: 'none',
               fontWeight: 700,
               color: '#ed6c02',
               borderColor: 'rgba(237,108,2,0.3)',
-              py: 1,
+              py: 0.9,
               flex: { xs: '1 1 100%', sm: '0 0 auto' },
               '&:hover': { borderColor: '#ed6c02', bgcolor: 'rgba(237,108,2,0.04)' }
             }}
@@ -849,20 +1120,19 @@ const FinderPage = () => {
             onClick={saveGesture}
             variant="contained"
             disabled={points.length === 0}
-            fullWidth
             disableElevation
             sx={{
               borderRadius: 2.5,
               textTransform: 'none',
               fontWeight: 700,
-              py: 1,
+              py: 0.9,
               flex: { xs: '1 1 100%', sm: '1 1 auto' },
               bgcolor: '#f06292',
               '&:hover': { bgcolor: '#e91e63' },
               '&.Mui-disabled': { bgcolor: 'rgba(240,98,146,0.2)', color: 'rgba(255,255,255,0.6)' }
             }}
           >
-            Save Gesture
+            Save to SQLite & Cloud
           </Button>
         </DialogActions>
       </Dialog>

@@ -13,6 +13,7 @@ import {
   Snackbar,
   Button,
   TextField,
+  InputAdornment,
   DialogActions,
   Tabs,
   Tab,
@@ -30,6 +31,11 @@ import OpacityIcon from '@mui/icons-material/Opacity';
 import WallpaperIcon from '@mui/icons-material/Wallpaper';
 import AddPhotoAlternateIcon from '@mui/icons-material/AddPhotoAlternate';
 import DeleteIcon from '@mui/icons-material/Delete';
+import SettingsIcon from '@mui/icons-material/Settings';
+import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
+import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
+import CheckCircleRoundedIcon from '@mui/icons-material/CheckCircleRounded';
+import AutoAwesomeRoundedIcon from '@mui/icons-material/AutoAwesomeRounded';
 import { useTheme } from '@mui/material/styles';
 import { useNavigate } from 'react-router-dom';
 import useSwipeBack from './hooks/useSwipeBack';
@@ -38,144 +44,435 @@ import MuiAlert from '@mui/material/Alert';
 import EditProfile from './Profile';
 import Cropper from 'react-easy-crop';
 import getCroppedImg from './utils/cropImage';
-import { UserGuideModal } from './UserGuideModal';
+import { getProfileImageSrc } from './utils/imageUtils';
+import { FeatureCatalogModal } from './UserGuideModal';
 import Help from './Help';
 import { App as CapacitorApp } from '@capacitor/app';
+import MusicNoteRoundedIcon from '@mui/icons-material/MusicNoteRounded';
+import RingtoneModal from './components/RingtoneModal';
+import { getRingtoneSetting } from './utils/ringtoneManager';
+import {
+  getCustomWallpapersLocally,
+  saveCustomWallpaperLocally,
+  deleteCustomWallpaperLocally,
+  saveAppSettingLocally,
+  getAppSettingLocally,
+} from './db/offlineDb';
 
 
-// Theme options (keep all your existing theme options here)
+// Theme options (32 Solid Pastels & Clean Themes)
 const themeOptions = [
-  {id: 'light', name: 'Light', description: 'Bright and clear with soft pastels', colors: { primary: '#f06292', background: '#fff6f8', surface: '#ffffff', text: '#000000' }, icon: '☀️' },
-  {id: 'dark', name: 'Dark', description: 'Sleek and modern with deep tones', colors: { primary: '#f06292', background: '#121212', surface: '#1e1e1e', text: '#ffffff' }, icon: '🌙' },
-  {id: 'ocean', name: 'Ocean Breeze', description: 'Calming blues and seafoam greens', colors: { primary: '#4db6ac', background: '#e0f2f1', surface: '#ffffff', text: '#004d40' }, icon: '🌊' },
-  {id: 'sunset', name: 'Sunset Glow', description: 'Warm oranges and pinks for a cozy feel', colors: { primary: '#ff8a65', background: '#fff3e0', surface: '#ffffff', text: '#bf360c' }, icon: '🌅' },
-  {id: 'forest', name: 'Forest Whisper', description: 'Earthy greens and browns for a natural vibe', colors: { primary: '#81c784', background: '#e8f5e9', surface: '#ffffff', text: '#1b5e20' }, icon: '🌳' },
-  {id: 'lavender', name: 'Lavender Dream', description: 'Soft purples and lilacs for a dreamy atmosphere', colors: { primary: '#ba68c8', background: '#f3e5f5', surface: '#ffffff', text: '#4a148c' }, icon: '💜' },
-  {id: 'citrus', name: 'Citrus Zest', description: 'Vibrant yellows and greens for an energetic feel', colors: { primary: '#ffeb3b', background: '#f9fbe7', surface: '#ffffff', text: '#f57f17' }, icon: '🍋' },
-  {id: 'midnight', name: 'Midnight Mystery', description: 'Dark purples and blues for a mysterious vibe', colors: { primary: '#9575cd', background: '#ede7f6', surface: '#ffffff', text: '#311b92' }, icon: '🌌' },
-  {id: 'rose', name: 'Rose Garden', description: 'Soft pinks and greens for a romantic feel', colors: { primary: '#f48fb1', background: '#fce4ec', surface: '#ffffff', text: '#880e4f' }, icon: '🌹' },
-  {id: 'autumn', name: 'Autumn Harvest', description: 'Warm reds, oranges, and browns for a cozy fall vibe', colors: { primary: '#ff7043', background: '#fff8e1', surface: '#ffffff', text: '#bf360c' }, icon: '🍂' },
-  {id: 'mint', name: 'Mint Fresh', description: 'Cool minty greens and whites for a refreshing feel', colors: { primary: '#4db6ac', background: '#e0f2f1', surface: '#ffffff', text: '#004d40' }, icon: '🍃' },
-  {id: 'grape', name: 'Grape Escape', description: 'Rich purples and soft lavenders for a sweet vibe', colors: { primary: '#ba68c8', background: '#f3e5f5', surface: '#ffffff', text: '#4a148c' }, icon: '🍇' },
-  {id: 'sunrise', name: 'Sunrise Bliss', description: 'Soft pinks and oranges for a peaceful morning feel', colors: { primary: '#ff8a65', background: '#fff3e0', surface: '#ffffff', text: '#bf360c' }, icon: '🌅' },
-  {id: 'steel', name: 'Steel Blue', description: 'Cool steel blues and grays for a modern industrial vibe', colors: { primary: '#90a4ae', background: '#eceff1', surface: '#ffffff', text: '#263238' }, icon: '🔩' },
-  {id: 'peach', name: 'Peachy Keen', description: 'Soft peaches and creams for a sweet and cozy feel', colors: { primary: '#ffab91', background: '#fff3e0', surface: '#ffffff', text: '#bf360c' }, icon: '🍑' },
-  {id: 'slate', name: 'Slate Gray', description: 'Neutral grays with a hint of blue for a sophisticated look', colors: { primary: '#90a4ae', background: '#eceff1', surface: '#ffffff', text: '#263238' }, icon: '🪨' },
-  {id: 'coral', name: 'Coral Reef', description: 'Vibrant corals and teals for a lively ocean vibe', colors: { primary: '#ff7043', background: '#e0f7fa', surface: '#ffffff', text: '#004d40' }, icon: '🪸' },
-  {id: 'orchid', name: 'Orchid Bloom', description: 'Soft purples and pinks for a delicate floral feel', colors: { primary: '#ba68c8', background: '#f3e5f5', surface: '#ffffff', text: '#4a148c' }, icon: '💐' },
-  {id: 'cocoa', name: 'Cocoa Delight', description: 'Warm browns and creams for a cozy chocolate vibe', colors: { primary: '#6d4c41', background: '#efebe9', surface: '#ffffff', text: '#3e2723' }, icon: '🍫' },
-  {id: 'sky', name: 'Sky High', description: 'Bright blues and whites for a fresh and airy feel', colors: { primary: '#64b5f6', background: '#e3f2fd', surface: '#ffffff', text: '#01579b' }, icon: '☁️' },
-  {id: 'berry', name: 'Berry Bliss', description: 'Rich berry tones and soft pinks for a sweet and vibrant vibe', colors: { primary: '#f06292', background: '#fce4ec', surface: '#ffffff', text: '#880e4f' }, icon: '🍓' }
+  { id: 'light', name: 'Light', description: 'Bright and clear with soft pastels', colors: { primary: '#f06292', background: '#fff6f8', surface: '#ffffff', text: '#000000' }, icon: '☀️' },
+  { id: 'dark', name: 'Dark', description: 'Sleek and modern with deep tones', colors: { primary: '#f06292', background: '#121212', surface: '#1e1e1e', text: '#ffffff' }, icon: '🌙' },
+  { id: 'ocean', name: 'Ocean Breeze', description: 'Calming blues and seafoam greens', colors: { primary: '#4db6ac', background: '#e0f2f1', surface: '#ffffff', text: '#004d40' }, icon: '🌊' },
+  { id: 'sunset', name: 'Sunset Glow', description: 'Warm oranges and pinks for a cozy feel', colors: { primary: '#ff8a65', background: '#fff3e0', surface: '#ffffff', text: '#bf360c' }, icon: '🌅' },
+  { id: 'forest', name: 'Forest Whisper', description: 'Earthy greens and browns for a natural vibe', colors: { primary: '#81c784', background: '#e8f5e9', surface: '#ffffff', text: '#1b5e20' }, icon: '🌳' },
+  { id: 'lavender', name: 'Lavender Dream', description: 'Soft purples and lilacs for a dreamy atmosphere', colors: { primary: '#ba68c8', background: '#f3e5f5', surface: '#ffffff', text: '#4a148c' }, icon: '💜' },
+  { id: 'citrus', name: 'Citrus Zest', description: 'Vibrant yellows and greens for an energetic feel', colors: { primary: '#ffeb3b', background: '#f9fbe7', surface: '#ffffff', text: '#f57f17' }, icon: '🍋' },
+  { id: 'midnight', name: 'Midnight Mystery', description: 'Dark purples and blues for a mysterious vibe', colors: { primary: '#9575cd', background: '#ede7f6', surface: '#ffffff', text: '#311b92' }, icon: '🌌' },
+  { id: 'rose', name: 'Rose Garden', description: 'Soft pinks and greens for a romantic feel', colors: { primary: '#f48fb1', background: '#fce4ec', surface: '#ffffff', text: '#880e4f' }, icon: '🌹' },
+  { id: 'autumn', name: 'Autumn Harvest', description: 'Warm reds, oranges, and browns for a cozy fall vibe', colors: { primary: '#ff7043', background: '#fff8e1', surface: '#ffffff', text: '#bf360c' }, icon: '🍂' },
+  { id: 'mint', name: 'Mint Fresh', description: 'Cool minty greens and whites for a refreshing feel', colors: { primary: '#4db6ac', background: '#e0f2f1', surface: '#ffffff', text: '#004d40' }, icon: '🍃' },
+  { id: 'grape', name: 'Grape Escape', description: 'Rich purples and soft lavenders for a sweet vibe', colors: { primary: '#ba68c8', background: '#f3e5f5', surface: '#ffffff', text: '#4a148c' }, icon: '🍇' },
+  { id: 'sunrise', name: 'Sunrise Bliss', description: 'Soft pinks and oranges for a peaceful morning feel', colors: { primary: '#ff8a65', background: '#fff3e0', surface: '#ffffff', text: '#bf360c' }, icon: '🌅' },
+  { id: 'steel', name: 'Steel Blue', description: 'Cool steel blues and grays for a modern industrial vibe', colors: { primary: '#90a4ae', background: '#eceff1', surface: '#ffffff', text: '#263238' }, icon: '🔩' },
+  { id: 'peach', name: 'Peachy Keen', description: 'Soft peaches and creams for a sweet and cozy feel', colors: { primary: '#ffab91', background: '#fff3e0', surface: '#ffffff', text: '#bf360c' }, icon: '🍑' },
+  { id: 'slate', name: 'Slate Gray', description: 'Neutral grays with a hint of blue for a sophisticated look', colors: { primary: '#90a4ae', background: '#eceff1', surface: '#ffffff', text: '#263238' }, icon: '🪨' },
+  { id: 'coral', name: 'Coral Reef', description: 'Vibrant corals and teals for a lively ocean vibe', colors: { primary: '#ff7043', background: '#e0f7fa', surface: '#ffffff', text: '#004d40' }, icon: '🪸' },
+  { id: 'orchid', name: 'Orchid Bloom', description: 'Soft purples and pinks for a delicate floral feel', colors: { primary: '#ba68c8', background: '#f3e5f5', surface: '#ffffff', text: '#4a148c' }, icon: '💐' },
+  { id: 'cocoa', name: 'Cocoa Delight', description: 'Warm browns and creams for a cozy chocolate vibe', colors: { primary: '#6d4c41', background: '#efebe9', surface: '#ffffff', text: '#3e2723' }, icon: '🍫' },
+  { id: 'sky', name: 'Sky High', description: 'Bright blues and whites for a fresh and airy feel', colors: { primary: '#64b5f6', background: '#e3f2fd', surface: '#ffffff', text: '#01579b' }, icon: '☁️' },
+  { id: 'berry', name: 'Berry Bliss', description: 'Rich berry tones and soft pinks for a sweet and vibrant vibe', colors: { primary: '#f06292', background: '#fce4ec', surface: '#ffffff', text: '#880e4f' }, icon: '🍓' },
+  { id: 'strawberry', name: 'Strawberry Cream', description: 'Luscious red berries with velvety sweet cream', colors: { primary: '#ff2d6c', background: '#fff0f4', surface: '#ffffff', text: '#400015' }, icon: '🍓' },
+  { id: 'matcha', name: 'Matcha Latte', description: 'Japanese ceremonial green tea with rich froth', colors: { primary: '#659c35', background: '#f3f8ec', surface: '#ffffff', text: '#21380e' }, icon: '🍵' },
+  { id: 'bubblegum', name: 'Bubblegum Pop', description: 'Playful vibrant pinks for a bouncy pop aesthetic', colors: { primary: '#ff4db8', background: '#fff2fa', surface: '#ffffff', text: '#59003b' }, icon: '🍬' },
+  { id: 'honey', name: 'Golden Honey', description: 'Sweet golden nectar with warm sunny notes', colors: { primary: '#f39c12', background: '#fffbf0', surface: '#ffffff', text: '#5c3a00' }, icon: '🍯' },
+  { id: 'pistachio', name: 'Pistachio Gelato', description: 'Creamy artisan pistachio with delicate herbal mint', colors: { primary: '#48bb78', background: '#f0faf4', surface: '#ffffff', text: '#134e2b' }, icon: '🍨' },
+  { id: 'cherry', name: 'Cherry Fizz', description: 'Tart sparkling cherry with bright ruby highlights', colors: { primary: '#e8175d', background: '#fff0f5', surface: '#ffffff', text: '#4d001a' }, icon: '🍒' },
+  { id: 'turquoise', name: 'Turquoise Lagoon', description: 'Crystal-clear tropical water on a white sand shore', colors: { primary: '#00b894', background: '#e8faf6', surface: '#ffffff', text: '#004235' }, icon: '🏝️' },
+  { id: 'lilac', name: 'Lilac Blossom', description: 'Soft botanical lilac with dreamy periwinkle undertones', colors: { primary: '#8c7ae6', background: '#f5f3ff', surface: '#ffffff', text: '#291b61' }, icon: '🌸' },
+  { id: 'caramel', name: 'Salted Caramel', description: 'Rich buttery caramel with a warm golden finish', colors: { primary: '#c67d43', background: '#fdf6ee', surface: '#ffffff', text: '#4a2507' }, icon: '🍮' },
+  { id: 'seafoam', name: 'Seafoam Mist', description: 'Refreshing ocean mist with clean aquamarine air', colors: { primary: '#20bf6b', background: '#eafaf1', surface: '#ffffff', text: '#0a4223' }, icon: '🫧' },
+  { id: 'apricot', name: 'Apricot Glow', description: 'Sun-drenched apricot with a soft citrus peel warmth', colors: { primary: '#fa8231', background: '#fff5ee', surface: '#ffffff', text: '#592200' }, icon: '🍊' }
 ];
 
-// Gradient Themes (keep all your existing gradient themes)
+// Gradient Themes (26 Gradients & Luminous Colors)
 const gradientThemes = [
-  {id: 'sunset-gradient', name: 'Sunset Gradient', description: 'Warm gradient blending oranges and pinks', colors: { primary: 'linear-gradient(135deg, #ff8a65, #ff7043)', background: '#fff3e0', surface: '#ffffff', text: '#bf360c' }, icon: '🌅' },
-  {id: 'ocean-gradient', name: 'Ocean Gradient', description: 'Cool gradient blending blues and teals', colors: { primary: 'linear-gradient(135deg, #4db6ac, #26a69a)', background: '#e0f2f1', surface: '#ffffff', text: '#004d40' }, icon: '🌊' },
-  {id: 'lavender-gradient', name: 'Lavender Gradient', description: 'Soft gradient blending purples and lilacs', colors: { primary: 'linear-gradient(135deg, #ba68c8, #ab47bc)', background: '#f3e5f5', surface: '#ffffff', text: '#4a148c' }, icon: '💜' },
-  {id: 'citrus-gradient', name: 'Citrus Gradient', description: 'Vibrant gradient blending yellows and greens', colors: { primary: 'linear-gradient(135deg, #ffeb3b, #cddc39)', background: '#f9fbe7', surface: '#ffffff', text: '#f57f17' }, icon: '🍋' },
-  {id: 'midnight-gradient', name: 'Midnight Gradient', description: 'Dark gradient blending purples and blues', colors: { primary: 'linear-gradient(135deg, #9575cd, #7e57c2)', background: '#ede7f6', surface: '#ffffff', text: '#311b92' }, icon: '🌌' },
-  {id: 'rose-gradient', name: 'Rose Gradient', description: 'Soft gradient blending pinks and greens', colors: { primary: 'linear-gradient(135deg, #f48fb1, #f06292)', background: '#fce4ec', surface: '#ffffff', text: '#880e4f' }, icon: '🌹' },
-  {id: 'steel-gradient', name: 'Steel Gradient', description: 'Cool gradient blending steel blues and grays', colors: { primary: 'linear-gradient(135deg, #90a4ae, #78909c)', background: '#eceff1', surface: '#ffffff', text: '#263238' }, icon: '🔩' },
-  {id: 'coral-gradient', name: 'Coral Gradient', description: 'Vibrant gradient blending corals and teals', colors: { primary: 'linear-gradient(135deg, #ff7043, #26a69a)', background: '#e0f7fa', surface: '#ffffff', text: '#004d40' }, icon: '🪸' },
-  {id: 'orchid-gradient', name: 'Orchid Gradient', description: 'Soft gradient blending purples and pinks', colors: { primary: 'linear-gradient(135deg, #ba68c8, #ab47bc)', background: '#f3e5f5', surface: '#ffffff', text: '#4a148c' }, icon: '💐' },
-  {id: 'cocoa-gradient', name: 'Cocoa Gradient', description: 'Warm gradient blending browns and creams', colors: { primary: 'linear-gradient(135deg, #6d4c41, #5d4037)', background: '#efebe9', surface: '#ffffff', text: '#3e2723' }, icon: '🍫' },
-  {id: 'sky-gradient', name: 'Sky Gradient', description: 'Bright gradient blending blues and whites', colors: { primary: 'linear-gradient(135deg, #64b5f6, #e3f2fd)', background: '#e3f2fd', surface: '#ffffff', text: '#01579b' }, icon: '☁️' },
-  {id: 'berry-gradient', name: 'Berry Gradient', description: 'Rich gradient blending berry tones and soft pinks', colors: { primary: 'linear-gradient(135deg, #f06292, #f48fb1)', background: '#fce4ec', surface: '#ffffff', text: '#880e4f' }, icon: '🍓' },
-  {id: 'peach-gradient', name: 'Peach Gradient', description: 'Soft gradient blending peaches and creams', colors: { primary: 'linear-gradient(135deg, #ffab91, #ff7043)', background: '#fff3e0', surface: '#ffffff', text: '#bf360c' }, icon: '🍑' },
-  {id: 'slate-gradient', name: 'Slate Gradient', description: 'Neutral gradient blending grays with a hint of blue', colors: { primary: 'linear-gradient(135deg, #90a4ae, #78909c)', background: '#eceff1', surface: '#ffffff', text: '#263238' }, icon: '🪨' }
+  { id: 'sunset-gradient', name: 'Sunset Gradient', description: 'Warm gradient blending oranges and pinks', colors: { primary: 'linear-gradient(135deg, #ff8a65, #ff7043)', background: '#fff3e0', surface: '#ffffff', text: '#bf360c' }, icon: '🌅' },
+  { id: 'ocean-gradient', name: 'Ocean Gradient', description: 'Cool gradient blending blues and teals', colors: { primary: 'linear-gradient(135deg, #4db6ac, #26a69a)', background: '#e0f2f1', surface: '#ffffff', text: '#004d40' }, icon: '🌊' },
+  { id: 'lavender-gradient', name: 'Lavender Gradient', description: 'Soft gradient blending purples and lilacs', colors: { primary: 'linear-gradient(135deg, #ba68c8, #ab47bc)', background: '#f3e5f5', surface: '#ffffff', text: '#4a148c' }, icon: '💜' },
+  { id: 'citrus-gradient', name: 'Citrus Gradient', description: 'Vibrant gradient blending yellows and greens', colors: { primary: 'linear-gradient(135deg, #ffeb3b, #cddc39)', background: '#f9fbe7', surface: '#ffffff', text: '#f57f17' }, icon: '🍋' },
+  { id: 'midnight-gradient', name: 'Midnight Gradient', description: 'Dark gradient blending purples and blues', colors: { primary: 'linear-gradient(135deg, #9575cd, #7e57c2)', background: '#ede7f6', surface: '#ffffff', text: '#311b92' }, icon: '🌌' },
+  { id: 'rose-gradient', name: 'Rose Gradient', description: 'Soft gradient blending pinks and greens', colors: { primary: 'linear-gradient(135deg, #f48fb1, #f06292)', background: '#fce4ec', surface: '#ffffff', text: '#880e4f' }, icon: '🌹' },
+  { id: 'steel-gradient', name: 'Steel Gradient', description: 'Cool gradient blending steel blues and grays', colors: { primary: 'linear-gradient(135deg, #90a4ae, #78909c)', background: '#eceff1', surface: '#ffffff', text: '#263238' }, icon: '🔩' },
+  { id: 'coral-gradient', name: 'Coral Gradient', description: 'Vibrant gradient blending corals and teals', colors: { primary: 'linear-gradient(135deg, #ff7043, #26a69a)', background: '#e0f7fa', surface: '#ffffff', text: '#004d40' }, icon: '🪸' },
+  { id: 'orchid-gradient', name: 'Orchid Gradient', description: 'Soft gradient blending purples and pinks', colors: { primary: 'linear-gradient(135deg, #ba68c8, #ab47bc)', background: '#f3e5f5', surface: '#ffffff', text: '#4a148c' }, icon: '💐' },
+  { id: 'cocoa-gradient', name: 'Cocoa Gradient', description: 'Warm gradient blending browns and creams', colors: { primary: 'linear-gradient(135deg, #6d4c41, #5d4037)', background: '#efebe9', surface: '#ffffff', text: '#3e2723' }, icon: '🍫' },
+  { id: 'sky-gradient', name: 'Sky Gradient', description: 'Bright gradient blending blues and whites', colors: { primary: 'linear-gradient(135deg, #64b5f6, #e3f2fd)', background: '#e3f2fd', surface: '#ffffff', text: '#01579b' }, icon: '☁️' },
+  { id: 'berry-gradient', name: 'Berry Gradient', description: 'Rich gradient blending berry tones and soft pinks', colors: { primary: 'linear-gradient(135deg, #f06292, #f48fb1)', background: '#fce4ec', surface: '#ffffff', text: '#880e4f' }, icon: '🍓' },
+  { id: 'peach-gradient', name: 'Peach Gradient', description: 'Soft gradient blending peaches and creams', colors: { primary: 'linear-gradient(135deg, #ffab91, #ff7043)', background: '#fff3e0', surface: '#ffffff', text: '#bf360c' }, icon: '🍑' },
+  { id: 'slate-gradient', name: 'Slate Gradient', description: 'Neutral gradient blending grays with a hint of blue', colors: { primary: 'linear-gradient(135deg, #90a4ae, #78909c)', background: '#eceff1', surface: '#ffffff', text: '#263238' }, icon: '🪨' },
+  { id: 'aurora-gradient', name: 'Aurora Borealis', description: 'Luminous emerald and arctic blue dancing lights', colors: { primary: 'linear-gradient(135deg, #00c9ff, #92fe9d)', background: '#eafaf4', surface: '#ffffff', text: '#083829' }, icon: '🌌' },
+  { id: 'cotton-candy-gradient', name: 'Cotton Candy', description: 'Pastel spun sugar blending pinks and baby blues', colors: { primary: 'linear-gradient(135deg, #fbc2eb, #a6c1ee)', background: '#f8f4fc', surface: '#ffffff', text: '#3c2462' }, icon: '🍭' },
+  { id: 'fire-gradient', name: 'Ember Flame', description: 'Roaring blaze with intense fiery orange energy', colors: { primary: 'linear-gradient(135deg, #f83600, #fe8c00)', background: '#fff5ee', surface: '#ffffff', text: '#611600' }, icon: '🔥' },
+  { id: 'neon-glow-gradient', name: 'Cyber Magenta', description: 'High-voltage electric magenta with deep violet', colors: { primary: 'linear-gradient(135deg, #ff007f, #7928ca)', background: '#fbf0f8', surface: '#ffffff', text: '#420638' }, icon: '⚡' },
+  { id: 'emerald-gradient', name: 'Emerald Forest', description: 'Lush rainforest greens with crystalline highlights', colors: { primary: 'linear-gradient(135deg, #11998e, #38ef7d)', background: '#edfbf5', surface: '#ffffff', text: '#08432a' }, icon: '🌲' },
+  { id: 'miami-gradient', name: 'Miami Vice', description: 'South Beach neon pink melting into golden sand', colors: { primary: 'linear-gradient(135deg, #fa709a, #fee140)', background: '#fff8f0', surface: '#ffffff', text: '#592500' }, icon: '🌴' },
+  { id: 'cosmic-gradient', name: 'Cosmic Nebula', description: 'Deep interstellar purple blending into cosmic blue', colors: { primary: 'linear-gradient(135deg, #667eea, #764ba2)', background: '#f1f2fc', surface: '#ffffff', text: '#211c52' }, icon: '🪐' },
+  { id: 'dragon-gradient', name: 'Dragon Fruit', description: 'Vivid magenta-crimson with warm coral splashes', colors: { primary: 'linear-gradient(135deg, #ff0844, #ffb199)', background: '#fff0f2', surface: '#ffffff', text: '#5e071c' }, icon: '🪷' },
+  { id: 'peacock-gradient', name: 'Peacock Feathers', description: 'Regal turquoise and royal sapphire shimmer', colors: { primary: 'linear-gradient(135deg, #0acffe, #495aff)', background: '#eef5fc', surface: '#ffffff', text: '#0c2266' }, icon: '🦚' },
+  { id: 'golden-hour-gradient', name: 'Golden Hour', description: 'Warm twilight glow right as the sun touches the horizon', colors: { primary: 'linear-gradient(135deg, #f6d365, #fda085)', background: '#fff9f0', surface: '#ffffff', text: '#5c3800' }, icon: '☀️' },
+  { id: 'mystic-garden-gradient', name: 'Mystic Garden', description: 'Enchanted spring waters with delicate mint hues', colors: { primary: 'linear-gradient(135deg, #84fab0, #8fd3f4)', background: '#f0fcf9', surface: '#ffffff', text: '#0f4840' }, icon: '🌿' },
+  { id: 'juicy-signature-gradient', name: 'Juicy Signature', description: 'The iconic 3D Juicy gradient pink with lustrous glow', colors: { primary: 'linear-gradient(135deg, #ff2d6c, #ff758c)', background: '#fff3f6', surface: '#ffffff', text: '#570821' }, icon: '💖' }
 ];
 
-// Dark Themes (keep all your existing dark themes)
+// Dark Themes (28 Dark, Night & AMOLED Themes)
 const darkThemes = [
-  {id: 'dark-theme', name: 'Dark', description: 'Sleek and modern with deep tones', colors: { primary: '#f06292', background: '#121212', surface: '#1e1e1e', text: '#ffffff' }, icon: '🌙' },
-  {id: 'midnight-dark', name: 'Midnight Mystery', description: 'Dark purples and blues for a mysterious vibe', colors: { primary: '#9575cd', background: '#121212', surface: '#1e1e1e', text: '#ffffff' }, icon: '🌌' },
-  {id: 'steel-dark', name: 'Steel Blue', description: 'Cool steel blues and grays for a modern industrial vibe', colors: { primary: '#90a4ae', background: '#121212', surface: '#1e1e1e', text: '#ffffff' }, icon: '🔩' },
-  {id: 'cocoa-dark', name: 'Cocoa Delight', description: 'Warm browns and creams for a cozy chocolate vibe', colors: { primary: '#6d4c41', background: '#121212', surface: '#1e1e1e', text: '#ffffff' }, icon: '🍫' },
-  {id: 'sky-dark', name: 'Sky High', description: 'Bright blues and whites for a fresh and airy feel', colors: { primary: '#64b5f6', background: '#121212', surface: '#1e1e1e', text: '#ffffff' }, icon: '☁️' },
-  {id: 'midnight-gradient-dark', name: 'Midnight Gradient', description: 'Dark gradient blending purples and blues', colors: { primary: 'linear-gradient(135deg, #9575cd, #7e57c2)', background: '#ede7f6', surface: '#ffffff', text: '#311b92' }, icon: '🌌' },
-  {id: 'steel-gradient-dark', name: 'Steel Gradient', description: 'Cool gradient blending steel blues and grays', colors: { primary: 'linear-gradient(135deg, #90a4ae, #78909c)', background: '#eceff1', surface: '#ffffff', text: '#263238' }, icon: '🔩' },
-  {id: 'coral-gradient-dark', name: 'Coral Gradient', description: 'Vibrant gradient blending corals and teals', colors: { primary: 'linear-gradient(135deg, #ff7043, #26a69a)', background: '#e0f7fa', surface: '#ffffff', text: '#004d40' }, icon: '🪸' },
-  {id: 'orchid-gradient-dark', name: 'Orchid Gradient', description: 'Soft gradient blending purples and pinks', colors: { primary: 'linear-gradient(135deg, #ba68c8, #ab47bc)', background: '#f3e5f5', surface: '#ffffff', text: '#4a148c' }, icon: '💐' },
-  {id: 'cocoa-gradient-dark', name: 'Cocoa Gradient', description: 'Warm gradient blending browns and creams', colors: { primary: 'linear-gradient(135deg, #6d4c41, #5d4037)', background: '#efebe9', surface: '#ffffff', text: '#3e2723' }, icon: '🍫' },
-  {id: 'sky-gradient-dark', name: 'Sky Gradient', description: 'Bright gradient blending blues and whites', colors: { primary: 'linear-gradient(135deg, #64b5f6, #e3f2fd)', background: '#e3f2fd', surface: '#ffffff', text: '#01579b' }, icon: '☁️' },
-  {id: 'berry-gradient-dark', name: 'Berry Gradient', description: 'Rich gradient blending berry tones and soft pinks', colors: { primary: 'linear-gradient(135deg, #f06292, #f48fb1)', background: '#fce4ec', surface: '#ffffff', text: '#880e4f' }, icon: '🍓' },
-  {id: 'sunset-gradient-dark', name: 'Sunset Gradient', description: 'Warm gradient blending oranges and pinks', colors: { primary: 'linear-gradient(135deg, #ff8a65, #ff7043)', background: '#fff3e0', surface: '#ffffff', text: '#bf360c' }, icon: '🌅' },
-  {id: 'ocean-gradient-dark', name: 'Ocean Gradient', description: 'Cool gradient blending blues and teals', colors: { primary: 'linear-gradient(135deg, #4db6ac, #26a69a)', background: '#e0f2f1', surface: '#ffffff', text: '#004d40' }, icon: '🌊' },
-  {id: 'lavender-gradient-dark', name: 'Lavender Gradient', description: 'Soft gradient blending purples and lilacs', colors: { primary: 'linear-gradient(135deg, #ba68c8, #ab47bc)', background: '#f3e5f5', surface: '#ffffff', text: '#4a148c' }, icon: '💜' },
-  {id: 'citrus-gradient-dark', name: 'Citrus Gradient', description: 'Vibrant gradient blending yellows and greens', colors: { primary: 'linear-gradient(135deg, #ffeb3b, #cddc39)', background: '#f9fbe7', surface: '#ffffff', text: '#f57f17' }, icon: '🍋' }
+  { id: 'dark-theme', name: 'Dark', description: 'Sleek and modern with deep tones', colors: { primary: '#f06292', background: '#121212', surface: '#1e1e1e', text: '#ffffff' }, icon: '🌙' },
+  { id: 'midnight-dark', name: 'Midnight Mystery', description: 'Dark purples and blues for a mysterious vibe', colors: { primary: '#9575cd', background: '#121212', surface: '#1e1e1e', text: '#ffffff' }, icon: '🌌' },
+  { id: 'steel-dark', name: 'Steel Blue', description: 'Cool steel blues and grays for a modern industrial vibe', colors: { primary: '#90a4ae', background: '#121212', surface: '#1e1e1e', text: '#ffffff' }, icon: '🔩' },
+  { id: 'cocoa-dark', name: 'Cocoa Delight', description: 'Warm browns and creams for a cozy chocolate vibe', colors: { primary: '#6d4c41', background: '#121212', surface: '#1e1e1e', text: '#ffffff' }, icon: '🍫' },
+  { id: 'sky-dark', name: 'Sky High', description: 'Bright blues and whites for a fresh and airy feel', colors: { primary: '#64b5f6', background: '#121212', surface: '#1e1e1e', text: '#ffffff' }, icon: '☁️' },
+  { id: 'midnight-gradient-dark', name: 'Midnight Gradient', description: 'Dark gradient blending purples and blues', colors: { primary: 'linear-gradient(135deg, #9575cd, #7e57c2)', background: '#121212', surface: '#1e1e1e', text: '#ffffff' }, icon: '🌌' },
+  { id: 'steel-gradient-dark', name: 'Steel Gradient', description: 'Cool gradient blending steel blues and grays', colors: { primary: 'linear-gradient(135deg, #90a4ae, #78909c)', background: '#121212', surface: '#1e1e1e', text: '#ffffff' }, icon: '🔩' },
+  { id: 'coral-gradient-dark', name: 'Coral Gradient', description: 'Vibrant gradient blending corals and teals', colors: { primary: 'linear-gradient(135deg, #ff7043, #26a69a)', background: '#121212', surface: '#1e1e1e', text: '#ffffff' }, icon: '🪸' },
+  { id: 'orchid-gradient-dark', name: 'Orchid Gradient', description: 'Soft gradient blending purples and pinks', colors: { primary: 'linear-gradient(135deg, #ba68c8, #ab47bc)', background: '#121212', surface: '#1e1e1e', text: '#ffffff' }, icon: '💐' },
+  { id: 'cocoa-gradient-dark', name: 'Cocoa Gradient', description: 'Warm gradient blending browns and creams', colors: { primary: 'linear-gradient(135deg, #6d4c41, #5d4037)', background: '#121212', surface: '#1e1e1e', text: '#ffffff' }, icon: '🍫' },
+  { id: 'sky-gradient-dark', name: 'Sky Gradient', description: 'Bright gradient blending blues and whites', colors: { primary: 'linear-gradient(135deg, #64b5f6, #e3f2fd)', background: '#121212', surface: '#1e1e1e', text: '#ffffff' }, icon: '☁️' },
+  { id: 'berry-gradient-dark', name: 'Berry Gradient', description: 'Rich gradient blending berry tones and soft pinks', colors: { primary: 'linear-gradient(135deg, #f06292, #f48fb1)', background: '#121212', surface: '#1e1e1e', text: '#ffffff' }, icon: '🍓' },
+  { id: 'sunset-gradient-dark', name: 'Sunset Gradient', description: 'Warm gradient blending oranges and pinks', colors: { primary: 'linear-gradient(135deg, #ff8a65, #ff7043)', background: '#121212', surface: '#1e1e1e', text: '#ffffff' }, icon: '🌅' },
+  { id: 'ocean-gradient-dark', name: 'Ocean Gradient', description: 'Cool gradient blending blues and teals', colors: { primary: 'linear-gradient(135deg, #4db6ac, #26a69a)', background: '#121212', surface: '#1e1e1e', text: '#ffffff' }, icon: '🌊' },
+  { id: 'lavender-gradient-dark', name: 'Lavender Gradient', description: 'Soft gradient blending purples and lilacs', colors: { primary: 'linear-gradient(135deg, #ba68c8, #ab47bc)', background: '#121212', surface: '#1e1e1e', text: '#ffffff' }, icon: '💜' },
+  { id: 'citrus-gradient-dark', name: 'Citrus Gradient', description: 'Vibrant gradient blending yellows and greens', colors: { primary: 'linear-gradient(135deg, #ffeb3b, #cddc39)', background: '#121212', surface: '#1e1e1e', text: '#ffffff' }, icon: '🍋' },
+  { id: 'amoled-black', name: 'Pitch AMOLED Black', description: 'True zero-light black engineered for battery preservation', colors: { primary: '#ff2d6c', background: '#000000', surface: '#0d0d0d', text: '#f5f5f5' }, icon: '🖤' },
+  { id: 'cyberpunk-dark', name: 'Cyberpunk Neon', description: 'Futuristic night city with cyan lasers and dark alleys', colors: { primary: '#00f2fe', background: '#090a14', surface: '#121424', text: '#e0f7fa' }, icon: '🌆' },
+  { id: 'matrix-dark', name: 'Matrix Green', description: 'Digital rain terminal with glowing phosphor green', colors: { primary: '#00ff66', background: '#061209', surface: '#0d2113', text: '#e8f5e9' }, icon: '💻' },
+  { id: 'vampire-dark', name: 'Crimson Nocturne', description: 'Sensual blood-red accents on midnight velvet', colors: { primary: '#ff1744', background: '#120508', surface: '#220b10', text: '#fce4ec' }, icon: '🩸' },
+  { id: 'dracula-dark', name: 'Dracula Purple', description: 'The famous gothic vampire palette with soft purples', colors: { primary: '#bd93f9', background: '#1e1f29', surface: '#282a36', text: '#f8f8f2' }, icon: '🧛' },
+  { id: 'obsidian-gold', name: 'Obsidian Gold', description: 'Ultra-luxurious pure gold trimmed in obsidian armor', colors: { primary: '#ffd700', background: '#0e0e10', surface: '#1a1a1c', text: '#fff9e6' }, icon: '⚜️' },
+  { id: 'tokyo-night', name: 'Tokyo Night', description: 'Clean Japanese anime night aesthetic with neon blues', colors: { primary: '#7aa2f7', background: '#16161e', surface: '#1f2335', text: '#c0caf5' }, icon: '🗼' },
+  { id: 'nordic-frost', name: 'Nordic Frost', description: 'Scandinavian icy tundra with calm slate blues', colors: { primary: '#88c0d0', background: '#191d24', surface: '#242933', text: '#eceff4' }, icon: '❄️' },
+  { id: 'abyss-blue', name: 'Deep Abyss', description: 'Bioluminescent cyan deep underwater at midnight', colors: { primary: '#00d2d3', background: '#041019', surface: '#081c2c', text: '#e0f2f1' }, icon: '🌊' },
+  { id: 'emerald-dark', name: 'Emerald Shadows', description: 'Deep dark forest with glowing mystical emeralds', colors: { primary: '#2ecc71', background: '#09150e', surface: '#112419', text: '#e8f8f0' }, icon: '🌲' },
+  { id: 'monokai-dark', name: 'Monokai Pro', description: 'Iconic warm golden coder contrast on dark charcoal', colors: { primary: '#ffd866', background: '#19181a', surface: '#221f22', text: '#fdf9f3' }, icon: '🎨' },
+  { id: 'synthwave-dark', name: '80s Synthwave', description: 'Retro arcade outrun with hot pink and neon purple', colors: { primary: 'linear-gradient(135deg, #ff007f, #7928ca)', background: '#0f081d', surface: '#1c1035', text: '#ffddf4' }, icon: '📼' }
 ];
 
+// Aesthetic & Juicy Special Themes (15 Aesthetic Trends)
+const aestheticThemes = [
+  { id: 'juicy-pop', name: 'Juicy Pop', description: 'Signature high-gloss Juicy pink with candy bubble flair', colors: { primary: 'linear-gradient(135deg, #ff2a70, #ff6b8b)', background: '#fff0f5', surface: '#ffffff', text: '#3c0017' }, icon: '🍓' },
+  { id: 'pastel-dream', name: 'Pastel Cloudscape', description: 'Whimsical marshmallow clouds with gentle peach blush', colors: { primary: '#ff9a9e', background: '#fdfbfb', surface: '#ffffff', text: '#402935' }, icon: '☁️' },
+  { id: 'matcha-boba', name: 'Matcha Boba', description: 'Sweet iced matcha with creamy oat milk aesthetic', colors: { primary: '#556b2f', background: '#f5f7ed', surface: '#ffffff', text: '#2d3819' }, icon: '🧋' },
+  { id: 'cherry-blossom', name: 'Cherry Blossom', description: 'Kyoto spring sakura petals floating in clean morning air', colors: { primary: 'linear-gradient(135deg, #ff758c, #ff7eb3)', background: '#fff5f8', surface: '#ffffff', text: '#500826' }, icon: '🌸' },
+  { id: 'holographic', name: 'Holographic Prism', description: 'Light-bending iridescent rainbow sheen on clean glass', colors: { primary: 'linear-gradient(135deg, #a1c4fd, #c2e9fb)', background: '#f4f8ff', surface: '#ffffff', text: '#1b3252' }, icon: '🪩' },
+  { id: 'velvet-peach', name: 'Velvet Peach', description: 'Soft velvet fuzzy peach with warm radiant apricot sunset', colors: { primary: 'linear-gradient(135deg, #ff9966, #ff5e62)', background: '#fff5f0', surface: '#ffffff', text: '#541c00' }, icon: '🍑' },
+  { id: 'lavender-haze', name: 'Lavender Haze', description: 'Hypnotic purple-magenta dusk inspired by sweet dreams', colors: { primary: 'linear-gradient(135deg, #c471ed, #f64f59)', background: '#fbf4fc', surface: '#ffffff', text: '#430d47' }, icon: '🪻' },
+  { id: 'galaxy-dust', name: 'Galaxy Stardust', description: 'Multiverse stardust trail glowing through warm galaxies', colors: { primary: 'linear-gradient(135deg, #8a2387, #e94057, #f27121)', background: '#faf0f8', surface: '#ffffff', text: '#3b0024' }, icon: '🌠' },
+  { id: 'espresso-cream', name: 'Espresso Macchiato', description: 'Cozy Italian dark roast with golden crema swirls', colors: { primary: '#795548', background: '#fbf8f5', surface: '#ffffff', text: '#3e2723' }, icon: '☕' },
+  { id: 'lemon-sherbet', name: 'Lemon Sherbet', description: 'Crisp citrus zest with fresh Italian lime sweetness', colors: { primary: 'linear-gradient(135deg, #fbc531, #4cd137)', background: '#fefef2', surface: '#ffffff', text: '#4c4100' }, icon: '🍋' },
+  { id: 'taro-milk-tea', name: 'Taro Milk Tea', description: 'Sweet purple taro with rich cream boba pearls', colors: { primary: '#9c88ff', background: '#f8f6ff', surface: '#ffffff', text: '#301b78' }, icon: '🧋' },
+  { id: 'sugar-plum', name: 'Sugar Plum Fairy', description: 'Sparkling royal plum with soft golden fairy shimmer', colors: { primary: 'linear-gradient(135deg, #d299c2, #fef9d7)', background: '#faf5f8', surface: '#ffffff', text: '#421a37' }, icon: '🧚' },
+  { id: 'vaporwave-dream', name: 'Vaporwave Dreams', description: '90s aesthetic pastel magenta with turquoise horizon', colors: { primary: 'linear-gradient(135deg, #ff71ce, #01cdfe)', background: '#fff2fb', surface: '#ffffff', text: '#390033' }, icon: '🌇' },
+  { id: 'electric-violet', name: 'Electric Violet', description: 'Intense energetic ultraviolet with crystal highlights', colors: { primary: '#8b5cf6', background: '#f5f3ff', surface: '#ffffff', text: '#2e1065' }, icon: '⚡' },
+  { id: 'mint-chocolate', name: 'Mint Chocolate', description: 'Decadent dark chocolate chunks folded into crisp fresh mint', colors: { primary: '#10b981', background: '#f0fdf4', surface: '#ffffff', text: '#064e3b' }, icon: '🍫' }
+];
 
-// Background Patterns (using pure CSS gradient patterns)
+const allAvailableThemes = [...themeOptions, ...gradientThemes, ...darkThemes, ...aestheticThemes];
+
+
+// Background Patterns (using pure CSS gradient patterns - 36 patterns)
 const backgroundPatterns = [
-  { 
-    id: 'dots', 
-    name: 'Polka Dots', 
+  {
+    id: 'dots',
+    name: 'Polka Dots',
     icon: '💬',
-    pattern: 'radial-gradient(var(--pattern-color, rgba(0,0,0,0.12)) 1.5px, transparent 1.5px)', 
+    pattern: 'radial-gradient(var(--pattern-color, rgba(0,0,0,0.12)) 1.5px, transparent 1.5px)',
     size: '20px 20px',
     category: 'patterns'
   },
-  { 
-    id: 'lines', 
-    name: 'Stripes', 
+  {
+    id: 'lines',
+    name: 'Stripes',
     icon: '📊',
-    pattern: 'repeating-linear-gradient(45deg, var(--pattern-color, rgba(0,0,0,0.08)) 0px, var(--pattern-color, rgba(0,0,0,0.08)) 1px, transparent 1px, transparent 12px)', 
+    pattern: 'repeating-linear-gradient(45deg, var(--pattern-color, rgba(0,0,0,0.08)) 0px, var(--pattern-color, rgba(0,0,0,0.08)) 1px, transparent 1px, transparent 12px)',
     size: '12px 12px',
     category: 'patterns'
-  },  
-  { 
-    id: 'grid', 
-    name: 'Graph Grid', 
+  },
+  {
+    id: 'grid',
+    name: 'Graph Grid',
     icon: '📐',
-    pattern: 'linear-gradient(var(--pattern-color, rgba(0,0,0,0.08)) 1px, transparent 1px), linear-gradient(90deg, var(--pattern-color, rgba(0,0,0,0.08)) 1px, transparent 1px)', 
+    pattern: 'linear-gradient(var(--pattern-color, rgba(0,0,0,0.08)) 1px, transparent 1px), linear-gradient(90deg, var(--pattern-color, rgba(0,0,0,0.08)) 1px, transparent 1px)',
     size: '20px 20px',
     category: 'patterns'
-  }, 
-  { 
-    id: 'chevron', 
-    name: 'Chevron Waves', 
+  },
+  {
+    id: 'chevron',
+    name: 'Chevron Waves',
     icon: '🌊',
-    pattern: 'linear-gradient(135deg, var(--pattern-color, rgba(0,0,0,0.06)) 25%, transparent 25%), linear-gradient(225deg, var(--pattern-color, rgba(0,0,0,0.06)) 25%, transparent 25%), linear-gradient(45deg, var(--pattern-color, rgba(0,0,0,0.06)) 25%, transparent 25%), linear-gradient(315deg, var(--pattern-color, rgba(0,0,0,0.06)) 25%, transparent 25%)', 
+    pattern: 'linear-gradient(135deg, var(--pattern-color, rgba(0,0,0,0.06)) 25%, transparent 25%), linear-gradient(225deg, var(--pattern-color, rgba(0,0,0,0.06)) 25%, transparent 25%), linear-gradient(45deg, var(--pattern-color, rgba(0,0,0,0.06)) 25%, transparent 25%), linear-gradient(315deg, var(--pattern-color, rgba(0,0,0,0.06)) 25%, transparent 25%)',
     size: '30px 30px',
     category: 'patterns'
   },
-  { 
-    id: 'geometric', 
-    name: 'Mosaic Box', 
+  {
+    id: 'geometric',
+    name: 'Mosaic Box',
     icon: '🧱',
-    pattern: 'linear-gradient(45deg, var(--pattern-color, rgba(0,0,0,0.05)) 25%, transparent 25%, transparent 75%, var(--pattern-color, rgba(0,0,0,0.05)) 75%), linear-gradient(45deg, var(--pattern-color, rgba(0,0,0,0.05)) 25%, var(--background-color, #fff) 25%, var(--background-color, #fff) 75%, var(--pattern-color, rgba(0,0,0,0.05)) 75%)', 
+    pattern: 'linear-gradient(45deg, var(--pattern-color, rgba(0,0,0,0.05)) 25%, transparent 25%, transparent 75%, var(--pattern-color, rgba(0,0,0,0.05)) 75%), linear-gradient(45deg, var(--pattern-color, rgba(0,0,0,0.05)) 25%, var(--background-color, #fff) 25%, var(--background-color, #fff) 75%, var(--pattern-color, rgba(0,0,0,0.05)) 75%)',
     size: '40px 40px',
     category: 'patterns'
   },
-  { 
-    id: 'bubbles', 
-    name: 'Bubble Rings', 
+  {
+    id: 'bubbles',
+    name: 'Bubble Rings',
     icon: '🫧',
-    pattern: 'radial-gradient(circle, transparent 20%, var(--pattern-color, rgba(0,0,0,0.06)) 20%, var(--pattern-color, rgba(0,0,0,0.06)) 22%, transparent 22%)', 
+    pattern: 'radial-gradient(circle, transparent 20%, var(--pattern-color, rgba(0,0,0,0.06)) 20%, var(--pattern-color, rgba(0,0,0,0.06)) 22%, transparent 22%)',
     size: '30px 30px',
     category: 'patterns'
   },
-  { 
-    id: 'tech', 
-    name: 'Cyber Mesh', 
+  {
+    id: 'tech',
+    name: 'Cyber Mesh',
     icon: '💻',
-    pattern: 'linear-gradient(0deg, transparent 24%, var(--pattern-color, rgba(0,0,0,0.06)) 25%, var(--pattern-color, rgba(0,0,0,0.06)) 26%, transparent 27%, transparent 74%, var(--pattern-color, rgba(0,0,0,0.06)) 75%, var(--pattern-color, rgba(0,0,0,0.06)) 76%, transparent 77%), linear-gradient(90deg, transparent 24%, var(--pattern-color, rgba(0,0,0,0.06)) 25%, var(--pattern-color, rgba(0,0,0,0.06)) 26%, transparent 27%, transparent 74%, var(--pattern-color, rgba(0,0,0,0.06)) 75%, var(--pattern-color, rgba(0,0,0,0.06)) 76%, transparent 77%)', 
+    pattern: 'linear-gradient(0deg, transparent 24%, var(--pattern-color, rgba(0,0,0,0.06)) 25%, var(--pattern-color, rgba(0,0,0,0.06)) 26%, transparent 27%, transparent 74%, var(--pattern-color, rgba(0,0,0,0.06)) 75%, var(--pattern-color, rgba(0,0,0,0.06)) 76%, transparent 77%), linear-gradient(90deg, transparent 24%, var(--pattern-color, rgba(0,0,0,0.06)) 25%, var(--pattern-color, rgba(0,0,0,0.06)) 26%, transparent 27%, transparent 74%, var(--pattern-color, rgba(0,0,0,0.06)) 75%, var(--pattern-color, rgba(0,0,0,0.06)) 76%, transparent 77%)',
     size: '60px 60px',
     category: 'patterns'
   },
-  { 
-    id: 'none', 
-    name: 'No Pattern', 
+  {
+    id: 'hearts',
+    name: 'Sweet Hearts',
+    icon: '💖',
+    pattern: 'radial-gradient(circle at 35% 35%, var(--pattern-color, rgba(0,0,0,0.1)) 3px, transparent 3.5px), radial-gradient(circle at 65% 35%, var(--pattern-color, rgba(0,0,0,0.1)) 3px, transparent 3.5px)',
+    size: '24px 24px',
+    category: 'patterns'
+  },
+  {
+    id: 'stars',
+    name: 'Starlight Sparkles',
+    icon: '✨',
+    pattern: 'radial-gradient(1px 1px at 15px 15px, var(--pattern-color, rgba(0,0,0,0.15)), transparent), radial-gradient(1.5px 1.5px at 35px 45px, var(--pattern-color, rgba(0,0,0,0.15)), transparent), radial-gradient(1px 1px at 55px 25px, var(--pattern-color, rgba(0,0,0,0.15)), transparent)',
+    size: '70px 70px',
+    category: 'patterns'
+  },
+  {
+    id: 'hexagons',
+    name: 'Honeycomb Hex',
+    icon: '🐝',
+    pattern: 'linear-gradient(60deg, var(--pattern-color, rgba(0,0,0,0.06)) 25%, transparent 25%, transparent 75%, var(--pattern-color, rgba(0,0,0,0.06)) 75%), linear-gradient(120deg, var(--pattern-color, rgba(0,0,0,0.06)) 25%, transparent 25%, transparent 75%, var(--pattern-color, rgba(0,0,0,0.06)) 75%)',
+    size: '24px 42px',
+    category: 'patterns'
+  },
+  {
+    id: 'crosshatch',
+    name: 'Crosshatch Mesh',
+    icon: '🕸️',
+    pattern: 'repeating-linear-gradient(45deg, var(--pattern-color, rgba(0,0,0,0.06)) 0px, var(--pattern-color, rgba(0,0,0,0.06)) 1px, transparent 1px, transparent 10px), repeating-linear-gradient(-45deg, var(--pattern-color, rgba(0,0,0,0.06)) 0px, var(--pattern-color, rgba(0,0,0,0.06)) 1px, transparent 1px, transparent 10px)',
+    size: '10px 10px',
+    category: 'patterns'
+  },
+  {
+    id: 'zigzag',
+    name: 'Electric Zigzag',
+    icon: '⚡',
+    pattern: 'linear-gradient(135deg, var(--pattern-color, rgba(0,0,0,0.06)) 25%, transparent 25%), linear-gradient(225deg, var(--pattern-color, rgba(0,0,0,0.06)) 25%, transparent 25%), linear-gradient(315deg, var(--pattern-color, rgba(0,0,0,0.06)) 25%, transparent 25%), linear-gradient(45deg, var(--pattern-color, rgba(0,0,0,0.06)) 25%, transparent 25%)',
+    size: '28px 14px',
+    category: 'patterns'
+  },
+  {
+    id: 'diamonds',
+    name: 'Harlequin Diamond',
+    icon: '🔷',
+    pattern: 'linear-gradient(45deg, var(--pattern-color, rgba(0,0,0,0.06)) 25%, transparent 25%, transparent 75%, var(--pattern-color, rgba(0,0,0,0.06)) 75%), linear-gradient(-45deg, var(--pattern-color, rgba(0,0,0,0.06)) 25%, transparent 25%, transparent 75%, var(--pattern-color, rgba(0,0,0,0.06)) 75%)',
+    size: '24px 24px',
+    category: 'patterns'
+  },
+  {
+    id: 'plus',
+    name: 'Minimal Cross',
+    icon: '➕',
+    pattern: 'linear-gradient(0deg, transparent 46%, var(--pattern-color, rgba(0,0,0,0.09)) 46%, var(--pattern-color, rgba(0,0,0,0.09)) 54%, transparent 54%), linear-gradient(90deg, transparent 46%, var(--pattern-color, rgba(0,0,0,0.09)) 46%, var(--pattern-color, rgba(0,0,0,0.09)) 54%, transparent 54%)',
+    size: '20px 20px',
+    category: 'patterns'
+  },
+  {
+    id: 'carbon',
+    name: 'Carbon Matrix',
+    icon: '🏎️',
+    pattern: 'repeating-linear-gradient(45deg, var(--pattern-color, rgba(0,0,0,0.06)) 0px, var(--pattern-color, rgba(0,0,0,0.06)) 2px, transparent 2px, transparent 6px), repeating-linear-gradient(-45deg, var(--pattern-color, rgba(0,0,0,0.06)) 0px, var(--pattern-color, rgba(0,0,0,0.06)) 2px, transparent 2px, transparent 6px)',
+    size: '12px 12px',
+    category: 'patterns'
+  },
+  {
+    id: 'tartan',
+    name: 'Plaid Tartan',
+    icon: '🧣',
+    pattern: 'repeating-linear-gradient(0deg, transparent, transparent 12px, var(--pattern-color, rgba(0,0,0,0.05)) 12px, var(--pattern-color, rgba(0,0,0,0.05)) 24px), repeating-linear-gradient(90deg, transparent, transparent 12px, var(--pattern-color, rgba(0,0,0,0.05)) 12px, var(--pattern-color, rgba(0,0,0,0.05)) 24px)',
+    size: '48px 48px',
+    category: 'patterns'
+  },
+  {
+    id: 'moroccan',
+    name: 'Moroccan Trellis',
+    icon: '🕌',
+    pattern: 'radial-gradient(circle at 100% 150%, var(--pattern-color, rgba(0,0,0,0.06)) 24%, transparent 25%), radial-gradient(circle at 0% 150%, var(--pattern-color, rgba(0,0,0,0.06)) 24%, transparent 25%), radial-gradient(circle at 50% 100%, var(--pattern-color, rgba(0,0,0,0.06)) 12%, transparent 13%)',
+    size: '36px 18px',
+    category: 'patterns'
+  },
+  {
+    id: 'scales',
+    name: 'Mermaid Scales',
+    icon: '🧜‍♀️',
+    pattern: 'radial-gradient(circle at 50% 0, transparent 35%, var(--pattern-color, rgba(0,0,0,0.08)) 35%, var(--pattern-color, rgba(0,0,0,0.08)) 42%, transparent 42%)',
+    size: '32px 20px',
+    category: 'patterns'
+  },
+  {
+    id: 'houndstooth',
+    name: 'Classic Weave',
+    icon: '♟️',
+    pattern: 'linear-gradient(-45deg, var(--pattern-color, rgba(0,0,0,0.06)) 25%, transparent 25%, transparent 75%, var(--pattern-color, rgba(0,0,0,0.06)) 75%), linear-gradient(45deg, var(--pattern-color, rgba(0,0,0,0.06)) 25%, transparent 25%, transparent 75%, var(--pattern-color, rgba(0,0,0,0.06)) 75%)',
+    size: '18px 18px',
+    category: 'patterns'
+  },
+  {
+    id: 'brick',
+    name: 'Subway Brick',
+    icon: '🧱',
+    pattern: 'linear-gradient(0deg, var(--pattern-color, rgba(0,0,0,0.08)) 1px, transparent 1px), linear-gradient(90deg, var(--pattern-color, rgba(0,0,0,0.08)) 1px, transparent 1px)',
+    size: '32px 16px',
+    category: 'patterns'
+  },
+  {
+    id: 'stipple',
+    name: 'Fine Stipple',
+    icon: '⏳',
+    pattern: 'radial-gradient(var(--pattern-color, rgba(0,0,0,0.12)) 1px, transparent 1px)',
+    size: '8px 8px',
+    category: 'patterns'
+  },
+  {
+    id: 'diagonal-dense',
+    name: 'Micro Ribs',
+    icon: '📐',
+    pattern: 'repeating-linear-gradient(60deg, var(--pattern-color, rgba(0,0,0,0.07)) 0px, var(--pattern-color, rgba(0,0,0,0.07)) 1px, transparent 1px, transparent 6px)',
+    size: '6px 6px',
+    category: 'patterns'
+  },
+  {
+    id: 'concentric',
+    name: 'Ripple Rings',
+    icon: '🎯',
+    pattern: 'radial-gradient(circle, transparent 25%, var(--pattern-color, rgba(0,0,0,0.06)) 26%, var(--pattern-color, rgba(0,0,0,0.06)) 29%, transparent 30%, transparent 45%, var(--pattern-color, rgba(0,0,0,0.06)) 46%, var(--pattern-color, rgba(0,0,0,0.06)) 49%, transparent 50%)',
+    size: '36px 36px',
+    category: 'patterns'
+  },
+  {
+    id: 'circuit',
+    name: 'Cyber Traces',
+    icon: '🔌',
+    pattern: 'linear-gradient(90deg, var(--pattern-color, rgba(0,0,0,0.07)) 1px, transparent 1px), linear-gradient(0deg, var(--pattern-color, rgba(0,0,0,0.07)) 1px, transparent 1px), radial-gradient(circle, var(--pattern-color, rgba(0,0,0,0.12)) 2px, transparent 2.5px)',
+    size: '24px 24px',
+    category: 'patterns'
+  },
+  {
+    id: 'bamboo',
+    name: 'Bamboo Lattice',
+    icon: '🎋',
+    pattern: 'linear-gradient(90deg, var(--pattern-color, rgba(0,0,0,0.07)) 2px, transparent 2px), linear-gradient(0deg, var(--pattern-color, rgba(0,0,0,0.04)) 1px, transparent 1px)',
+    size: '16px 30px',
+    category: 'patterns'
+  },
+  {
+    id: 'checkerboard',
+    name: 'Angled Checkers',
+    icon: '🏁',
+    pattern: 'linear-gradient(45deg, var(--pattern-color, rgba(0,0,0,0.05)) 25%, transparent 25%), linear-gradient(-45deg, var(--pattern-color, rgba(0,0,0,0.05)) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, var(--pattern-color, rgba(0,0,0,0.05)) 75%), linear-gradient(-45deg, transparent 75%, var(--pattern-color, rgba(0,0,0,0.05)) 75%)',
+    size: '20px 20px',
+    category: 'patterns'
+  },
+  {
+    id: 'waves-flow',
+    name: 'Ocean Ripples',
+    icon: '〰️',
+    pattern: 'radial-gradient(circle at 50% 100%, transparent 35%, var(--pattern-color, rgba(0,0,0,0.07)) 36%, var(--pattern-color, rgba(0,0,0,0.07)) 41%, transparent 42%)',
+    size: '34px 18px',
+    category: 'patterns'
+  },
+  {
+    id: 'dots-tilted',
+    name: 'Diagonal Matrix',
+    icon: '🎲',
+    pattern: 'radial-gradient(var(--pattern-color, rgba(0,0,0,0.1)) 1.5px, transparent 1.5px), radial-gradient(var(--pattern-color, rgba(0,0,0,0.08)) 1px, transparent 1px)',
+    size: '22px 22px',
+    category: 'patterns'
+  },
+  {
+    id: 'sunbeams',
+    name: 'Radiant Rays',
+    icon: '☀️',
+    pattern: 'repeating-conic-gradient(from 0deg, var(--pattern-color, rgba(0,0,0,0.04)) 0deg 15deg, transparent 15deg 30deg)',
+    size: '60px 60px',
+    category: 'patterns'
+  },
+  {
+    id: 'blueprint',
+    name: 'Blueprint Paper',
+    icon: '📐',
+    pattern: 'linear-gradient(var(--pattern-color, rgba(0,0,0,0.09)) 1px, transparent 1px), linear-gradient(90deg, var(--pattern-color, rgba(0,0,0,0.09)) 1px, transparent 1px)',
+    size: '40px 40px',
+    category: 'patterns'
+  },
+  {
+    id: 'herringbone',
+    name: 'Herringbone',
+    icon: '🪶',
+    pattern: 'repeating-linear-gradient(45deg, var(--pattern-color, rgba(0,0,0,0.06)) 0, var(--pattern-color, rgba(0,0,0,0.06)) 1px, transparent 0, transparent 50%), repeating-linear-gradient(-45deg, var(--pattern-color, rgba(0,0,0,0.06)) 0, var(--pattern-color, rgba(0,0,0,0.06)) 1px, transparent 0, transparent 50%)',
+    size: '24px 24px',
+    category: 'patterns'
+  },
+  {
+    id: 'stars-cross',
+    name: 'Diamond Spark',
+    icon: '❇️',
+    pattern: 'radial-gradient(circle at 50% 50%, var(--pattern-color, rgba(0,0,0,0.12)) 2px, transparent 3px), radial-gradient(circle at 0% 0%, var(--pattern-color, rgba(0,0,0,0.08)) 1.5px, transparent 2.5px)',
+    size: '26px 26px',
+    category: 'patterns'
+  },
+  {
+    id: 'honeycomb-cells',
+    name: 'Golden Cells',
+    icon: '🍯',
+    pattern: 'radial-gradient(circle at 50% 50%, transparent 60%, var(--pattern-color, rgba(0,0,0,0.07)) 61%, var(--pattern-color, rgba(0,0,0,0.07)) 66%, transparent 67%)',
+    size: '26px 26px',
+    category: 'patterns'
+  },
+  {
+    id: 'isometric',
+    name: '3D Cube Prism',
+    icon: '🧊',
+    pattern: 'linear-gradient(30deg, var(--pattern-color, rgba(0,0,0,0.04)) 12%, transparent 12.5%, transparent 87%, var(--pattern-color, rgba(0,0,0,0.04)) 87.5%), linear-gradient(150deg, var(--pattern-color, rgba(0,0,0,0.04)) 12%, transparent 12.5%, transparent 87%, var(--pattern-color, rgba(0,0,0,0.04)) 87.5%)',
+    size: '30px 52px',
+    category: 'patterns'
+  },
+  {
+    id: 'confetti',
+    name: 'Party Geometry',
+    icon: '🎉',
+    pattern: 'linear-gradient(135deg, var(--pattern-color, rgba(0,0,0,0.06)) 2px, transparent 2px), linear-gradient(225deg, var(--pattern-color, rgba(0,0,0,0.06)) 2px, transparent 2px)',
+    size: '28px 28px',
+    category: 'patterns'
+  },
+  {
+    id: 'none',
+    name: 'No Pattern',
     icon: '🚫',
-    pattern: 'none', 
+    pattern: 'none',
     size: '0 0',
     category: 'patterns'
   }
 ];
 
-// Image Backgrounds (premium CSS gradients acting as wallpapers)
+// Image Backgrounds (premium CSS gradients acting as wallpapers - 38 wallpapers)
 const imageBackgrounds = [
   { id: 'sunset', name: 'Sunset Glow', pattern: 'linear-gradient(135deg, #f5576c 0%, #f093fb 100%)', size: 'cover', icon: '🌅', isWallpaper: true, category: 'wallpapers' },
   { id: 'aurora', name: 'Aurora Sky', pattern: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)', size: 'cover', icon: '🌌', isWallpaper: true, category: 'wallpapers' },
@@ -184,6 +481,36 @@ const imageBackgrounds = [
   { id: 'ocean', name: 'Ocean Wave', pattern: 'linear-gradient(135deg, #2ab1e4 0%, #152585 100%)', size: 'cover', icon: '🌊', isWallpaper: true, category: 'wallpapers' },
   { id: 'darkness', name: 'Elegance Dark', pattern: 'linear-gradient(135deg, #1f1c2c 0%, #928dab 100%)', size: 'cover', icon: '🖤', isWallpaper: true, category: 'wallpapers' },
   { id: 'peach', name: 'Sweet Peach', pattern: 'linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)', size: 'cover', icon: '🍑', isWallpaper: true, category: 'wallpapers' },
+  { id: 'cosmic-fusion', name: 'Cosmic Fusion', pattern: 'linear-gradient(135deg, #1f005c, #5b0060, #870160, #ac255e, #ca485c, #e16b5c, #f39060, #ffb56b)', size: 'cover', icon: '🪐', isWallpaper: true, category: 'wallpapers' },
+  { id: 'cyberpunk-neon', name: 'Cyber Neon', pattern: 'linear-gradient(135deg, #0575e6 0%, #00f260 50%, #ff0844 100%)', size: 'cover', icon: '🌆', isWallpaper: true, category: 'wallpapers' },
+  { id: 'strawberry-creme', name: 'Strawberry Velvet', pattern: 'linear-gradient(135deg, #ff2d6c 0%, #ff6b8b 50%, #ffa8c5 100%)', size: 'cover', icon: '🍓', isWallpaper: true, category: 'wallpapers' },
+  { id: 'tokyo-nightscape', name: 'Tokyo Nightscape', pattern: 'linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)', size: 'cover', icon: '🗼', isWallpaper: true, category: 'wallpapers' },
+  { id: 'golden-solstice', name: 'Golden Solstice', pattern: 'linear-gradient(135deg, #f6d365 0%, #fda085 100%)', size: 'cover', icon: '☀️', isWallpaper: true, category: 'wallpapers' },
+  { id: 'emerald-dream', name: 'Emerald Dream', pattern: 'linear-gradient(135deg, #0ba360 0%, #3cba92 100%)', size: 'cover', icon: '🌲', isWallpaper: true, category: 'wallpapers' },
+  { id: 'midnight-abyss', name: 'Midnight Abyss', pattern: 'linear-gradient(135deg, #09203f 0%, #537895 100%)', size: 'cover', icon: '🌌', isWallpaper: true, category: 'wallpapers' },
+  { id: 'cherry-blossom', name: 'Sakura Bloom', pattern: 'linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)', size: 'cover', icon: '🌸', isWallpaper: true, category: 'wallpapers' },
+  { id: 'lavender-dusk', name: 'Lavender Dusk', pattern: 'linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%)', size: 'cover', icon: '🪻', isWallpaper: true, category: 'wallpapers' },
+  { id: 'fire-ember', name: 'Ember Fire', pattern: 'linear-gradient(135deg, #f12711 0%, #f5af19 100%)', size: 'cover', icon: '🔥', isWallpaper: true, category: 'wallpapers' },
+  { id: 'royal-violet', name: 'Royal Violet', pattern: 'linear-gradient(135deg, #7f00ff 0%, #e100ff 100%)', size: 'cover', icon: '⚡', isWallpaper: true, category: 'wallpapers' },
+  { id: 'caramel-macchiato', name: 'Caramel Macchiato', pattern: 'linear-gradient(135deg, #3e2723 0%, #6d4c41 50%, #d7ccc8 100%)', size: 'cover', icon: '☕', isWallpaper: true, category: 'wallpapers' },
+  { id: 'pastel-rainbow', name: 'Pastel Horizon', pattern: 'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)', size: 'cover', icon: '🌈', isWallpaper: true, category: 'wallpapers' },
+  { id: 'arctic-glacier', name: 'Arctic Glacier', pattern: 'linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%)', size: 'cover', icon: '❄️', isWallpaper: true, category: 'wallpapers' },
+  { id: 'bubblegum-pop', name: 'Bubblegum Pop', pattern: 'linear-gradient(135deg, #ff758c 0%, #ff7eb3 100%)', size: 'cover', icon: '🍬', isWallpaper: true, category: 'wallpapers' },
+  { id: 'tropical-coral', name: 'Tropical Coral', pattern: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)', size: 'cover', icon: '🪸', isWallpaper: true, category: 'wallpapers' },
+  { id: 'obsidian-stealth', name: 'Obsidian Stealth', pattern: 'linear-gradient(135deg, #141e30 0%, #243b55 100%)', size: 'cover', icon: '🕶️', isWallpaper: true, category: 'wallpapers' },
+  { id: 'dragon-nectar', name: 'Dragon Nectar', pattern: 'linear-gradient(135deg, #ff0844 0%, #ffb199 100%)', size: 'cover', icon: '🐉', isWallpaper: true, category: 'wallpapers' },
+  { id: 'synthwave-neon', name: 'Synthwave Arcade', pattern: 'linear-gradient(135deg, #2e0854 0%, #b80058 50%, #f5a623 100%)', size: 'cover', icon: '📼', isWallpaper: true, category: 'wallpapers' },
+  { id: 'enchanted-glade', name: 'Enchanted Glade', pattern: 'linear-gradient(135deg, #134e5e 0%, #71b280 100%)', size: 'cover', icon: '🌿', isWallpaper: true, category: 'wallpapers' },
+  { id: 'velvet-nocturne', name: 'Velvet Nocturne', pattern: 'linear-gradient(135deg, #200122 0%, #6f0000 100%)', size: 'cover', icon: '🍷', isWallpaper: true, category: 'wallpapers' },
+  { id: 'california-sunset', name: 'California Sunset', pattern: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)', size: 'cover', icon: '🌴', isWallpaper: true, category: 'wallpapers' },
+  { id: 'cotton-clouds', name: 'Cotton Clouds', pattern: 'linear-gradient(135deg, #fbc2eb 0%, #a6c1ee 100%)', size: 'cover', icon: '☁️', isWallpaper: true, category: 'wallpapers' },
+  { id: 'deep-sapphire', name: 'Deep Sapphire', pattern: 'linear-gradient(135deg, #0052d4 0%, #4364f7 50%, #6fb1fc 100%)', size: 'cover', icon: '💎', isWallpaper: true, category: 'wallpapers' },
+  { id: 'mango-tango', name: 'Mango Tango', pattern: 'linear-gradient(135deg, #f857a6 0%, #ff5858 100%)', size: 'cover', icon: '🥭', isWallpaper: true, category: 'wallpapers' },
+  { id: 'dark-nebula', name: 'Dark Nebula', pattern: 'linear-gradient(135deg, #000428 0%, #004e92 100%)', size: 'cover', icon: '✨', isWallpaper: true, category: 'wallpapers' },
+  { id: 'champagne-luxe', name: 'Champagne Luxe', pattern: 'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)', size: 'cover', icon: '🥂', isWallpaper: true, category: 'wallpapers' },
+  { id: 'juicy-signature', name: 'Juicy Signature', pattern: 'linear-gradient(135deg, #ff007f 0%, #ff2d6c 50%, #ff758c 100%)', size: 'cover', icon: '💖', isWallpaper: true, category: 'wallpapers' },
+  { id: 'electric-cyan', name: 'Electric Cyan', pattern: 'linear-gradient(135deg, #00c6ff 0%, #0072ff 100%)', size: 'cover', icon: '⚡', isWallpaper: true, category: 'wallpapers' },
+  { id: 'velvet-peach', name: 'Velvet Peach Glow', pattern: 'linear-gradient(135deg, #ff9966 0%, #ff5e62 100%)', size: 'cover', icon: '🍑', isWallpaper: true, category: 'wallpapers' },
   { id: 'none_image', name: 'No Image', pattern: 'none', size: '0 0', icon: '🚫', isWallpaper: true, category: 'wallpapers' }
 ];
 
@@ -196,18 +523,19 @@ allPatterns.forEach(pattern => {
 
 // Pattern Categories
 const patternCategories = [
-  { id: 'all', name: 'All' },
-  { id: 'patterns', name: 'Patterns' },
-  { id: 'wallpapers', name: 'Gradients' },
-  { id: 'custom', name: 'My Uploads' }
+  { id: 'all', name: `✨ All (${allPatterns.length})` },
+  { id: 'patterns', name: `📐 Patterns (${backgroundPatterns.length})` },
+  { id: 'wallpapers', name: `🌈 Gradients (${imageBackgrounds.length})` },
+  { id: 'custom', name: '🖼️ My Uploads' }
 ];
 
 // Theme Categories
 const themeCategories = [
-  { id: 'solid', name: 'Solid Colors', themes: themeOptions },
-  { id: 'gradient', name: 'Gradients', themes: gradientThemes },
-  { id: 'dark', name: 'Dark Themes', themes: darkThemes },
-  { id: 'custom', name: 'My Themes', themes: [] } // Placeholder for user-created themes
+  { id: 'all', name: `✨ All (${allAvailableThemes.length})`, themes: allAvailableThemes },
+  { id: 'solid', name: `🎨 Solid (${themeOptions.length})`, themes: themeOptions },
+  { id: 'gradient', name: `🌈 Gradients (${gradientThemes.length})`, themes: gradientThemes },
+  { id: 'dark', name: `🌙 Dark (${darkThemes.length})`, themes: darkThemes },
+  { id: 'aesthetic', name: `💖 Aesthetics (${aestheticThemes.length})`, themes: aestheticThemes }
 ];
 
 const settingsSections = [
@@ -232,6 +560,16 @@ const settingsSections = [
     ]
   },
   {
+    title: 'Calls & Ringtone',
+    items: [
+      {
+        label: 'Incoming Call Ringtone',
+        desc: 'Set a custom ringtone for incoming calls',
+        type: 'ringtone-selector'
+      }
+    ]
+  },
+  {
     title: 'Privacy',
     items: [
       {
@@ -248,16 +586,6 @@ const settingsSections = [
       {
         label: 'Contact Gestures',
         desc: 'Draw custom signs to instantly open contact chats.',
-        type: 'link'
-      },
-    ]
-  },
-  {
-    title: 'Account',
-    items: [
-      {
-        label: 'Edit Profile',
-        desc: 'Update your profile picture, name, and bio.',
         type: 'link'
       },
     ]
@@ -301,7 +629,10 @@ const Settings = ({ onBack }) => {
   const [selectedTheme, setSelectedTheme] = React.useState('light');
   const [selectedPattern, setSelectedPattern] = React.useState('none');
   const [patternOpacity, setPatternOpacity] = React.useState(5);
+  const [ringtoneDialogOpen, setRingtoneDialogOpen] = React.useState(false);
+  const [currentRingtone, setCurrentRingtone] = React.useState(null);
   const [themeTab, setThemeTab] = React.useState('solid');
+  const [themeSearchQuery, setThemeSearchQuery] = React.useState('');
   const [patternTab, setPatternTab] = React.useState('all');
   const [customImages, setCustomImages] = React.useState([]);
   const [selectedFile, setSelectedFile] = React.useState(null);
@@ -314,24 +645,84 @@ const Settings = ({ onBack }) => {
   const [zoom, setZoom] = React.useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = React.useState(null);
   const [cropAspectRatio, setCropAspectRatio] = React.useState(9 / 16);
+  const [currentUserProfile, setCurrentUserProfile] = React.useState(() => {
+    try {
+      const cached = localStorage.getItem('profileImageCache') || localStorage.getItem('profileImage');
+      const un = localStorage.getItem('username');
+      return { profileImage: cached || '', username: un || '' };
+    } catch (e) {
+      return null;
+    }
+  });
+
+  // Sync active ringtone setting
+  React.useEffect(() => {
+    const fetchRingtone = async () => {
+      try {
+        const setting = await getRingtoneSetting();
+        setCurrentRingtone(setting);
+      } catch (e) { }
+    };
+    fetchRingtone();
+
+    const handleRingtoneChange = (e) => {
+      if (e.detail) {
+        setCurrentRingtone(e.detail);
+      }
+    };
+    window.addEventListener('appRingtoneChanged', handleRingtoneChange);
+    return () => {
+      window.removeEventListener('appRingtoneChanged', handleRingtoneChange);
+    };
+  }, []);
 
 
   const theme = useTheme();
   const isMobile = useMediaQuery('(max-width: 1024px)');
+  const [currentIsDark, setCurrentIsDark] = React.useState(() => {
+    try {
+      const saved = localStorage.getItem('appTheme');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const bgCol = parsed?.colors?.background;
+        if (bgCol && bgCol.startsWith('#')) {
+          const hex = bgCol.replace('#', '').trim();
+          const r = parseInt(hex.substring(0, 2), 16);
+          const g = parseInt(hex.substring(2, 4), 16);
+          const b = parseInt(hex.substring(4, 6), 16);
+          return (r * 299 + g * 587 + b * 114) / 1000 < 128;
+        }
+      }
+    } catch (e) { }
+    return theme.palette.mode === 'dark';
+  });
+  const isDark = currentIsDark;
   const navigate = useNavigate();
   const userId = localStorage.getItem('userId');
   const fileInputRef = React.useRef(null);
   const rawApiBase = API_BASE_URL;
   const API_BASE = rawApiBase.endsWith('/') ? rawApiBase.slice(0, -1) : rawApiBase;
 
-  // Load custom images from localStorage on mount
+  // Load custom images and settings on mount (SQLite + localStorage instant load)
   React.useEffect(() => {
+    // 1. Instant synchronous read from localStorage
     const savedCustomImages = localStorage.getItem('customWallpapers');
     if (savedCustomImages) {
-      setCustomImages(JSON.parse(savedCustomImages));
+      try {
+        setCustomImages(JSON.parse(savedCustomImages));
+      } catch (e) { }
     }
 
-    // Load current settings
+    // 2. Load and merge from SQLite database
+    getCustomWallpapersLocally()
+      .then(sqliteWallpapers => {
+        if (Array.isArray(sqliteWallpapers) && sqliteWallpapers.length > 0) {
+          setCustomImages(sqliteWallpapers);
+        }
+      })
+      .catch(err => console.warn('SQLite custom wallpapers load notice:', err));
+
+    // 3. Load current Theme
     const DEFAULT_THEME = {
       id: 'light',
       name: 'Light',
@@ -341,30 +732,56 @@ const Settings = ({ onBack }) => {
     };
     const savedTheme = localStorage.getItem('appTheme');
     if (savedTheme) {
-      const themeData = JSON.parse(savedTheme);
-      setSelectedTheme(themeData.id);
-      applyTheme(themeData);
+      try {
+        const themeData = JSON.parse(savedTheme);
+        setSelectedTheme(themeData.id);
+        applyTheme(themeData);
+      } catch (e) { }
     } else {
-      setSelectedTheme('light');
-      localStorage.setItem('appTheme', JSON.stringify(DEFAULT_THEME));
-      applyTheme(DEFAULT_THEME);
+      getAppSettingLocally('appTheme').then(themeStr => {
+        if (themeStr) {
+          try {
+            const themeData = JSON.parse(themeStr);
+            setSelectedTheme(themeData.id);
+            applyTheme(themeData);
+            return;
+          } catch (e) { }
+        }
+        setSelectedTheme('light');
+        saveAppSettingLocally('appTheme', JSON.stringify(DEFAULT_THEME));
+        applyTheme(DEFAULT_THEME);
+      });
     }
 
+    // 4. Load Pattern / Background
     const savedPattern = localStorage.getItem('appPattern');
     if (savedPattern) {
-      const patternData = JSON.parse(savedPattern);
-      setSelectedPattern(patternData.id);
-      applyPattern(patternData);
+      try {
+        const patternData = JSON.parse(savedPattern);
+        setSelectedPattern(patternData.id);
+        applyPattern(patternData);
+      } catch (e) { }
+    } else {
+      getAppSettingLocally('appPattern').then(patternStr => {
+        if (patternStr) {
+          try {
+            const patternData = JSON.parse(patternStr);
+            setSelectedPattern(patternData.id);
+            applyPattern(patternData);
+          } catch (e) { }
+        }
+      });
     }
 
+    // 5. Load Opacity
     const savedOpacity = localStorage.getItem('patternOpacity');
     let isWall = false;
     if (savedPattern) {
       try {
         const patternData = JSON.parse(savedPattern);
         isWall = patternData.isWallpaper || patternData.type === 'custom-image' || patternData.type === 'image' ||
-                 ['sunset', 'aurora', 'magic', 'mint', 'ocean', 'darkness', 'peach'].includes(patternData.id);
-      } catch (e) {}
+          ['sunset', 'aurora', 'magic', 'mint', 'ocean', 'darkness', 'peach'].includes(patternData.id);
+      } catch (e) { }
     }
     const defaultOpacity = savedOpacity !== null ? parseInt(savedOpacity) : (isWall ? 100 : 5);
     setPatternOpacity(defaultOpacity);
@@ -372,7 +789,9 @@ const Settings = ({ onBack }) => {
 
     const savedSwitchState = localStorage.getItem('settingsSwitchState');
     if (savedSwitchState) {
-      setSwitchState(JSON.parse(savedSwitchState));
+      try {
+        setSwitchState(JSON.parse(savedSwitchState));
+      } catch (e) { }
     }
 
     // Fetch user settings from backend
@@ -380,27 +799,67 @@ const Settings = ({ onBack }) => {
       fetch(`${API_BASE}/api/user/${userId}`)
         .then(res => res.json())
         .then(user => {
+          if (user) {
+            setCurrentUserProfile(user);
+            if (user.profileImage) {
+              localStorage.setItem('profileImageCache', user.profileImage);
+              localStorage.setItem('profileImage', user.profileImage);
+            }
+          }
           setSwitchState(prev => ({
             ...prev,
             profileVisible: user.profileVisible !== false,
             messageEncryption: user.messageEncryption === true
           }));
-        });
+        })
+        .catch(err => console.warn('Network user profile fetch in settings notice:', err));
     }
-  }, [userId]);
+  }, [userId, API_BASE]);
 
   // Apply theme to entire app
   const applyTheme = (themeData) => {
-    if (!themeData) return;
+    if (!themeData || !themeData.colors) return;
 
     const root = document.documentElement;
-    root.style.setProperty('--primary-color', themeData.colors.primary);
+    const isGradient = themeData.colors.primary && themeData.colors.primary.includes('gradient');
+    let solidPrimary = themeData.colors.primary;
+    let gradientPrimary = themeData.colors.primary;
+    if (isGradient) {
+      const match = themeData.colors.primary.match(/#(?:[0-9a-fA-F]{3,8})/);
+      solidPrimary = match ? match[0] : '#f06292';
+    } else if (solidPrimary) {
+      gradientPrimary = `linear-gradient(135deg, ${solidPrimary} 0%, ${solidPrimary}dd 100%)`;
+    }
+
+    const hexToRgb = (hex) => {
+      try {
+        const h = (hex || '#f06292').replace('#', '').trim();
+        const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+        const bigint = parseInt(full, 16);
+        const r = (bigint >> 16) & 255;
+        const g = (bigint >> 8) & 255;
+        const b = bigint & 255;
+        return `${r}, ${g}, ${b}`;
+      } catch (e) {
+        return '240, 98, 146';
+      }
+    };
+
+    const primaryRgb = hexToRgb(solidPrimary || '#f06292');
+
+    root.style.setProperty('--primary-color', solidPrimary || '#f06292');
+    root.style.setProperty('--primary-gradient', gradientPrimary || 'linear-gradient(135deg, #ff5c8d 0%, #ff2d6c 100%)');
+    root.style.setProperty('--primary-rgb', primaryRgb);
+    root.style.setProperty('--primary-color-alpha', `rgba(${primaryRgb}, 0.08)`);
+    root.style.setProperty('--primary-color-glow', `rgba(${primaryRgb}, 0.35)`);
+    root.style.setProperty('--app-primary', solidPrimary || '#f06292');
+    root.style.setProperty('--app-primary-rgb', primaryRgb);
     root.style.setProperty('--background-color', themeData.colors.background);
     root.style.setProperty('--surface-color', themeData.colors.surface);
     root.style.setProperty('--text-color', themeData.colors.text);
 
     // Calculate background color luminance to determine if theme is dark or light
-    let isDark = false;
+    let dark = false;
     const bgCol = themeData.colors.background;
     if (bgCol && bgCol.startsWith('#')) {
       try {
@@ -409,28 +868,45 @@ const Settings = ({ onBack }) => {
         const g = parseInt(hex.substring(2, 4), 16);
         const b = parseInt(hex.substring(4, 6), 16);
         const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-        isDark = brightness < 128;
+        dark = brightness < 128;
       } catch (e) {
         const themeIdStr = (themeData.id || '').toLowerCase();
-        isDark = themeIdStr.includes('dark') || themeIdStr.includes('black') || themeIdStr.includes('midnight') || themeIdStr.includes('amoled') || themeIdStr.includes('night');
+        dark = themeIdStr.includes('dark') || themeIdStr.includes('black') || themeIdStr.includes('midnight') || themeIdStr.includes('amoled') || themeIdStr.includes('night');
       }
     } else {
       const themeIdStr = (themeData.id || '').toLowerCase();
-      isDark = themeIdStr.includes('dark') || themeIdStr.includes('black') || themeIdStr.includes('midnight') || themeIdStr.includes('amoled') || themeIdStr.includes('night');
+      dark = themeIdStr.includes('dark') || themeIdStr.includes('black') || themeIdStr.includes('midnight') || themeIdStr.includes('amoled') || themeIdStr.includes('night');
     }
-    root.style.setProperty('--pattern-color', isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)');
+    setCurrentIsDark(dark);
+    root.style.setProperty('--pattern-color', dark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)');
 
     const metaThemeColor = document.querySelector('meta[name="theme-color"]');
     if (metaThemeColor) {
-      metaThemeColor.setAttribute('content', themeData.colors.primary);
+      metaThemeColor.setAttribute('content', solidPrimary || themeData.colors.primary);
     }
   };
+
+  // Listen for theme change from other components/storage
+  React.useEffect(() => {
+    const onThemeChanged = () => {
+      try {
+        const saved = localStorage.getItem('appTheme');
+        if (saved) {
+          const themeData = JSON.parse(saved);
+          setSelectedTheme(themeData.id);
+          applyTheme(themeData);
+        }
+      } catch (e) { }
+    };
+    window.addEventListener('themeChanged', onThemeChanged);
+    return () => window.removeEventListener('themeChanged', onThemeChanged);
+  }, []);
 
   // Apply background pattern
   const applyPattern = (patternData) => {
     const root = document.documentElement;
     const isWallpaper = patternData.isWallpaper || patternData.type === 'custom-image' || patternData.type === 'image' ||
-                        ['sunset', 'aurora', 'magic', 'mint', 'ocean', 'darkness', 'peach'].includes(patternData.id);
+      ['sunset', 'aurora', 'magic', 'mint', 'ocean', 'darkness', 'peach'].includes(patternData.id);
 
     if (patternData.id === 'none' || patternData.id === 'none_image') {
       root.style.setProperty('--background-pattern', 'none');
@@ -442,7 +918,7 @@ const Settings = ({ onBack }) => {
       root.style.setProperty('--pattern-size', patternData.size || 'cover');
       root.style.setProperty('--pattern-repeat', 'no-repeat');
       root.style.setProperty('--pattern-position', 'center');
-      
+
       const savedOpacity = localStorage.getItem('patternOpacity');
       const opacityVal = savedOpacity !== null ? parseInt(savedOpacity) : 100;
       setPatternOpacity(opacityVal);
@@ -452,7 +928,7 @@ const Settings = ({ onBack }) => {
       root.style.setProperty('--pattern-size', patternData.size || 'cover');
       root.style.setProperty('--pattern-repeat', 'no-repeat');
       root.style.setProperty('--pattern-position', 'center');
-      
+
       const savedOpacity = localStorage.getItem('patternOpacity');
       const opacityVal = savedOpacity !== null ? parseInt(savedOpacity) : 100;
       setPatternOpacity(opacityVal);
@@ -493,17 +969,26 @@ const Settings = ({ onBack }) => {
 
   // Handle theme selection
   const handleThemeSelect = (themeId, category = 'solid') => {
+    const allThemes = allAvailableThemes;
     const categoryThemes = themeCategories.find(cat => cat.id === category)?.themes || themeOptions;
-    const theme = categoryThemes.find(t => t.id === themeId);
+    const theme = categoryThemes.find(t => t.id === themeId) || allThemes.find(t => t.id === themeId);
     if (theme) {
       setSelectedTheme(themeId);
       localStorage.setItem('appTheme', JSON.stringify(theme));
+      saveAppSettingLocally('appTheme', JSON.stringify(theme));
+
+      const isGrad = theme.colors.primary && theme.colors.primary.includes('gradient');
+      const solidHex = isGrad ? (theme.colors.primary.match(/#(?:[0-9a-fA-F]{3,8})/)?.[0] || '#f06292') : theme.colors.primary;
+      localStorage.setItem('primaryColor', solidHex);
+      localStorage.setItem('appPrimary', solidHex);
+      localStorage.setItem('appPrimaryColor', solidHex);
+      localStorage.setItem('app.primaryColor', solidHex);
+
       applyTheme(theme);
       window.dispatchEvent(new Event('themeChanged'));
-      setThemeDialogOpen(false);
       setSnackbar({
         open: true,
-        message: `Theme changed to ${theme.name}`,
+        message: `Theme applied: ${theme.name}`,
         severity: 'success'
       });
     }
@@ -534,7 +1019,7 @@ const Settings = ({ onBack }) => {
       }
 
       setSelectedFile(file);
-      
+
       const reader = new FileReader();
       reader.onload = (e) => {
         setSelectedImage(e.target.result);
@@ -546,14 +1031,14 @@ const Settings = ({ onBack }) => {
     }
   };
 
-  // Handle image upload with cropping
+  // Handle image upload with cropping (Optimized for all mobile devices + SQLite)
   const handleImageUpload = async () => {
-    if (!selectedImage || !croppedAreaPixels) return;
+    if (!selectedImage) return;
 
     setUploading(true);
 
     try {
-      // Crop the image using our getCroppedImg utility
+      // Crop the image using our mobile-optimized getCroppedImg utility
       const croppedImageBase64 = await getCroppedImg(selectedImage, croppedAreaPixels);
 
       // Create a unique ID for the image
@@ -570,14 +1055,14 @@ const Settings = ({ onBack }) => {
         uploadedAt: new Date().toISOString()
       };
 
-      // Add to custom images
-      const updatedImages = [...customImages, imageData];
+      // Add to SQLite database & React state
+      await saveCustomWallpaperLocally(imageData);
+      const updatedImages = [imageData, ...customImages.filter(img => img.id !== imageId)];
       setCustomImages(updatedImages);
-      localStorage.setItem('customWallpapers', JSON.stringify(updatedImages));
 
-      // Automatically set this wallpaper as the active background pattern
+      // Automatically set this wallpaper as the active background pattern in SQLite & local state
       setSelectedPattern(imageId);
-      localStorage.setItem('appPattern', JSON.stringify(imageData));
+      await saveAppSettingLocally('appPattern', JSON.stringify(imageData));
       applyPattern(imageData);
 
       setUploading(false);
@@ -600,7 +1085,7 @@ const Settings = ({ onBack }) => {
       setUploading(false);
       setSnackbar({
         open: true,
-        message: 'Failed to crop and upload image',
+        message: error?.message || 'Failed to crop and upload image',
         severity: 'error'
       });
     }
@@ -608,11 +1093,11 @@ const Settings = ({ onBack }) => {
 
 
   // Handle custom image selection
-  const handleCustomImageSelect = (imageId) => {
+  const handleCustomImageSelect = async (imageId) => {
     const image = customImages.find(img => img.id === imageId);
     if (image) {
       setSelectedPattern(imageId);
-      localStorage.setItem('appPattern', JSON.stringify(image));
+      await saveAppSettingLocally('appPattern', JSON.stringify(image));
       applyPattern(image);
       setPatternDialogOpen(false);
       setSnackbar({
@@ -624,17 +1109,17 @@ const Settings = ({ onBack }) => {
   };
 
   // Handle custom image deletion
-  const handleCustomImageDelete = (imageId, event) => {
+  const handleCustomImageDelete = async (imageId, event) => {
     event.stopPropagation(); // Prevent pattern selection when deleting
 
     const updatedImages = customImages.filter(img => img.id !== imageId);
     setCustomImages(updatedImages);
-    localStorage.setItem('customWallpapers', JSON.stringify(updatedImages));
+    await deleteCustomWallpaperLocally(imageId);
 
     // If the deleted image was currently selected, revert to no pattern
     if (selectedPattern === imageId) {
       setSelectedPattern('none');
-      localStorage.setItem('appPattern', JSON.stringify({ id: 'none', pattern: 'none' }));
+      await saveAppSettingLocally('appPattern', JSON.stringify({ id: 'none', pattern: 'none' }));
       applyPattern({ id: 'none', pattern: 'none' });
     }
 
@@ -645,8 +1130,8 @@ const Settings = ({ onBack }) => {
     });
   };
 
-  // Handle pattern selection (updated to support custom images)
-  const handlePatternSelect = (patternId) => {
+  // Handle pattern selection (updated to support custom images + SQLite)
+  const handlePatternSelect = async (patternId) => {
     // Check if it's a custom image
     if (patternId.startsWith('custom-')) {
       handleCustomImageSelect(patternId);
@@ -657,7 +1142,7 @@ const Settings = ({ onBack }) => {
     const pattern = allPatterns.find(p => p.id === patternId);
     if (pattern) {
       setSelectedPattern(patternId);
-      localStorage.setItem('appPattern', JSON.stringify(pattern));
+      await saveAppSettingLocally('appPattern', JSON.stringify(pattern));
       applyPattern(pattern);
       setPatternDialogOpen(false);
       setSnackbar({
@@ -742,61 +1227,224 @@ const Settings = ({ onBack }) => {
     });
   };
 
-  // Enhanced Theme Preview Component
-  const ThemePreview = ({ theme, category }) => (
-    <Box
-      sx={{
-        p: 2,
-        borderRadius: 3,
-        background: theme.colors.background,
-        color: theme.colors.text,
-        border: `3px solid ${selectedTheme === theme.id ? theme.colors.primary : 'transparent'}`,
-        cursor: 'pointer',
-        transition: 'all 0.3s ease',
-        position: 'relative',
-        overflow: 'hidden',
-        minHeight: 120,
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'space-between',
-        '&:hover': {
-          transform: 'translateY(-4px) scale(1.02)',
-          boxShadow: 4
-        }
-      }}
-      onClick={() => handleThemeSelect(theme.id, category)}
-    >
-      <Box sx={{ position: 'relative', zIndex: 1 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-          <Typography variant="h5" sx={{ mr: 1 }}>
+  // Enhanced 3D Juicy Theme Preview Component (Mobile-Optimized)
+  const ThemePreview = ({ theme, category }) => {
+    const isSelected = selectedTheme === theme.id;
+    const isGradient = theme.colors.primary && theme.colors.primary.includes('gradient');
+    const previewColor = isGradient
+      ? (theme.colors.primary.match(/#(?:[0-9a-fA-F]{3,8})/)?.[0] || '#f06292')
+      : theme.colors.primary;
+
+    const isCardDark = (() => {
+      const bg = theme.colors.background || '';
+      if (bg.startsWith('#')) {
+        const hex = bg.replace('#', '').trim();
+        const r = parseInt(hex.substring(0, 2), 16) || 0;
+        const g = parseInt(hex.substring(2, 4), 16) || 0;
+        const b = parseInt(hex.substring(4, 6), 16) || 0;
+        return (r * 299 + g * 587 + b * 114) / 1000 < 130;
+      }
+      return false;
+    })();
+
+    return (
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          p: { xs: 1.15, sm: 1.5 },
+          borderRadius: { xs: '18px', sm: '22px' },
+          background: theme.colors.background,
+          color: theme.colors.text,
+          border: isSelected
+            ? '2.5px solid #ff2d6c'
+            : isCardDark
+              ? '1.5px solid rgba(255,255,255,0.12)'
+              : '1.5px solid rgba(255, 105, 150, 0.18)',
+          cursor: 'pointer',
+          position: 'relative',
+          overflow: 'hidden',
+          WebkitTapHighlightColor: 'transparent',
+          touchAction: 'manipulation',
+          transition: 'all 0.22s cubic-bezier(0.34, 1.56, 0.64, 1)',
+          boxShadow: isSelected
+            ? '0 8px 24px -2px rgba(255, 45, 108, 0.38), 0 2px 6px rgba(0, 0, 0, 0.08)'
+            : isCardDark
+              ? '0 3px 12px rgba(0,0,0,0.3)'
+              : '0 3px 12px -2px rgba(240, 98, 146, 0.12), 0 1px 4px rgba(0,0,0,0.02)',
+          '@media (hover: hover)': {
+            '&:hover': {
+              transform: 'translateY(-2px)',
+              boxShadow: isSelected
+                ? '0 12px 28px -2px rgba(255, 45, 108, 0.48)'
+                : '0 8px 20px -2px rgba(240, 98, 146, 0.2)'
+            }
+          },
+          '&:active': {
+            transform: 'scale(0.975)'
+          }
+        }}
+        onClick={() => handleThemeSelect(theme.id, category)}
+      >
+        {/* Top glossy specular reflection */}
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: '45%',
+            background: 'linear-gradient(180deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0) 100%)',
+            pointerEvents: 'none',
+            borderTopLeftRadius: { xs: '18px', sm: '22px' },
+            borderTopRightRadius: { xs: '18px', sm: '22px' }
+          }}
+        />
+
+        {/* Left Side: 3D Icon & Live Palette Swatch */}
+        <Box
+          sx={{
+            width: { xs: 42, sm: 48 },
+            height: { xs: 42, sm: 48 },
+            borderRadius: { xs: '13px', sm: '15px' },
+            background: theme.colors.surface,
+            border: isCardDark ? '1.5px solid rgba(255,255,255,0.15)' : '1.5px solid rgba(0,0,0,0.06)',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            mr: { xs: 1.2, sm: 1.6 },
+            flexShrink: 0,
+            position: 'relative'
+          }}
+        >
+          <Typography sx={{ fontSize: { xs: '1.2rem', sm: '1.38rem' }, lineHeight: 1 }}>
             {theme.icon}
           </Typography>
-          <Typography variant="subtitle1" fontWeight="bold" sx={{ fontSize: '0.9rem' }}>
-            {theme.name}
-          </Typography>
-        </Box>
-        <Typography variant="body2" sx={{ opacity: 0.8, fontSize: '0.8rem' }}>
-          {theme.description}
-        </Typography>
-      </Box>
-
-      {/* Color palette preview */}
-      <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center', mt: 1 }}>
-        {Object.values(theme.colors).slice(0, 4).map((color, index) => (
+          {/* Small primary color accent badge */}
           <Box
-            key={index}
             sx={{
-              width: 16,
-              height: 16,
+              position: 'absolute',
+              bottom: -2,
+              right: -2,
+              width: { xs: 12, sm: 14 },
+              height: { xs: 12, sm: 14 },
               borderRadius: '50%',
-              background: color,
-              border: color === theme.colors.background ? `1px solid ${theme.colors.text}` : 'none'
+              background: theme.colors.primary,
+              border: '2px solid #ffffff',
+              boxShadow: '0 2px 5px rgba(0,0,0,0.25)'
             }}
           />
-        ))}
+        </Box>
+
+        {/* Center Section: Title, Tag, Description, Color Dots */}
+        <Box sx={{ minWidth: 0, flex: 1, mr: { xs: 0.8, sm: 1.2 }, position: 'relative', zIndex: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, mb: 0.15, minWidth: 0 }}>
+            <Typography
+              noWrap
+              sx={{
+                fontWeight: 750,
+                fontSize: { xs: '0.85rem', sm: '0.94rem' },
+                color: theme.colors.text,
+                lineHeight: 1.2
+              }}
+            >
+              {theme.name}
+            </Typography>
+            <Typography
+              variant="caption"
+              sx={{
+                fontSize: '0.58rem',
+                fontWeight: 700,
+                px: 0.55,
+                py: 0.08,
+                borderRadius: '5px',
+                bgcolor: isCardDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.06)',
+                color: theme.colors.text,
+                opacity: 0.85,
+                textTransform: 'uppercase',
+                letterSpacing: '0.02em',
+                flexShrink: 0
+              }}
+            >
+              {isCardDark ? 'Dark' : 'Light'}
+            </Typography>
+          </Box>
+
+          <Typography
+            noWrap
+            sx={{
+              fontSize: { xs: '0.68rem', sm: '0.75rem' },
+              color: theme.colors.text,
+              opacity: 0.76,
+              mb: 0.45,
+              lineHeight: 1.2
+            }}
+          >
+            {theme.description}
+          </Typography>
+
+          {/* 4 Color Palette Dots */}
+          <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+            {Object.values(theme.colors).slice(0, 4).map((color, idx) => (
+              <Box
+                key={idx}
+                sx={{
+                  width: { xs: 11, sm: 13 },
+                  height: { xs: 11, sm: 13 },
+                  borderRadius: '50%',
+                  background: color,
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.18)',
+                  border: isCardDark ? '1px solid rgba(255,255,255,0.22)' : '1px solid rgba(0,0,0,0.12)'
+                }}
+              />
+            ))}
+          </Box>
+        </Box>
+
+        {/* Right Side: Active Status Badge or Subtle Radio Indicator */}
+        <Box sx={{ flexShrink: 0, position: 'relative', zIndex: 1 }}>
+          {isSelected ? (
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 0.35,
+                px: { xs: 1, sm: 1.3 },
+                py: 0.35,
+                borderRadius: '16px',
+                background: 'linear-gradient(135deg, #ff2d6c 0%, #ff6596 100%)',
+                color: '#ffffff',
+                fontWeight: 800,
+                fontSize: { xs: '0.64rem', sm: '0.7rem' },
+                boxShadow: '0 3px 10px rgba(255, 45, 108, 0.45)',
+                border: '1px solid rgba(255,255,255,0.4)',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              <CheckCircleRoundedIcon sx={{ fontSize: { xs: 11, sm: 13 } }} />
+              <span>Active</span>
+            </Box>
+          ) : (
+            <Box
+              sx={{
+                width: { xs: 18, sm: 20 },
+                height: { xs: 18, sm: 20 },
+                borderRadius: '50%',
+                border: isCardDark ? '2px solid rgba(255,255,255,0.22)' : '2px solid rgba(0,0,0,0.18)',
+                transition: 'all 0.2s ease',
+                '&:hover': {
+                  borderColor: '#ff2d6c'
+                }
+              }}
+            />
+          )}
+        </Box>
       </Box>
-    </Box>
-  );
+    );
+  };
 
   // Enhanced Pattern Preview Component with support for custom images
   const PatternPreview = ({ pattern }) => {
@@ -821,32 +1469,65 @@ const Settings = ({ onBack }) => {
 
     const isCustomImage = pattern.type === 'custom-image';
 
+    const isSelected = selectedPattern === pattern.id;
+
     return (
       <Box
         sx={{
-          p: isCustomImage ? 0 : 3,
-          borderRadius: 2,
+          p: isCustomImage ? 0 : 2.5,
+          borderRadius: '20px',
           bgcolor: 'var(--surface-color)',
           color: 'var(--text-color)',
-          border: `2px solid ${selectedPattern === pattern.id ? 'var(--primary-color)' : 'transparent'}`,
+          border: isSelected
+            ? '2.5px solid #ff2d6c'
+            : isDark
+              ? '1.5px solid rgba(255,255,255,0.12)'
+              : '1.5px solid rgba(255,105,150,0.18)',
           cursor: 'pointer',
-          transition: 'all 0.2s',
+          transition: 'all 0.22s cubic-bezier(0.34, 1.56, 0.64, 1)',
           textAlign: 'center',
           position: 'relative',
           overflow: 'hidden',
-          minHeight: 100,
+          minHeight: { xs: 95, sm: 110 },
           display: 'flex',
           flexDirection: 'column',
           justifyContent: isCustomImage ? 'flex-end' : 'center',
           alignItems: 'center',
-          '&:hover': {
-            transform: 'translateY(-2px)',
-            boxShadow: 2
+          boxShadow: isSelected
+            ? '0 8px 24px -2px rgba(255, 45, 108, 0.4), 0 2px 8px rgba(0, 0, 0, 0.08)'
+            : '0 4px 14px rgba(0,0,0,0.06)',
+          WebkitTapHighlightColor: 'transparent',
+          touchAction: 'manipulation',
+          '@media (hover: hover)': {
+            '&:hover': {
+              transform: 'translateY(-3px)',
+              boxShadow: isSelected
+                ? '0 12px 28px -2px rgba(255, 45, 108, 0.5)'
+                : '0 8px 22px rgba(255, 45, 108, 0.18)'
+            }
+          },
+          '&:active': {
+            transform: 'scale(0.97)'
           },
           ...getPatternStyle()
         }}
         onClick={() => handlePatternSelect(pattern.id)}
       >
+        {/* Top glossy specular reflection */}
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: '42%',
+            background: 'linear-gradient(180deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0) 100%)',
+            pointerEvents: 'none',
+            borderTopLeftRadius: '20px',
+            borderTopRightRadius: '20px'
+          }}
+        />
+
         {/* Overlay for custom images */}
         {isCustomImage && (
           <Box
@@ -856,7 +1537,7 @@ const Settings = ({ onBack }) => {
               left: 0,
               right: 0,
               bottom: 0,
-              backgroundColor: 'rgba(0, 0, 0, 0.3)',
+              backgroundColor: 'rgba(0, 0, 0, 0.35)',
               display: 'flex',
               flexDirection: 'column',
               justifyContent: 'flex-end',
@@ -866,13 +1547,14 @@ const Settings = ({ onBack }) => {
           >
             <Typography
               variant="body2"
-              fontWeight="500"
+              fontWeight="600"
               sx={{
                 color: 'white',
-                backgroundColor: 'rgba(0, 0, 0, 0.7)',
-                px: 1,
-                borderRadius: 1,
-                fontSize: '0.7rem',
+                backgroundColor: 'rgba(0, 0, 0, 0.75)',
+                px: 1.2,
+                py: 0.2,
+                borderRadius: '8px',
+                fontSize: '0.72rem',
                 maxWidth: '90%',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
@@ -894,30 +1576,59 @@ const Settings = ({ onBack }) => {
                 left: 0,
                 right: 0,
                 bottom: 0,
-                backgroundColor: 'rgba(255, 255, 255, 0.7)',
-                mixBlendMode: 'soft-light',
+                backgroundColor: isDark ? 'rgba(0, 0, 0, 0.2)' : 'rgba(255, 255, 255, 0.45)',
                 pointerEvents: 'none'
               }}
             />
 
-            <Typography variant="h4" sx={{ mb: 1, position: 'relative', zIndex: 1 }}>
+            <Typography variant="h4" sx={{ mb: 0.8, position: 'relative', zIndex: 1, fontSize: { xs: '1.6rem', sm: '1.85rem' } }}>
               {pattern.icon}
             </Typography>
             <Typography
               variant="body2"
-              fontWeight="500"
+              fontWeight="650"
+              noWrap
               sx={{
                 position: 'relative',
                 zIndex: 1,
-                backgroundColor: 'rgba(255, 255, 255, 0.8)',
-                px: 1,
-                borderRadius: 1,
-                fontSize: '0.75rem'
+                backgroundColor: isDark ? 'rgba(20, 15, 30, 0.82)' : 'rgba(255, 255, 255, 0.88)',
+                color: isDark ? '#ffffff' : '#1e1b2e',
+                px: 1.2,
+                py: 0.2,
+                borderRadius: '8px',
+                fontSize: { xs: '0.7rem', sm: '0.75rem' },
+                maxWidth: '92%',
+                backdropFilter: 'blur(6px)',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.1)'
               }}
             >
               {pattern.name}
             </Typography>
           </>
+        )}
+
+        {/* Active Checkmark Pill Badge */}
+        {isSelected && (
+          <Box
+            sx={{
+              position: 'absolute',
+              top: 6,
+              right: 6,
+              zIndex: 3,
+              width: 22,
+              height: 22,
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #ff2d6c 0%, #ff6596 100%)',
+              color: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 2px 8px rgba(255, 45, 108, 0.5)',
+              border: '1.5px solid #ffffff'
+            }}
+          >
+            <CheckCircleRoundedIcon sx={{ fontSize: 15 }} />
+          </Box>
         )}
 
         {/* Delete button for custom images */}
@@ -926,17 +1637,19 @@ const Settings = ({ onBack }) => {
             size="small"
             sx={{
               position: 'absolute',
-              top: 4,
-              right: 4,
-              backgroundColor: 'rgba(255, 0, 0, 0.7)',
+              top: 6,
+              right: 6,
+              zIndex: 3,
+              backgroundColor: 'rgba(239, 68, 68, 0.85)',
               color: 'white',
+              p: 0.5,
               '&:hover': {
-                backgroundColor: 'rgba(255, 0, 0, 0.9)'
+                backgroundColor: 'rgba(220, 38, 38, 1)'
               }
             }}
             onClick={(e) => handleCustomImageDelete(pattern.id, e)}
           >
-            <DeleteIcon fontSize="small" />
+            <DeleteIcon sx={{ fontSize: 15 }} />
           </IconButton>
         )}
       </Box>
@@ -982,7 +1695,7 @@ const Settings = ({ onBack }) => {
   // Handle opacity change
   const handleOpacityChange = (event, newValue) => {
     setPatternOpacity(newValue);
-    localStorage.setItem('patternOpacity', newValue.toString());
+    saveAppSettingLocally('patternOpacity', newValue.toString());
     applyOpacity(newValue);
     setSnackbar({
       open: true,
@@ -997,7 +1710,7 @@ const Settings = ({ onBack }) => {
   }, [switchState]);
 
   // Track if any popup, dialog, or subview is open in Settings
-  const isAnySettingsModalOpen = 
+  const isAnySettingsModalOpen =
     uploadDialogOpen ||
     themeDialogOpen ||
     patternDialogOpen ||
@@ -1064,8 +1777,8 @@ const Settings = ({ onBack }) => {
         handleSettingsBackPress();
       }).then(handle => {
         capListenerHandle = handle;
-      }).catch(() => {});
-    } catch (e) {}
+      }).catch(() => { });
+    } catch (e) { }
 
     // Custom hardwareBack event
     const handleHardwareBack = (e) => {
@@ -1104,10 +1817,13 @@ const Settings = ({ onBack }) => {
 
   if (showHelp) {
     return (
-      <Box data-settings-subview="true" sx={{ 
-        height: '100dvh', 
+      <Box data-settings-subview="true" sx={{
+        height: '100dvh',
         width: '100%',
-        bgcolor: 'var(--background-color, #fff6f8)',
+        bgcolor: 'var(--background-color, #fff7f9)',
+        backgroundImage: isDark
+          ? 'radial-gradient(circle at 85% 10%, rgba(255, 255, 255, 0.05) 0%, transparent 40%), radial-gradient(circle at 15% 70%, rgba(255, 255, 255, 0.03) 0%, transparent 45%)'
+          : 'radial-gradient(circle at 90% 8%, rgba(0, 0, 0, 0.03) 0%, transparent 40%), radial-gradient(circle at 10% 65%, rgba(0, 0, 0, 0.02) 0%, transparent 45%)',
         overflow: 'hidden'
       }}>
         <Help onBack={() => setShowHelp(false)} />
@@ -1116,18 +1832,28 @@ const Settings = ({ onBack }) => {
   }
 
   // FIXED: If showing edit profile, render it with proper layout (no extra gap)
+  const handleCloseEditProfile = () => {
+    setShowEditProfile(false);
+    try {
+      const cached = localStorage.getItem('profileImageCache') || localStorage.getItem('profileImage');
+      const un = localStorage.getItem('username');
+      setCurrentUserProfile(prev => ({ ...prev, profileImage: cached || '', username: un || prev?.username }));
+    } catch (e) { }
+  };
+
   if (showEditProfile) {
     return (
-      <Box data-settings-subview="true" sx={{ 
-        height: '100dvh', 
+      <Box data-settings-subview="true" sx={{
+        height: '100dvh',
         width: '100%',
-        bgcolor: 'var(--background-color, #fff6f8)',
+        bgcolor: 'var(--background-color, #fff7f9)',
+        backgroundImage: isDark
+          ? 'radial-gradient(circle at 85% 10%, rgba(255, 255, 255, 0.05) 0%, transparent 40%), radial-gradient(circle at 15% 70%, rgba(255, 255, 255, 0.03) 0%, transparent 45%)'
+          : 'radial-gradient(circle at 90% 8%, rgba(0, 0, 0, 0.03) 0%, transparent 40%), radial-gradient(circle at 10% 65%, rgba(0, 0, 0, 0.02) 0%, transparent 45%)',
         overflow: 'hidden'
       }}>
-     
-        
         {/* EditProfile Component - rendered directly without extra padding */}
-        <EditProfile onBack={() => setShowEditProfile(false)} />
+        <EditProfile onBack={handleCloseEditProfile} />
       </Box>
     );
   }
@@ -1137,11 +1863,14 @@ const Settings = ({ onBack }) => {
       sx={{
         height: '100%',
         width: '100%',
-        bgcolor: 'var(--background-color, #fff6f8)',
+        bgcolor: 'var(--background-color, #fff7f9)',
+        backgroundImage: isDark
+          ? 'radial-gradient(circle at 85% 10%, rgba(255, 255, 255, 0.05) 0%, transparent 40%), radial-gradient(circle at 15% 70%, rgba(255, 255, 255, 0.03) 0%, transparent 45%)'
+          : 'radial-gradient(circle at 90% 8%, rgba(0, 0, 0, 0.03) 0%, transparent 40%), radial-gradient(circle at 10% 65%, rgba(0, 0, 0, 0.02) 0%, transparent 45%)',
         color: 'var(--text-color, #000000)',
-        fontFamily: 'var(--app-font, "Poppins", sans-serif)',
+        fontFamily: 'Poppins, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
         display: 'flex',
-        justifyContent: 'flex-start',
+        justifyContent: 'center',
         alignItems: 'stretch',
         position: 'relative'
       }}
@@ -1150,44 +1879,200 @@ const Settings = ({ onBack }) => {
         sx={{
           flex: 1,
           width: '100%',
+          maxWidth: isMobile ? '100%' : 880,
+          mx: 'auto',
           height: '100%',
-          bgcolor: 'var(--surface-color, #fff)',
-          borderRadius: 0,
-          boxShadow: 'none',
+          bgcolor: 'transparent',
           overflowY: 'auto',
-          pt: { xs: 2.5, sm: 4 },
+          pt: { xs: 2, sm: 3.5 },
           pb: { xs: 12, sm: 8 },
-          px: { xs: 2.5, sm: 4 },
+          px: { xs: 2, sm: 3.5 },
           display: 'flex',
           flexDirection: 'column',
           minHeight: 0,
           position: 'relative',
-          zIndex: 1
+          zIndex: 1,
+          /* Clean scrollable area without sidebar/scrollbar */
+          '&::-webkit-scrollbar': {
+            display: 'none'
+          },
+          msOverflowStyle: 'none',
+          scrollbarWidth: 'none'
         }}
       >
+        {/* Header Bar */}
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            mb: 3,
+            px: 0.5
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Box
+              sx={{
+                width: 44,
+                height: 44,
+                borderRadius: '16px',
+                background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
+                color: '#ffffff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 6px 18px rgba(0, 0, 0, 0.15)',
+                border: '1px solid rgba(255, 255, 255, 0.25)'
+              }}
+            >
+              <SettingsIcon fontSize="medium" />
+            </Box>
+            <Box>
+              <Typography
+                variant="h6"
+                sx={{
+                  fontWeight: 800,
+                  background: isDark
+                    ? 'linear-gradient(135deg, #ffffff 0%, var(--primary-color, #fda4af) 100%)'
+                    : 'linear-gradient(135deg, var(--text-color, #1e1b2e) 0%, var(--primary-color, #ff2d6c) 100%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  lineHeight: 1.2,
+                  letterSpacing: '-0.3px',
+                  fontSize: isMobile ? '1.35rem' : '1.55rem'
+                }}
+              >
+                Settings
+              </Typography>
+              <Typography variant="caption" sx={{ color: isDark ? '#94a3b8' : '#64748b', fontWeight: 500 }}>
+                Customize your chat experience & preferences
+              </Typography>
+            </Box>
+          </Box>
+        </Box>
 
+        {/* User Profile Summary Card */}
+        <Box
+          onClick={() => setShowEditProfile(true)}
+          sx={{
+            mb: 2.5,
+            p: { xs: 1.8, sm: 2.2 },
+            borderRadius: '24px',
+            bgcolor: isDark ? 'rgba(28, 22, 38, 0.75)' : 'var(--surface-color, rgba(255, 255, 255, 0.88))',
+            backdropFilter: 'blur(14px)',
+            WebkitBackdropFilter: 'blur(14px)',
+            border: isDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(180, 180, 180, 0.2)',
+            boxShadow: isDark
+              ? '0 8px 24px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255,255,255,0.06)'
+              : '0 8px 24px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.9)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            cursor: 'pointer',
+            transition: 'all 0.22s ease',
+            '&:hover': {
+              transform: 'translateY(-2px)',
+              borderColor: 'var(--primary-color, rgba(255, 45, 108, 0.35))',
+              boxShadow: isDark
+                ? '0 12px 28px rgba(0, 0, 0, 0.45)'
+                : '0 12px 28px rgba(255, 45, 108, 0.1)',
+            }
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 0 }}>
+            <Avatar
+              src={getProfileImageSrc(currentUserProfile?.profileImage)}
+              sx={{
+                width: 54,
+                height: 54,
+                border: '2px solid var(--primary-color, #ff2d6c)',
+                boxShadow: '0 4px 14px rgba(255, 45, 108, 0.25)',
+                bgcolor: isDark ? 'rgba(255, 45, 108, 0.2)' : '#ffe4ec',
+                color: 'var(--primary-color, #ff2d6c)',
+                fontWeight: 700,
+                fontSize: '1.25rem',
+                flexShrink: 0
+              }}
+            >
+              {(currentUserProfile?.name?.[0] || currentUserProfile?.username?.[0] || 'U').toUpperCase()}
+            </Avatar>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography
+                noWrap
+                sx={{
+                  fontWeight: 750,
+                  fontSize: '1.02rem',
+                  color: isDark ? '#f8fafc' : '#0f172a',
+                  lineHeight: 1.2
+                }}
+              >
+                {currentUserProfile?.name || currentUserProfile?.username || 'User Profile'}
+              </Typography>
+              <Typography
+                noWrap
+                variant="body2"
+                sx={{
+                  color: isDark ? '#94a3b8' : '#64748b',
+                  fontSize: '0.84rem',
+                  mt: 0.3
+                }}
+              >
+                {currentUserProfile?.username ? `@${currentUserProfile.username}` : (currentUserProfile?.email || 'Tap to edit profile')}
+              </Typography>
+            </Box>
+          </Box>
+          <IconButton
+            sx={{
+              color: 'var(--primary-color, #ff2d6c)',
+              p: 1,
+              pointerEvents: 'none'
+            }}
+          >
+            <ArrowForwardIosIcon sx={{ fontSize: 16 }} />
+          </IconButton>
+        </Box>
 
         {/* Sections */}
         {settingsSections.map((section) => (
-          <Box key={section.title} sx={{ mb: 3 }}>
+          <Box
+            key={section.title}
+            sx={{
+              mb: 2.5,
+              borderRadius: '24px',
+              bgcolor: isDark ? 'rgba(28, 22, 38, 0.75)' : 'var(--surface-color, rgba(255, 255, 255, 0.88))',
+              backdropFilter: 'blur(14px)',
+              WebkitBackdropFilter: 'blur(14px)',
+              p: { xs: 2, sm: 2.5 },
+              border: isDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(180, 180, 180, 0.2)',
+              boxShadow: isDark
+                ? '0 8px 24px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255,255,255,0.06)'
+                : '0 8px 24px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.9)',
+              transition: 'all 0.25s ease'
+            }}
+          >
             <Typography
               variant="subtitle2"
               sx={{
-                color: 'var(--primary-color, #ffffff)',
-                fontWeight: 600,
-                mb: 1,
-                fontSize: '1rem',
-                letterSpacing: 0.5
+                fontWeight: 750,
+                mb: 1.5,
+                fontSize: '0.95rem',
+                letterSpacing: '-0.2px',
+                color: 'var(--primary-color, #ff2d6c)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1
               }}
             >
               {section.title}
             </Typography>
+
             <Box>
               {section.items.map((item, i) => {
                 const getClickHandler = () => {
                   if (item.type === 'theme-selector') return () => setThemeDialogOpen(true);
                   if (item.type === 'pattern-selector') return () => setPatternDialogOpen(true);
                   if (item.type === 'opacity-slider') return () => setOpacityDialogOpen(true);
+                  if (item.type === 'ringtone-selector') return () => setRingtoneDialogOpen(true);
                   if (item.type === 'switch') return () => handleSwitch(item.key);
                   if (item.label === 'Edit Profile') return () => setShowEditProfile(true);
                   if (item.label === 'Blocked Users') return () => navigate('/blocked-users');
@@ -1203,108 +2088,171 @@ const Settings = ({ onBack }) => {
                       onClick={getClickHandler()}
                       sx={{
                         display: 'flex',
-                        alignItems: 'flex-start',
+                        alignItems: 'center',
                         justifyContent: 'space-between',
-                        py: 1.2,
-                        px: 1,
+                        py: 1.4,
+                        px: 1.2,
                         cursor: item.type === 'switch' ? 'pointer' : item.type || item.label ? 'pointer' : 'default',
-                        borderRadius: 1,
-                        transition: 'background-color 0.2s ease',
+                        borderRadius: '16px',
+                        transition: 'all 0.2s ease',
                         '&:hover': {
-                          backgroundColor: 'rgba(240, 98, 146, 0.06)'
+                          backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.04)',
+                          transform: 'translateX(2px)'
                         }
                       }}
                     >
-                      <Box sx={{ flex: 1 }}>
-                        <Typography sx={{ fontWeight: 500, fontSize: '1rem' }}>
+                      <Box sx={{ flex: 1, pr: 1.5 }}>
+                        <Typography sx={{ fontWeight: 650, fontSize: '0.96rem', color: isDark ? '#f8fafc' : '#0f172a' }}>
                           {item.label}
                         </Typography>
-                        <Typography sx={{ color: '#888', fontSize: '0.92rem', mt: 0.2 }}>
+                        <Typography sx={{ color: isDark ? '#94a3b8' : '#64748b', fontSize: '0.84rem', mt: 0.3, lineHeight: 1.4 }}>
                           {item.desc}
                         </Typography>
                       </Box>
 
                       {/* Theme selector */}
                       {item.type === 'theme-selector' ? (
-                        <IconButton
-                          sx={{
-                            color: 'var(--primary-color, #f06292)',
-                            mt: 0.5,
-                            pointerEvents: 'none'
-                          }}
-                        >
-                          <PaletteIcon />
-                        </IconButton>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Chip
+                            size="small"
+                            label={allAvailableThemes.find(t => t.id === selectedTheme)?.name || 'Light'}
+                            sx={{
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              height: 24,
+                              borderRadius: '10px',
+                              bgcolor: isDark ? 'rgba(255, 45, 108, 0.18)' : 'rgba(255, 45, 108, 0.1)',
+                              color: 'var(--primary-color, #ff2d6c)',
+                              border: '1px solid rgba(255, 45, 108, 0.25)',
+                              pointerEvents: 'none',
+                              maxWidth: 120,
+                              '& .MuiChip-label': {
+                                px: 1,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap'
+                              }
+                            }}
+                          />
+                          <IconButton
+                            sx={{
+                              color: '#ffffff',
+                              background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
+                              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                              borderRadius: '12px',
+                              p: 1,
+                              pointerEvents: 'none'
+                            }}
+                          >
+                            <PaletteIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
                       ) :
                         /* Pattern selector */
                         item.type === 'pattern-selector' ? (
                           <IconButton
                             sx={{
-                              color: 'var(--primary-color, #f06292)',
-                              mt: 0.5,
+                              color: '#ffffff',
+                              background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
+                              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                              borderRadius: '12px',
+                              p: 1,
                               pointerEvents: 'none'
                             }}
                           >
-                            <TextureIcon />
+                            <TextureIcon fontSize="small" />
                           </IconButton>
                         ) :
                           /* Opacity slider */
                           item.type === 'opacity-slider' ? (
                             <IconButton
                               sx={{
-                                color: 'var(--primary-color, #f06292)',
-                                mt: 0.5,
+                                color: '#ffffff',
+                                background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
+                                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                                borderRadius: '12px',
+                                p: 1,
                                 pointerEvents: 'none'
                               }}
                             >
-                              <OpacityIcon />
+                              <OpacityIcon fontSize="small" />
                             </IconButton>
                           ) :
-                            /* Account section navigation */
-                            section.title === 'Account' ? (
-                              <IconButton
-                                sx={{
-                                  color: 'var(--primary-color, #f06292)',
-                                  mt: 0.5,
-                                  pointerEvents: 'none',
-                                  ...(isMobile && { p: 2 })
-                                }}
-                              >
-                                <ArrowForwardIosIcon fontSize="small" />
-                              </IconButton>
-                            ) : item.type === 'switch' ? (
-                              <Switch
-                                checked={switchState[item.key]}
-                                onChange={(e) => {
-                                  e.stopPropagation();
-                                  handleSwitch(item.key);
-                                }}
-                                onClick={(e) => e.stopPropagation()}
-                                sx={{
-                                  '& .MuiSwitch-switchBase.Mui-checked': {
-                                    color: 'var(--primary-color, #f06292)'
-                                  },
-                                  '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                                    bgcolor: 'var(--primary-color, #f8bbd0)'
+                            /* Ringtone selector */
+                            item.type === 'ringtone-selector' ? (
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Chip
+                                  size="small"
+                                  label={
+                                    currentRingtone?.type === 'custom'
+                                      ? (currentRingtone.customAudio?.title || 'Custom')
+                                      : 'Default'
                                   }
-                                }}
-                              />
-                            ) : (
-                              <IconButton
-                                sx={{ color: 'var(--primary-color, #f06292)', mt: 0.5, pointerEvents: 'none' }}
-                              >
-                                <ArrowForwardIosIcon fontSize="small" />
-                              </IconButton>
-                            )}
+                                  sx={{
+                                    fontSize: '0.72rem',
+                                    fontWeight: 700,
+                                    height: 24,
+                                    borderRadius: '10px',
+                                    bgcolor: isDark ? 'rgba(255, 45, 108, 0.18)' : 'rgba(255, 45, 108, 0.1)',
+                                    color: 'var(--primary-color, #ff2d6c)',
+                                    border: '1px solid rgba(255, 45, 108, 0.25)',
+                                    pointerEvents: 'none',
+                                    maxWidth: 130,
+                                    '& .MuiChip-label': {
+                                      px: 1,
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      whiteSpace: 'nowrap'
+                                    }
+                                  }}
+                                />
+                                <IconButton
+                                  sx={{
+                                    color: '#ffffff',
+                                    background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
+                                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                                    borderRadius: '12px',
+                                    p: 1,
+                                    pointerEvents: 'none'
+                                  }}
+                                >
+                                  <MusicNoteRoundedIcon fontSize="small" />
+                                </IconButton>
+                              </Box>
+                            ) :
+                              /* Switch */
+                              item.type === 'switch' ? (
+                                <Switch
+                                  checked={switchState[item.key]}
+                                  onChange={(e) => {
+                                    e.stopPropagation();
+                                    handleSwitch(item.key);
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                  sx={{
+                                    '& .MuiSwitch-switchBase.Mui-checked': {
+                                      color: 'var(--primary-color, #ff2d6c)'
+                                    },
+                                    '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                                      bgcolor: 'var(--primary-color, #ff8da1)',
+                                      opacity: 0.6
+                                    }
+                                  }}
+                                />
+                              ) : (
+                                <IconButton
+                                  sx={{ color: 'var(--primary-color, #ff2d6c)', p: 1, pointerEvents: 'none' }}
+                                >
+                                  <ArrowForwardIosIcon sx={{ fontSize: 16 }} />
+                                </IconButton>
+                              )}
                     </Box>
                     {i < section.items.length - 1 && (
-                      <Divider sx={{ bgcolor: 'var(--primary-color, #f8bbd0)', opacity: 0.3 }} />
+                      <Divider sx={{ my: 0.5, borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0, 0, 0, 0.06)' }} />
                     )}
                   </Box>
                 );
               })}
-
-
             </Box>
           </Box>
         ))}
@@ -1325,18 +2273,22 @@ const Settings = ({ onBack }) => {
         >
           <Button
             variant="outlined"
-            color="error"
             fullWidth={isMobile}
             sx={{
-              borderColor: '#ec407a',
-              color: '#ec407a',
-              fontWeight: 600,
-              borderRadius: 2,
+              borderColor: 'rgba(239, 68, 68, 0.4)',
+              bgcolor: 'rgba(239, 68, 68, 0.06)',
+              color: '#ef4444',
+              fontWeight: 650,
+              borderRadius: '20px',
+              py: 1.3,
               textTransform: 'none',
+              fontSize: '0.92rem',
+              transition: 'all 0.22s ease',
               '&:hover': {
-                backgroundColor: 'rgba(236, 64, 122, 0.08)',
-                borderColor: '#d81b60',
-                color: '#d81b60'
+                backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                borderColor: '#ef4444',
+                color: '#dc2626',
+                transform: 'translateY(-1px)'
               }
             }}
             onClick={() => setDeleteDialogOpen(true)}
@@ -1346,14 +2298,19 @@ const Settings = ({ onBack }) => {
           <Button
             variant="contained"
             sx={{
-              bgcolor: 'var(--primary-color, #ec407a)',
+              background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
               color: '#fff',
-              fontWeight: 600,
-              borderRadius: 2,
+              fontWeight: 700,
+              borderRadius: '20px',
+              py: 1.3,
+              fontSize: '0.92rem',
+              boxShadow: '0 6px 20px rgba(0, 0, 0, 0.2)',
               textTransform: 'none',
+              transition: 'all 0.22s ease',
               '&:hover': {
-                bgcolor: 'var(--primary-color, #d81b60)',
-                filter: 'brightness(0.9)'
+                filter: 'brightness(1.08)',
+                boxShadow: '0 8px 24px rgba(0, 0, 0, 0.3)',
+                transform: 'translateY(-2px)'
               }
             }}
             fullWidth={isMobile}
@@ -1367,7 +2324,7 @@ const Settings = ({ onBack }) => {
                 if (AudioRoute && typeof AudioRoute.clearSession === 'function') {
                   try {
                     await AudioRoute.clearSession();
-                  } catch (e) {}
+                  } catch (e) { }
                 }
               }
               navigate('/signin');
@@ -1378,94 +2335,427 @@ const Settings = ({ onBack }) => {
         </Box>
       </Box>
 
-      {/* Theme Selection Dialog */}
+      {/* 3D Juicy Theme Selection Dialog - Ultra Mobile-Optimized Bottom Sheet */}
       <Dialog
         open={themeDialogOpen}
-        onClose={() => setThemeDialogOpen(false)}
-        maxWidth="lg"
+        onClose={() => {
+          setThemeDialogOpen(false);
+          setThemeSearchQuery('');
+        }}
+        maxWidth="md"
         fullWidth
         sx={{
+          '& .MuiDialog-container': {
+            alignItems: { xs: 'flex-end', sm: 'center' },
+            justifyContent: 'center',
+            p: { xs: 0, sm: 2 }
+          },
           '& .MuiDialog-paper': {
-            background: '#fff',
-            color: 'var(--text-color)'
+            borderRadius: { xs: '28px 28px 0 0', sm: '32px' },
+            m: { xs: 0, sm: 'auto' },
+            width: { xs: '100%', sm: '90%', md: '720px' },
+            maxWidth: { xs: '100%', sm: '90%', md: '720px' },
+            maxHeight: { xs: '88dvh', sm: '86vh' },
+            background: isDark
+              ? 'linear-gradient(160deg, #1c1427 0%, #150f20 100%)'
+              : 'linear-gradient(160deg, #ffffff 0%, #fff7fa 100%)',
+            color: 'var(--text-color)',
+            border: isDark ? '1.5px solid rgba(255,255,255,0.1)' : '1.5px solid rgba(255,105,150,0.22)',
+            boxShadow: '0 -10px 40px rgba(0, 0, 0, 0.25), 0 25px 70px -10px rgba(255, 45, 108, 0.28)',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden'
           }
         }}
       >
-        <DialogTitle sx={{
-          color: 'var(--primary-color)',
-          fontWeight: 700,
-          borderBottom: '1px solid var(--primary-color)',
-          opacity: 0.8
-        }}>
-          Choose Theme
-        </DialogTitle>
-
-        <Tabs
-          value={themeTab}
-          onChange={(e, newValue) => setThemeTab(newValue)}
-          variant="scrollable"
-          scrollButtons="auto"
-          allowScrollButtonsMobile
+        {/* Mobile Pull Handle Indicator */}
+        <Box
           sx={{
-            px: 2,
-            borderBottom: 1,
-            borderColor: 'divider',
-            '& .MuiTab-root': {
-              color: 'var(--text-color)',
-              opacity: 0.7,
-              minWidth: 'auto',
-              fontSize: { xs: '0.75rem', sm: '0.875rem' },
-              px: { xs: 1.5, sm: 2 },
-              '&.Mui-selected': {
-                color: 'var(--primary-color)',
-                opacity: 1
-              }
-            },
-            '& .MuiTabs-scrollButtons': {
-              color: 'var(--primary-color)',
-              '&.Mui-disabled': {
-                opacity: 0.3
-              }
-            }
+            display: { xs: 'flex', sm: 'none' },
+            justifyContent: 'center',
+            alignItems: 'center',
+            pt: 1.2,
+            pb: 0.3,
+            background: isDark ? 'rgba(28, 20, 39, 0.95)' : 'rgba(255, 255, 255, 0.95)',
           }}
         >
-          {themeCategories.map(category => (
-            <Tab key={category.id} label={category.name} value={category.id} />
-          ))}
-        </Tabs>
-
-        <DialogContent sx={{ p: 3 }}>
           <Box
             sx={{
-              display: 'grid',
-              gridTemplateColumns: {
-                xs: '1fr',
-                sm: 'repeat(2, 1fr)',
-                md: 'repeat(3, 1fr)',
-                lg: 'repeat(4, 1fr)'
-              },
-              gap: 2,
-              mt: 2
+              width: 38,
+              height: 4,
+              borderRadius: '2px',
+              bgcolor: isDark ? 'rgba(255, 255, 255, 0.25)' : 'rgba(0, 0, 0, 0.18)'
             }}
-          >
-            {themeCategories
-              .find(cat => cat.id === themeTab)
-              ?.themes.map((theme) => (
-                <ThemePreview key={theme.id} theme={theme} category={themeTab} />
-              ))}
+          />
+        </Box>
+
+        {/* Sticky 3D Glass Header */}
+        <Box
+          sx={{
+            p: { xs: 1.2, sm: 2 },
+            pb: { xs: 0.8, sm: 1.2 },
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            borderBottom: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(255,105,150,0.15)',
+            background: isDark ? 'rgba(28, 20, 39, 0.92)' : 'rgba(255, 255, 255, 0.92)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            zIndex: 10
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1, sm: 1.4 }, minWidth: 0, flex: 1, mr: 1 }}>
+            <Box
+              sx={{
+                width: { xs: 36, sm: 42 },
+                height: { xs: 36, sm: 42 },
+                borderRadius: '12px',
+                background: 'linear-gradient(135deg, #ff2d6c 0%, #ff758c 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 4px 14px -2px rgba(255, 45, 108, 0.4), inset 0 1px 1px rgba(255,255,255,0.5)',
+                color: '#fff',
+                flexShrink: 0
+              }}
+            >
+              <PaletteIcon sx={{ fontSize: { xs: 20, sm: 24 } }} />
+            </Box>
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, flexWrap: 'nowrap' }}>
+                <Typography
+                  noWrap
+                  variant="h6"
+                  sx={{
+                    fontWeight: 800,
+                    fontSize: { xs: '1.02rem', sm: '1.25rem' },
+                    letterSpacing: '-0.02em',
+                    color: isDark ? '#fff' : '#2b1736',
+                    lineHeight: 1.2
+                  }}
+                >
+                  Choose Theme
+                </Typography>
+                <Box
+                  sx={{
+                    px: 0.8,
+                    py: 0.15,
+                    borderRadius: '10px',
+                    background: 'linear-gradient(135deg, rgba(255, 45, 108, 0.12), rgba(255, 117, 140, 0.15))',
+                    border: '1px solid rgba(255, 45, 108, 0.25)',
+                    color: '#ff2d6c',
+                    fontWeight: 800,
+                    fontSize: { xs: '0.62rem', sm: '0.66rem' },
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0
+                  }}
+                >
+                  100+ Themes
+                </Box>
+              </Box>
+              <Typography
+                noWrap
+                variant="caption"
+                sx={{
+                  color: isDark ? '#a090b0' : '#8b738e',
+                  fontWeight: 600,
+                  fontSize: { xs: '0.68rem', sm: '0.75rem' },
+                  display: 'block',
+                  lineHeight: 1.2,
+                  mt: 0.2
+                }}
+              >
+                Tap any theme to preview instantly
+              </Typography>
+            </Box>
           </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button
-            onClick={() => setThemeDialogOpen(false)}
+
+          <IconButton
+            onClick={() => {
+              setThemeDialogOpen(false);
+              setThemeSearchQuery('');
+            }}
             sx={{
-              color: 'var(--primary-color)',
-              borderRadius: 2,
-              textTransform: 'none',
-              fontWeight: 600
+              width: { xs: 34, sm: 38 },
+              height: { xs: 34, sm: 38 },
+              borderRadius: '50%',
+              background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255, 105, 150, 0.08)',
+              color: isDark ? '#fff' : '#7a677d',
+              border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(255,105,150,0.15)',
+              transition: 'all 0.2s ease',
+              flexShrink: 0,
+              '&:hover': {
+                background: 'rgba(255, 45, 108, 0.15)',
+                color: '#ff2d6c',
+                transform: 'scale(1.06)'
+              },
+              '&:active': {
+                transform: 'scale(0.92)'
+              }
             }}
           >
-            Close
+            <CloseRoundedIcon sx={{ fontSize: { xs: 18, sm: 20 } }} />
+          </IconButton>
+        </Box>
+
+        {/* Real-time Theme Search Bar */}
+        <Box sx={{ px: { xs: 1.2, sm: 2 }, pt: 1, pb: 0.6 }}>
+          <TextField
+            fullWidth
+            size="small"
+            placeholder={isMobile ? "Search 100+ themes..." : "Search 100+ themes (e.g. pink, sunset, dark)..."}
+            value={themeSearchQuery}
+            onChange={(e) => setThemeSearchQuery(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchRoundedIcon sx={{ color: '#ff2d6c', fontSize: 18 }} />
+                </InputAdornment>
+              ),
+              endAdornment: themeSearchQuery ? (
+                <InputAdornment position="end">
+                  <IconButton size="small" onClick={() => setThemeSearchQuery('')}>
+                    <CloseRoundedIcon sx={{ fontSize: 15 }} />
+                  </IconButton>
+                </InputAdornment>
+              ) : null,
+              sx: {
+                borderRadius: '16px',
+                height: { xs: 38, sm: 42 },
+                bgcolor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255, 105, 150, 0.05)',
+                border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(255,105,150,0.15)',
+                fontSize: '0.82rem',
+                color: isDark ? '#fff' : '#2b1736',
+                '& fieldset': { border: 'none' },
+                '&:hover': {
+                  bgcolor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255, 105, 150, 0.08)'
+                }
+              }
+            }}
+          />
+        </Box>
+
+        {/* 3D Capsule Category Tabs — sticky, no vertical scroll */}
+        <Box
+          sx={{
+            px: { xs: 1.2, sm: 2 },
+            pb: { xs: 1.0, sm: 1.2 },
+            pt: { xs: 0.9, sm: 0.8 },
+            display: 'flex',
+            flexShrink: 0,           // ← never squish vertically
+            alignItems: 'center',
+            gap: 0.8,
+            overflowX: 'auto',       // ← horizontal scroll only
+            overflowY: 'visible',    // ← buttons not clipped top/bottom
+            scrollbarWidth: 'none',
+            WebkitOverflowScrolling: 'touch',
+            '&::-webkit-scrollbar': { display: 'none' },
+            // Sticky so it doesn't scroll with the theme grid
+            position: 'sticky',
+            top: 0,
+            zIndex: 5,
+            background: isDark ? 'rgba(28, 20, 39, 0.97)' : 'rgba(255, 255, 255, 0.97)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            borderBottom: isDark
+              ? '1px solid rgba(255,255,255,0.06)'
+              : '1px solid rgba(255, 105, 150, 0.1)',
+          }}
+        >
+          {themeCategories.map(category => {
+            const isCatActive = themeTab === category.id;
+            return (
+              <Button
+                key={category.id}
+                onClick={() => setThemeTab(category.id)}
+                sx={{
+                  flexShrink: 0,
+                  borderRadius: '16px',
+                  px: { xs: 1.5, sm: 1.8 },
+                  py: { xs: 0.75, sm: 0.8 },
+                  minHeight: { xs: 34, sm: 36 },
+                  fontSize: { xs: '0.74rem', sm: '0.82rem' },
+                  fontWeight: isCatActive ? 750 : 600,
+                  textTransform: 'none',
+                  whiteSpace: 'nowrap',
+                  color: isCatActive ? '#ffffff' : (isDark ? '#d0c4de' : '#6b586e'),
+                  background: isCatActive
+                    ? 'linear-gradient(135deg, #ff2d6c 0%, #ff6596 100%)'
+                    : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255, 105, 150, 0.08)'),
+                  border: isCatActive
+                    ? '1px solid rgba(255, 255, 255, 0.3)'
+                    : (isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(255,105,150,0.15)'),
+                  boxShadow: isCatActive
+                    ? '0 3px 10px rgba(255, 45, 108, 0.35), inset 0 1px 1px rgba(255,255,255,0.4)'
+                    : 'none',
+                  transition: 'all 0.2s ease',
+                  WebkitTapHighlightColor: 'transparent',
+                  '&:hover': {
+                    background: isCatActive
+                      ? 'linear-gradient(135deg, #ff1a60 0%, #ff5c90 100%)'
+                      : (isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255, 105, 150, 0.15)'),
+                    transform: 'scale(1.02)'
+                  },
+                  '&:active': {
+                    transform: 'scale(0.96)'
+                  }
+                }}
+              >
+                {category.name}
+              </Button>
+            );
+          })}
+        </Box>
+
+        {/* Responsive Theme Cards Grid */}
+        <DialogContent
+          sx={{
+            p: { xs: 1.2, sm: 2 },
+            pt: 0.5,
+            flex: 1,
+            overflowY: 'auto',
+            scrollbarWidth: 'none',
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehavior: 'contain',
+            '&::-webkit-scrollbar': { display: 'none' }
+          }}
+        >
+          {(() => {
+            let list = [];
+            if (themeTab === 'all') {
+              list = allAvailableThemes;
+            } else {
+              const cat = themeCategories.find(c => c.id === themeTab);
+              list = cat?.themes || themeOptions;
+            }
+            if (themeSearchQuery.trim()) {
+              const q = themeSearchQuery.toLowerCase().trim();
+              const filtered = list.filter(t =>
+                t.name.toLowerCase().includes(q) ||
+                t.description.toLowerCase().includes(q) ||
+                t.id.toLowerCase().includes(q)
+              );
+              if (filtered.length === 0 && themeTab !== 'all') {
+                list = allAvailableThemes.filter(t =>
+                  t.name.toLowerCase().includes(q) ||
+                  t.description.toLowerCase().includes(q) ||
+                  t.id.toLowerCase().includes(q)
+                );
+              } else {
+                list = filtered;
+              }
+            }
+
+            if (list.length === 0) {
+              return (
+                <Box sx={{ textAlign: 'center', py: 5, color: isDark ? '#a090b0' : '#8b738e' }}>
+                  <Typography variant="h6" sx={{ fontWeight: 750, fontSize: '1.05rem', mb: 0.5 }}>
+                    No themes found
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontSize: '0.84rem' }}>
+                    Try searching for something else like "pink", "sunset", or "dark"
+                  </Typography>
+                </Box>
+              );
+            }
+
+            return (
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: {
+                    xs: '1fr',
+                    md: 'repeat(2, 1fr)'
+                  },
+                  gap: { xs: 1, sm: 1.4 }
+                }}
+              >
+                {list.map(t => (
+                  <ThemePreview key={t.id} theme={t} category={themeTab} />
+                ))}
+              </Box>
+            );
+          })()}
+        </DialogContent>
+
+        {/* Sticky 3D Glass Footer */}
+        <DialogActions
+          sx={{
+            p: { xs: 1.2, sm: 2 },
+            py: { xs: 1, sm: 1.2 },
+            pb: { xs: 'calc(10px + env(safe-area-inset-bottom, 8px))', sm: 1.3 },
+            borderTop: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(255,105,150,0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: isDark ? 'rgba(28, 20, 39, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            zIndex: 10
+          }}
+        >
+          {(() => {
+            const curTheme = allAvailableThemes.find(t => t.id === selectedTheme) || themeOptions[0];
+            const isGrad = curTheme?.colors?.primary?.includes('gradient');
+            const dotCol = isGrad ? '#ff2d6c' : (curTheme?.colors?.primary || '#ff2d6c');
+            return (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8, minWidth: 0, flex: 1, mr: 1 }}>
+                <Box
+                  sx={{
+                    width: 12,
+                    height: 12,
+                    borderRadius: '50%',
+                    bgcolor: dotCol,
+                    boxShadow: `0 0 8px ${dotCol}`,
+                    border: '2px solid #ffffff',
+                    flexShrink: 0
+                  }}
+                />
+                <Typography
+                  noWrap
+                  variant="caption"
+                  sx={{
+                    fontWeight: 750,
+                    color: isDark ? '#eee' : '#3a253f',
+                    fontSize: { xs: '0.78rem', sm: '0.82rem' }
+                  }}
+                >
+                  Current: {curTheme?.name || 'Light'}
+                </Typography>
+              </Box>
+            );
+          })()}
+
+          <Button
+            variant="contained"
+            onClick={() => {
+              setThemeDialogOpen(false);
+              setThemeSearchQuery('');
+            }}
+            sx={{
+              borderRadius: '20px',
+              px: { xs: 2.8, sm: 3.5 },
+              py: { xs: 0.7, sm: 0.85 },
+              background: 'linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%)',
+              color: '#ffffff',
+              fontWeight: 750,
+              textTransform: 'none',
+              fontSize: { xs: '0.84rem', sm: '0.88rem' },
+              boxShadow: '0 4px 14px -2px rgba(255, 45, 108, 0.42), inset 0 1px 1px rgba(255,255,255,0.4)',
+              transition: 'all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
+              flexShrink: 0,
+              WebkitTapHighlightColor: 'transparent',
+              '&:hover': {
+                background: 'linear-gradient(135deg, #ff1a60 0%, #ff4b80 100%)',
+                boxShadow: '0 6px 18px -2px rgba(255, 45, 108, 0.55)',
+                transform: 'scale(1.03)'
+              },
+              '&:active': {
+                transform: 'scale(0.96)'
+              }
+            }}
+          >
+            Done
           </Button>
         </DialogActions>
       </Dialog>
@@ -1514,23 +2804,57 @@ const Settings = ({ onBack }) => {
         maxWidth="lg"
         fullWidth
         sx={{
+          '& .MuiDialog-container': {
+            alignItems: { xs: 'flex-end', sm: 'center' },
+            justifyContent: 'center',
+            p: { xs: 0, sm: 2 }
+          },
           '& .MuiDialog-paper': {
-            background: '#fff',
+            borderRadius: { xs: '28px 28px 0 0', sm: '28px' },
+            m: { xs: 0, sm: 'auto' },
+            width: { xs: '100%', sm: '90%', md: '900px' },
+            maxWidth: { xs: '100%', sm: '90%', md: '900px' },
+            background: isDark ? '#1a1424' : '#ffffff',
             color: 'var(--text-color)',
-            maxHeight: '90vh'
+            border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(255,105,150,0.2)',
+            boxShadow: '0 24px 60px rgba(255, 45, 108, 0.18)',
+            maxHeight: { xs: '88dvh', sm: '90vh' }
           }
         }}
       >
+        {/* Mobile Pull Handle */}
+        <Box
+          sx={{
+            display: { xs: 'flex', sm: 'none' },
+            justifyContent: 'center',
+            alignItems: 'center',
+            pt: 1.2,
+            pb: 0.3
+          }}
+        >
+          <Box
+            sx={{
+              width: 38,
+              height: 4,
+              borderRadius: '2px',
+              bgcolor: isDark ? 'rgba(255, 255, 255, 0.25)' : 'rgba(0, 0, 0, 0.18)'
+            }}
+          />
+        </Box>
+
         <DialogTitle sx={{
           color: 'var(--primary-color)',
           fontWeight: 700,
           borderBottom: '1px solid var(--primary-color)',
-          opacity: 0.8,
+          opacity: 0.9,
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'center'
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 1,
+          p: { xs: 1.5, sm: 2 }
         }}>
-          Choose Background
+          <span>Choose Background</span>
           <Button
             startIcon={<AddPhotoAlternateIcon />}
             variant="contained"
@@ -1538,6 +2862,10 @@ const Settings = ({ onBack }) => {
             onClick={() => fileInputRef.current?.click()}
             sx={{
               bgcolor: '#1c67ca',
+              borderRadius: '12px',
+              textTransform: 'none',
+              fontWeight: 650,
+              fontSize: '0.8rem',
               '&:hover': {
                 bgcolor: 'var(--primary-color)',
                 filter: 'brightness(0.9)'
@@ -1678,7 +3006,7 @@ const Settings = ({ onBack }) => {
         }}>
           Crop & Save Wallpaper
         </DialogTitle>
-        
+
         <DialogContent sx={{ p: 0, bgcolor: '#121212', display: 'flex', flexDirection: 'column' }}>
           {selectedImage && (
             <Box sx={{ position: 'relative', width: '100%', height: 340 }}>
@@ -1796,8 +3124,11 @@ const Settings = ({ onBack }) => {
         fullWidth
         sx={{
           '& .MuiDialog-paper': {
-            background: '#fff',
-            color: 'var(--text-color)'
+            borderRadius: '28px',
+            background: isDark ? '#1a1424' : '#ffffff',
+            color: 'var(--text-color)',
+            border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(255,105,150,0.2)',
+            boxShadow: '0 24px 60px rgba(255, 45, 108, 0.18)'
           }
         }}
       >
@@ -1874,13 +3205,26 @@ const Settings = ({ onBack }) => {
       </Dialog>
 
       {/* Delete Account Dialog */}
-      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
-        <DialogTitle sx={{ color: '#ec407a', fontWeight: 700 }}>
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+        PaperProps={{
+          sx: {
+            borderRadius: '28px',
+            bgcolor: isDark ? '#1a1424' : '#ffffff',
+            color: 'var(--text-color)',
+            border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(255,105,150,0.2)',
+            boxShadow: '0 24px 60px rgba(0,0,0,0.3)',
+            p: 1
+          }
+        }}
+      >
+        <DialogTitle sx={{ color: '#ef4444', fontWeight: 750, fontSize: '1.25rem' }}>
           Confirm Account Deletion
         </DialogTitle>
         <DialogContent>
-          <Typography sx={{ mb: 2 }}>
-            Type <b>Delete My Account</b> to confirm. This action cannot be undone.
+          <Typography sx={{ mb: 2, color: isDark ? '#94a3b8' : '#64748b' }}>
+            Type <b style={{ color: isDark ? '#ffffff' : '#000000' }}>Delete My Account</b> to confirm. This action cannot be undone.
           </Typography>
           <TextField
             autoFocus
@@ -1892,20 +3236,31 @@ const Settings = ({ onBack }) => {
             sx={{
               mb: 1,
               '& .MuiOutlinedInput-root': {
-                borderRadius: 2,
-                bgcolor: '#fff6f6',
-                fontFamily: 'Poppins'
+                borderRadius: '16px',
+                bgcolor: isDark ? 'rgba(255,255,255,0.05)' : '#fff6f6',
+                fontFamily: 'Poppins',
+                '& fieldset': {
+                  borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(239, 68, 68, 0.2)'
+                },
+                '&:hover fieldset': {
+                  borderColor: '#ef4444'
+                },
+                '&.Mui-focused fieldset': {
+                  borderColor: '#ef4444'
+                }
               }
             }}
           />
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ p: 2, gap: 1 }}>
           <Button
             onClick={() => setDeleteDialogOpen(false)}
             sx={{
-              color: '#888',
-              borderRadius: 2,
-              textTransform: 'none'
+              color: isDark ? '#94a3b8' : '#64748b',
+              borderRadius: '14px',
+              textTransform: 'none',
+              fontWeight: 650,
+              px: 2
             }}
             disabled={deleting}
           >
@@ -1933,7 +3288,7 @@ const Settings = ({ onBack }) => {
                     if (AudioRoute && typeof AudioRoute.clearSession === 'function') {
                       try {
                         await AudioRoute.clearSession();
-                      } catch (e) {}
+                      } catch (e) { }
                     }
                   }
                   navigate('/signin');
@@ -1947,14 +3302,18 @@ const Settings = ({ onBack }) => {
               setDeleteDialogOpen(false);
               setDeleteInput('');
             }}
-            color="error"
             variant="contained"
             sx={{
-              bgcolor: '#ec407a',
-              borderRadius: 2,
+              background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+              borderRadius: '14px',
               textTransform: 'none',
-              fontWeight: 600,
-              '&:hover': { bgcolor: '#d81b60' }
+              fontWeight: 700,
+              px: 3,
+              boxShadow: '0 4px 14px rgba(239, 68, 68, 0.35)',
+              '&:hover': {
+                background: 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)',
+                boxShadow: '0 6px 18px rgba(239, 68, 68, 0.45)'
+              }
             }}
             disabled={deleteInput !== 'Delete My Account' || deleting}
           >
@@ -1980,13 +3339,21 @@ const Settings = ({ onBack }) => {
         </MuiAlert>
       </Snackbar>
 
-      {/* App Tutorial & User Guide Modal */}
-      <UserGuideModal
+      {/* App Tutorial & User Guide Modal (Feature Catalog) */}
+      <FeatureCatalogModal
         open={showTutorialGuide}
         onClose={() => setShowTutorialGuide(false)}
-        initialStep={0}
-        isDarkTheme={false}
-        hideSkipButton={true}
+        isDarkTheme={isDark}
+      />
+
+      {/* Incoming Call Ringtone Modal */}
+      <RingtoneModal
+        open={ringtoneDialogOpen}
+        onClose={() => setRingtoneDialogOpen(false)}
+        isDark={isDark}
+        onShowSnackbar={(message, severity = 'success') =>
+          setSnackbar({ open: true, message, severity })
+        }
       />
     </Box>
   );

@@ -110,6 +110,14 @@ async function startServer() {
     });
     console.log('✅ Connected to MongoDB Atlas');
 
+    // Ensure phone index is partial unique and unset empty phone strings
+    try {
+      const usersCol = mongoose.connection.collection('users');
+      await usersCol.updateMany({ phone: '' }, { $unset: { phone: '' } });
+    } catch (e) {
+      console.warn('Phone index sync note:', e.message);
+    }
+
     // Mount routes AFTER DB is connected
     const authRouter = require('./routes/auth');
     app.use('/api', authRouter);

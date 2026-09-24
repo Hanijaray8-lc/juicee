@@ -22,12 +22,12 @@ const NOTIFICATION_CONFIG = {
       lights: true,
     },
     calls: {
-      id: 'call_notifications',
+      id: 'call_notifications_v6',
       name: 'Call Notifications',
       icon: 'ic_notification',
       color: '#FF6B35',
       importance: 5,
-      sound: 'receiver.mp3',
+      sound: 'reciver',
       vibration: true,
       lights: true,
     },
@@ -249,6 +249,19 @@ export const createNotificationChannels = async () => {
     if (!window.Capacitor.isPluginAvailable('PushNotifications')) {
       console.log('ℹ️ PushNotifications plugin not available');
       return;
+    }
+
+    // Clean up older call channels so Android picks up the new custom receiver ringtone
+    try {
+      if (typeof PushNotifications.deleteChannel === 'function') {
+        await PushNotifications.deleteChannel({ id: 'call_notifications' });
+        await PushNotifications.deleteChannel({ id: 'call_notifications_v2' });
+        await PushNotifications.deleteChannel({ id: 'call_notifications_v3' });
+        await PushNotifications.deleteChannel({ id: 'call_notifications_v4' });
+        await PushNotifications.deleteChannel({ id: 'call_notifications_v5' });
+      }
+    } catch (cleanErr) {
+      console.debug('Info: Legacy channel cleanup:', cleanErr.message);
     }
 
     // Create each notification channel with icon and color configuration

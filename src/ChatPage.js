@@ -52,13 +52,12 @@ import { usePushNotifications } from './notify';
 import { useMessageAnimations, HeartKeyframes, FloatingHearts, CelebrationCanvas } from './MessgeFormat';
 import ShareFriendsDialog from './ShareFriends';
 import ChatList from './ChatList';
-import { UserGuideModal, USER_GUIDE_STORAGE_KEY } from './UserGuideModal';
+import { UserGuideModal, FeatureCatalogModal, USER_GUIDE_STORAGE_KEY } from './UserGuideModal';
 import { Keyboard } from '@capacitor/keyboard';
 import { App as CapacitorApp } from '@capacitor/app';
 import './ChatPage.css';
 import Call from './call';
 import { useInitializeCalls } from './initializeCalls';
-import ZegoCallRoom from './components/ZegoCallRoom';
 import useNetworkStatus from './hooks/useNetworkStatus';
 import { useTheme } from '@mui/material/styles';
 import API_BASE_URL from './config/apiConfig';
@@ -75,6 +74,7 @@ import InsertEmoticonIcon from '@mui/icons-material/InsertEmoticon';
 import UserProfile from './UserProfile';
 import callerAudioFile from './assets/caller.mp3';
 import receiverAudioFile from './assets/reciver.mp3';
+import { resolvePlayableRingtoneSrc } from './utils/ringtoneManager';
 import { createGlobalStyle } from 'styled-components';
 import { SketchPicker } from 'react-color';
 import EmojiEmotionsIcon from '@mui/icons-material/EmojiEmotions';
@@ -90,15 +90,26 @@ import DownloadIcon from '@mui/icons-material/Download';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import { VoiceMessageRecorder, VoiceMessagePlayer } from './VoiceMessage';
 import { getLoveBotResponse } from './LoveBot';
-import loveBotImg from './bot/love.png';
+import jerryBotGif from './bot/juicy_ai_hand_wave_3sec.gif';
 import { GameBubble, GameSelectorDialog } from './Game';
 import SportsEsportsIcon from '@mui/icons-material/SportsEsports';
+import {
+  saveMessagesLocally,
+  saveSingleMessageLocally,
+  getAllMessagesLocally,
+  saveFriendsLocally,
+  getFriendsLocally,
+  saveUserProfileLocally,
+  getUserProfileLocally,
+  saveContactGesturesLocally
+} from './db/offlineDb';
+import { getProfileImageSrc } from './utils/imageUtils';
 
 const loveBotUser = {
   _id: 'lovebot',
   username: 'jerry Bot ✨',
   name: 'jerry Bot',
-  profilePic: loveBotImg,
+  profilePic: jerryBotGif,
   isBot: true,
   online: true
 };
@@ -147,6 +158,12 @@ const saveMessagesToStorage = (messagesObj) => {
   } catch (e) {
     console.warn('Failed to save messages to localStorage:', e);
   }
+  try {
+    const currentUserId = localStorage.getItem('userId');
+    saveMessagesLocally(currentUserId, messagesObj);
+  } catch (e) {
+    console.warn('Failed to save messages to local SQLite:', e);
+  }
 };
 
 const SlideToAnswer = ({ onAnswer, onReject }) => {
@@ -154,69 +171,70 @@ const SlideToAnswer = ({ onAnswer, onReject }) => {
     <Box
       sx={{
         width: '100%',
-        maxWidth: 280,
+        maxWidth: 320,
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        px: 2,
-        userSelect: 'none'
+        px: { xs: 2, sm: 3 },
+        userSelect: 'none',
+        zIndex: 10
       }}
     >
       {/* Accept Call Button (Left Side) */}
-      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-        <IconButton
-          onClick={onAnswer}
-          sx={{
-            width: 64,
-            height: 64,
-            borderRadius: '50%',
-            bgcolor: '#34c759',
-            backgroundImage: 'linear-gradient(135deg, #34c759 0%, #28a745 100%)',
-            color: '#fff',
-            boxShadow: '0 8px 24px rgba(52, 199, 89, 0.4)',
-            transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
-            position: 'relative',
-            '&:hover': {
-              bgcolor: '#28a745',
-              transform: 'scale(1.12)',
-              boxShadow: '0 12px 30px rgba(52, 199, 89, 0.6)'
-            },
-            '&:active': {
-              transform: 'scale(0.95)'
-            },
-            '@keyframes accept-pulse': {
-              '0%': { boxShadow: '0 0 0 0 rgba(52, 199, 89, 0.6)' },
-              '70%': { boxShadow: '0 0 0 15px rgba(52, 199, 89, 0)' },
-              '100%': { boxShadow: '0 0 0 0 rgba(52, 199, 89, 0)' }
-            },
-            animation: 'accept-pulse 2s infinite',
-            zIndex: 2
-          }}
-        >
-          <PhoneIcon
+      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.2 }}>
+        <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Box
             sx={{
-              fontSize: 28,
-              '@keyframes wiggle': {
-                '0%, 100%': { transform: 'rotate(0deg)' },
-                '15%': { transform: 'rotate(-15deg)' },
-                '30%': { transform: 'rotate(12deg)' },
-                '45%': { transform: 'rotate(-10deg)' },
-                '60%': { transform: 'rotate(8deg)' },
-                '75%': { transform: 'rotate(0deg)' }
-              },
-              animation: 'wiggle 2.5s infinite ease-in-out'
+              position: 'absolute',
+              inset: -8,
+              borderRadius: '50%',
+              bgcolor: 'rgba(52, 211, 153, 0.25)',
+              filter: 'blur(10px)',
+              pointerEvents: 'none',
+              animation: 'juicyRipple1 2.2s infinite ease-in-out'
             }}
           />
-        </IconButton>
+          <IconButton
+            onClick={onAnswer}
+            sx={{
+              width: { xs: 72, sm: 78 },
+              height: { xs: 72, sm: 78 },
+              borderRadius: '50%',
+              bgcolor: '#10b981',
+              backgroundImage: 'linear-gradient(145deg, #34d399 0%, #10b981 50%, #059669 100%)',
+              color: '#fff',
+              border: '2.5px solid rgba(255, 255, 255, 0.75)',
+              boxShadow: '0 14px 34px rgba(16, 185, 129, 0.6), 0 0 35px rgba(52, 211, 153, 0.45), inset 0 2.5px 4px rgba(255, 255, 255, 0.75), inset 0 -3px 6px rgba(0, 0, 0, 0.35)',
+              transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+              position: 'relative',
+              zIndex: 2,
+              animation: 'acceptGlowPulse 2.2s infinite ease-in-out',
+              '&:hover': {
+                transform: 'scale(1.12) translateY(-2px)',
+                boxShadow: '0 18px 44px rgba(16, 185, 129, 0.8), 0 0 50px rgba(52, 211, 153, 0.65)'
+              },
+              '&:active': {
+                transform: 'scale(0.94)'
+              }
+            }}
+          >
+            <PhoneIcon
+              sx={{
+                fontSize: { xs: 32, sm: 36 },
+                animation: 'phoneWiggle 2.5s infinite ease-in-out'
+              }}
+            />
+          </IconButton>
+        </Box>
         <Typography
           variant="caption"
           sx={{
             color: '#fff',
             opacity: 0.95,
-            fontWeight: 600,
-            fontSize: '0.85rem',
+            fontWeight: 700,
+            fontSize: '0.92rem',
             letterSpacing: 0.5,
-            textShadow: '0 2px 4px rgba(0,0,0,0.3)'
+            textShadow: '0 2px 6px rgba(0,0,0,0.6)'
           }}
         >
           Accept
@@ -224,39 +242,55 @@ const SlideToAnswer = ({ onAnswer, onReject }) => {
       </Box>
 
       {/* Decline Call Button (Right Side) */}
-      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-        <IconButton
-          onClick={onReject || (() => { })}
-          sx={{
-            width: 64,
-            height: 64,
-            borderRadius: '50%',
-            bgcolor: '#ff3b30',
-            backgroundImage: 'linear-gradient(135deg, #ff3b30 0%, #d32f2f 100%)',
-            color: '#fff',
-            boxShadow: '0 8px 24px rgba(255, 59, 48, 0.4)',
-            transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
-            '&:hover': {
-              bgcolor: '#d32f2f',
-              transform: 'scale(1.12)',
-              boxShadow: '0 12px 30px rgba(255, 59, 48, 0.6)'
-            },
-            '&:active': {
-              transform: 'scale(0.95)'
-            }
-          }}
-        >
-          <PhoneIcon sx={{ fontSize: 28, transform: 'rotate(135deg)' }} />
-        </IconButton>
+      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.2 }}>
+        <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Box
+            sx={{
+              position: 'absolute',
+              inset: -8,
+              borderRadius: '50%',
+              bgcolor: 'rgba(248, 113, 113, 0.25)',
+              filter: 'blur(10px)',
+              pointerEvents: 'none',
+              animation: 'juicyRipple1 2.2s infinite ease-in-out'
+            }}
+          />
+          <IconButton
+            onClick={onReject || (() => { })}
+            sx={{
+              width: { xs: 72, sm: 78 },
+              height: { xs: 72, sm: 78 },
+              borderRadius: '50%',
+              bgcolor: '#ef4444',
+              backgroundImage: 'linear-gradient(145deg, #f87171 0%, #ef4444 50%, #b91c1c 100%)',
+              color: '#fff',
+              border: '2.5px solid rgba(255, 255, 255, 0.75)',
+              boxShadow: '0 14px 34px rgba(239, 68, 68, 0.6), 0 0 35px rgba(248, 113, 113, 0.45), inset 0 2.5px 4px rgba(255, 255, 255, 0.75), inset 0 -3px 6px rgba(0, 0, 0, 0.35)',
+              transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+              position: 'relative',
+              zIndex: 2,
+              animation: 'declineGlowPulse 2.2s infinite ease-in-out',
+              '&:hover': {
+                transform: 'scale(1.12) translateY(-2px)',
+                boxShadow: '0 18px 44px rgba(239, 68, 68, 0.8), 0 0 50px rgba(248, 113, 113, 0.65)'
+              },
+              '&:active': {
+                transform: 'scale(0.94)'
+              }
+            }}
+          >
+            <PhoneIcon sx={{ fontSize: { xs: 32, sm: 36 }, transform: 'rotate(135deg)' }} />
+          </IconButton>
+        </Box>
         <Typography
           variant="caption"
           sx={{
             color: '#fff',
             opacity: 0.95,
-            fontWeight: 600,
-            fontSize: '0.85rem',
+            fontWeight: 700,
+            fontSize: '0.92rem',
             letterSpacing: 0.5,
-            textShadow: '0 2px 4px rgba(0,0,0,0.3)'
+            textShadow: '0 2px 6px rgba(0,0,0,0.6)'
           }}
         >
           Decline
@@ -284,11 +318,42 @@ const ChatPage = () => {
   const videoCallRef = useRef(null);
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
   const [selectedUser, setSelectedUser] = useState(null);
+  // LoveBot greeting wave animation state
+  const [isBotWaving, setIsBotWaving] = useState(false);
+  const botWaveTimeoutRef = useRef(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
   const [bottomNav, setBottomNav] = useState(0);
   const [isNotificationView, setIsNotificationView] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [receiverRingtoneSrc, setReceiverRingtoneSrc] = useState(receiverAudioFile);
+
+  // Synchronize incoming call ringtone (default reciver.mp3 vs custom cropped audio)
+  useEffect(() => {
+    let isMounted = true;
+    const updateRingtone = async () => {
+      try {
+        const resolved = await resolvePlayableRingtoneSrc();
+        if (isMounted && resolved) {
+          setReceiverRingtoneSrc(resolved);
+        }
+      } catch (e) {
+        console.warn('updateRingtone error:', e);
+      }
+    };
+
+    updateRingtone();
+
+    const handleRingtoneChanged = () => {
+      updateRingtone();
+    };
+
+    window.addEventListener('appRingtoneChanged', handleRingtoneChanged);
+    return () => {
+      isMounted = false;
+      window.removeEventListener('appRingtoneChanged', handleRingtoneChanged);
+    };
+  }, []);
   const [showAttachments, setShowAttachments] = useState(false);
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState(loadMessagesFromStorage);
@@ -297,6 +362,14 @@ const ChatPage = () => {
   const [recordingPreviewUrl, setRecordingPreviewUrl] = useState('');
   const [sidebarWidth, setSidebarWidth] = useState(350);
   const [isResizing, setIsResizing] = useState(false);
+  // ✅ WhatsApp-style: controls whether the full-screen call Dialog is shown (minimize without hanging up)
+  const [showCallScreen, setShowCallScreen] = useState(true);
+  const showCallScreenRef = useRef(showCallScreen);
+  useEffect(() => {
+    showCallScreenRef.current = showCallScreen;
+  }, [showCallScreen]);
+  // ✅ Native Android PiP: when true, hide call controls so only video is visible in the floating window
+  const [isPipMode, setIsPipMode] = useState(false);
 
   const startResizing = React.useCallback((mouseDownEvent) => {
     mouseDownEvent.preventDefault();
@@ -346,10 +419,28 @@ const ChatPage = () => {
   }, [location.search, location.state]);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [anchorEl, setAnchorEl] = useState(null);
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    try {
+      const cachedUser = localStorage.getItem('juicy_cached_user');
+      return cachedUser ? JSON.parse(cachedUser) : null;
+    } catch (e) {
+      return null;
+    }
+  });
   const [friendRequestsList, setFriendRequestsList] = useState([]);
   const [friends, setFriends] = useState([]);
-  const [dbFriends, setDbFriends] = useState([]);
+  const [dbFriends, setDbFriends] = useState(() => {
+    try {
+      const storedUserId = localStorage.getItem('userId');
+      if (storedUserId) {
+        const cached = localStorage.getItem(`juicy_cached_friends_${storedUserId}`);
+        if (cached) return JSON.parse(cached);
+      }
+    } catch (e) {
+      console.warn('Failed to load cached friends:', e);
+    }
+    return [];
+  });
   const [isTyping, setIsTyping] = useState(false);
   const [otherTyping, setOtherTyping] = useState(false);
   const [onlineUserIds, setOnlineUserIds] = useState([]);
@@ -500,8 +591,90 @@ const ChatPage = () => {
   const [mobileActiveTab, setMobileActiveTab] = React.useState(0);
   const [contactSyncDialogOpen, setContactSyncDialogOpen] = useState(false);
   const [showFinder, setShowFinder] = useState(false);
-  const [hasLoadedFriends, setHasLoadedFriends] = useState(false);
+  const [hasLoadedFriends, setHasLoadedFriends] = useState(() => {
+    try {
+      const storedUserId = localStorage.getItem('userId');
+      if (storedUserId) {
+        const cached = localStorage.getItem(`juicy_cached_friends_${storedUserId}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          return Array.isArray(parsed) && parsed.length > 0;
+        }
+      }
+    } catch (e) { }
+    return false;
+  });
   const dbFriendsRef = useRef([]);
+
+  // Offline-first: Automatically persist user profile to local cache & SQLite
+  useEffect(() => {
+    if (user && user._id) {
+      try {
+        localStorage.setItem('juicy_cached_user', JSON.stringify(user));
+      } catch (e) { }
+      saveUserProfileLocally(user._id, user);
+    }
+  }, [user]);
+
+  // Offline-first: Automatically persist friends/chats to local cache & SQLite
+  useEffect(() => {
+    if (Array.isArray(dbFriends)) {
+      const currentUserId = localStorage.getItem('userId');
+      if (currentUserId && (dbFriends.length > 0 || hasLoadedFriends)) {
+        try {
+          localStorage.setItem(`juicy_cached_friends_${currentUserId}`, JSON.stringify(dbFriends));
+        } catch (e) { }
+        saveFriendsLocally(currentUserId, dbFriends);
+      }
+    }
+  }, [dbFriends, hasLoadedFriends]);
+
+  // Offline-first: Load friends, messages, and user from local SQLite on mount
+  useEffect(() => {
+    const currentUserId = localStorage.getItem('userId');
+    if (!currentUserId) return;
+
+    // Load cached user profile if missing
+    if (!user) {
+      getUserProfileLocally(currentUserId)
+        .then(profile => {
+          if (profile && !user) setUser(profile);
+        })
+        .catch(e => console.warn('SQLite user load notice:', e));
+    }
+
+    // Load friends from local SQLite
+    getFriendsLocally(currentUserId)
+      .then(sqliteFriends => {
+        if (Array.isArray(sqliteFriends) && sqliteFriends.length > 0) {
+          setDbFriends(prev => (prev && prev.length > 0 ? prev : sqliteFriends));
+        }
+      })
+      .catch(e => console.warn('SQLite friends load notice:', e));
+
+    // Load messages from local SQLite
+    getAllMessagesLocally(currentUserId)
+      .then(sqliteMessages => {
+        if (sqliteMessages && Object.keys(sqliteMessages).length > 0) {
+          setMessages(prev => {
+            const merged = { ...prev };
+            for (const [chatId, msgs] of Object.entries(sqliteMessages)) {
+              if (!merged[chatId] || merged[chatId].length === 0) {
+                merged[chatId] = msgs;
+              } else {
+                const existingIds = new Set(merged[chatId].map(m => String(m._id || m.id || m.timestamp)));
+                const toAdd = msgs.filter(m => !existingIds.has(String(m._id || m.id || m.timestamp)));
+                if (toAdd.length > 0) {
+                  merged[chatId] = [...merged[chatId], ...toAdd].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+                }
+              }
+            }
+            return merged;
+          });
+        }
+      })
+      .catch(err => console.warn('SQLite messages load notice:', err));
+  }, []);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [selectedShareFriends, setSelectedShareFriends] = useState([]);
   const [isDarkTheme, setIsDarkTheme] = useState(false);
@@ -527,6 +700,7 @@ const ChatPage = () => {
   const [previewZoom, setPreviewZoom] = useState(100);
   const [gameSelectorOpen, setGameSelectorOpen] = useState(false);
   const [showUserGuide, setShowUserGuide] = useState(false);
+  const [showCatalog, setShowCatalog] = useState(false);
 
   // Initialize push notification hook (Android/iOS only)
   usePushNotifications(user, setUnread, videoCallRef, navigate);
@@ -1431,8 +1605,9 @@ const ChatPage = () => {
             setUser(data);
             if (data.gestures) {
               localStorage.setItem('juicy_contact_gestures', JSON.stringify(data.gestures));
+              saveContactGesturesLocally(data._id, data.gestures, 'synced');
             }
-            // Show user guide only once for new users
+            // Show user guide only once for new users (step-by-step walkthrough)
             const userGuideKey = `juicy_has_seen_user_guide_${data._id}`;
             const hasSeenGuide = localStorage.getItem(userGuideKey) || localStorage.getItem(USER_GUIDE_STORAGE_KEY);
             if (!hasSeenGuide) {
@@ -1497,14 +1672,16 @@ const ChatPage = () => {
           if (Array.isArray(data)) {
             setDbFriends(data);
             setHasLoadedFriends(true);
+            try {
+              localStorage.setItem(`juicy_cached_friends_${currentUserId}`, JSON.stringify(data));
+            } catch (e) { }
           } else {
             console.warn('Friends data is not an array:', data);
-            setDbFriends([]);
           }
         })
         .catch(err => {
-          console.warn('Failed to fetch friends:', err);
-          setDbFriends([]);
+          console.warn('Failed to fetch friends (offline):', err);
+          // Preserve cached friends when offline instead of wiping with setDbFriends([])
         });
     }
   }, [friendRequestsList, selectedUser]);
@@ -1858,15 +2035,8 @@ const ChatPage = () => {
     }
   };
   const getProfileSrc = (u) => {
-    if (!u) return '';   // prefer data URL or full URL fields you might have
-    if (u.profileImage) {
-      try {
-        return u.profileImage.startsWith('data:') ? u.profileImage : `data:image/jpeg;base64,${u.profileImage}`;
-      } catch (e) {
-        return u.profileImage;
-      }
-    }
-    return u.profilePic || u.image || '';
+    if (!u) return '';
+    return getProfileImageSrc(u.profileImage || u.profilePic || u.image) || '';
   };
 
   // Helper function to check if a user is online
@@ -3107,25 +3277,131 @@ const ChatPage = () => {
     videoCallRef.current = videoCall;
   }, [videoCall]);
 
-  // Auto-answer calls accepted from background
+  // ✅ Auto-show call screen when a new call starts; reset states when call ends
   useEffect(() => {
-    if (videoCall && videoCall.receivingCall && videoCall.callerSignal) {
-      const pendingStr = sessionStorage.getItem('pendingCallAccept');
+    if (videoCall?.callAccepted && videoCall?.callStarted) {
+      setShowCallScreen(true);
+      setIsPipMode(false);
+    }
+    if (!videoCall?.callStarted) {
+      // Reset for next call
+      setShowCallScreen(true);
+      setIsPipMode(false);
+    }
+  }, [videoCall?.callAccepted, videoCall?.callStarted]);
+
+
+  // ✅ Set window.__juicyVideoCallActive & window.__juicyCallActive so MainActivity.java and App.js
+  // know when a call is active (for auto-entering PiP or moving to background on back-press/home)
+  useEffect(() => {
+    const isCallActive = Boolean(videoCall?.calling || videoCall?.callAccepted || videoCall?.callStarted);
+    const isVideoCallActive = Boolean(isCallActive && videoCall?.callType === 'video');
+    window.__juicyCallActive = isCallActive;
+    window.__juicyVideoCallActive = isVideoCallActive;
+    return () => {
+      window.__juicyCallActive = false;
+      window.__juicyVideoCallActive = false;
+    };
+  }, [videoCall?.callStarted, videoCall?.callType]);
+
+  // ✅ Listen for Android native PiP mode changes — hide controls in PiP (WhatsApp style)
+  useEffect(() => {
+    const handlePipChange = (e) => {
+      const inPip = e?.detail?.isPip === true;
+      console.log('📺 [PiP] Mode changed:', inPip);
+      setIsPipMode(inPip);
+      if (inPip) {
+        // Ensure call screen is "visible" so video element stays mounted
+        setShowCallScreen(true);
+      }
+    };
+    window.addEventListener('juicyPipModeChanged', handlePipChange);
+    return () => window.removeEventListener('juicyPipModeChanged', handlePipChange);
+  }, []);
+
+  // ✅ [BackgroundCall] Restore call screen on:
+  //   1. 'juicyReturnToCall' event — fired by MainActivity when user taps the call notification
+  //   2. Capacitor appStateChange — fired when app comes to foreground from Home/other-app
+  // In both cases we only set showCallScreen=true — we do NOT create new connections.
+  useEffect(() => {
+    // Handler 1: notification tap → MainActivity dispatches this custom event
+    const handleReturnToCall = () => {
+      const vc = videoCallRef.current;
+      if (vc?.callStarted) {
+        console.log('[BackgroundCall] juicyReturnToCall received — restoring call screen');
+        setShowCallScreen(true);
+        setIsPipMode(false);
+      }
+    };
+    window.addEventListener('juicyReturnToCall', handleReturnToCall);
+
+    // Handler 2: Capacitor App plugin — app becomes active from background
+    let appListener = null;
+    if (window.Capacitor?.Plugins?.App) {
+      window.Capacitor.Plugins.App.addListener('appStateChange', ({ isActive }) => {
+        if (isActive) {
+          const vc = videoCallRef.current;
+          if (vc?.callStarted) {
+            console.log('[BackgroundCall] App foregrounded with active call — restoring call screen');
+            setShowCallScreen(true);
+          }
+        }
+      }).then(l => { appListener = l; }).catch(() => { });
+    }
+
+    return () => {
+      window.removeEventListener('juicyReturnToCall', handleReturnToCall);
+      if (appListener && typeof appListener.remove === 'function') {
+        appListener.remove().catch(() => { });
+      }
+    };
+  }, []); // Empty deps: uses videoCallRef.current (ref, always fresh — no stale closure)
+
+
+  // Ref to always call the latest answerCallHandler without stale closure
+  const answerCallHandlerRef = React.useRef(null);
+  useEffect(() => {
+    answerCallHandlerRef.current = answerCallHandler;
+  });
+
+  // Auto-answer calls accepted from background / notification
+  const tryAutoAnswer = React.useCallback(() => {
+    const vc = videoCallRef.current;
+    if (vc && vc.receivingCall) {
+      const pendingStr = localStorage.getItem('pendingCallAccept') || sessionStorage.getItem('pendingCallAccept');
       if (pendingStr) {
         try {
           const pending = JSON.parse(pendingStr);
-          const activeCallerId = videoCall.call?.from || videoCall.callerId;
-          if (String(pending.senderId) === String(activeCallerId)) {
-            console.log('🚀 Auto-answering call accepted from background...');
+          // Staleness guard: drop if the stored intent is older than 60 seconds
+          if (pending.ts && Date.now() - pending.ts > 60000) {
+            localStorage.removeItem('pendingCallAccept');
             sessionStorage.removeItem('pendingCallAccept');
-            answerCallHandler();
+            return;
+          }
+          const activeCallerId = vc.call?.from || vc.callerId;
+          if (!activeCallerId || !pending.senderId || String(pending.senderId) === String(activeCallerId)) {
+            console.log('🚀 Auto-answering call accepted from background/notification...');
+            localStorage.removeItem('pendingCallAccept');
+            sessionStorage.removeItem('pendingCallAccept');
+            if (answerCallHandlerRef.current) answerCallHandlerRef.current();
           }
         } catch (err) {
           console.error('Error parsing pendingCallAccept:', err);
         }
       }
     }
-  }, [videoCall, answerCallHandler]);
+  }, [videoCallRef]);
+
+  useEffect(() => {
+    tryAutoAnswer();
+  }, [videoCall, answerCallHandler, tryAutoAnswer]);
+
+  // Re-trigger auto-answer immediately when pendingCallAcceptSet fires (warm-boot / foreground tap)
+  useEffect(() => {
+    const handlePendingSet = () => { tryAutoAnswer(); };
+    window.addEventListener('pendingCallAcceptSet', handlePendingSet);
+    return () => { window.removeEventListener('pendingCallAcceptSet', handlePendingSet); };
+  }, []);
 
   // Auto-open conversation from message notification click (cold-boot)
   // Reads from localStorage (survives app kill) — written by MainActivity.injectPendingChatNavigation()
@@ -3581,6 +3857,15 @@ const ChatPage = () => {
   useEffect(() => {
     // Core back-press logic shared by both native and browser back buttons
     const handleBackPress = (markHandled) => {
+      // 1. If call is active AND call screen is currently showing full-screen:
+      // Clicking mobile back button minimizes the call screen (identical to ⬇️ button)
+      if (videoCallRef.current?.callStarted && showCallScreenRef.current) {
+        console.log('[BackPress] Minimizing call screen (⬇️ function)');
+        setShowCallScreen(false);
+        markHandled();
+        return;
+      }
+
       if (fullScreenImage) {
         setFullScreenImage(null);
         markHandled();
@@ -3621,8 +3906,29 @@ const ChatPage = () => {
         // On Calls / Search / Settings tab → go back to Chats tab (like WhatsApp)
         setBottomNav(0);
         markHandled();
+      } else if (videoCallRef.current?.callStarted) {
+        // ✅ Already on Chats list with no open chat, but a call is active in background!
+        // DO NOT exit app or kill call!
+        // If video call -> enter Android PiP floating window
+        // If audio call -> move app to background
+        markHandled();
+        if (videoCallRef.current.callType === 'video') {
+          console.log('[BackPress] Video call active on root — triggering PiP mode');
+          if (window.Capacitor?.Plugins?.AudioRoute?.enterPipMode) {
+            window.Capacitor.Plugins.AudioRoute.enterPipMode().catch(() => {
+              window.Capacitor?.Plugins?.AudioRoute?.moveToBackground?.();
+            });
+          } else if (window.Capacitor?.Plugins?.AudioRoute?.moveToBackground) {
+            window.Capacitor.Plugins.AudioRoute.moveToBackground().catch(() => { });
+          }
+        } else {
+          console.log('[BackPress] Audio call active on root — moving to background');
+          if (window.Capacitor?.Plugins?.AudioRoute?.moveToBackground) {
+            window.Capacitor.Plugins.AudioRoute.moveToBackground().catch(() => { });
+          }
+        }
       }
-      // else: already on Chats with no chat open → let OS handle (app exit)
+      // else: already on Chats with no chat open & no active call → let OS handle (app exit)
     };
 
     // --- Native Android back button via Capacitor App plugin ---
@@ -3965,7 +4271,44 @@ const ChatPage = () => {
       if (savedTheme) {
         try {
           const themeData = JSON.parse(savedTheme);
-          root.style.setProperty('--primary-color', themeData.colors.primary);
+          let primaryVal = themeData.colors.primary || '#ff2d6c';
+          let primaryGradient = themeData.colors.primaryGradient;
+          if (!primaryGradient) {
+            if (primaryVal.includes('gradient')) {
+              primaryGradient = primaryVal;
+              const match = primaryVal.match(/#(?:[0-9a-fA-F]{3,8})/);
+              primaryVal = match ? match[0] : '#f06292';
+            } else {
+              primaryGradient = `linear-gradient(135deg, ${primaryVal} 0%, ${primaryVal}dd 100%)`;
+            }
+          } else if (primaryVal.includes('gradient')) {
+            const match = primaryVal.match(/#(?:[0-9a-fA-F]{3,8})/);
+            primaryVal = match ? match[0] : '#f06292';
+          }
+
+          const hexToRgb = (hex) => {
+            try {
+              const h = (hex || '#f06292').replace('#', '').trim();
+              const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+              const bigint = parseInt(full, 16);
+              const r = (bigint >> 16) & 255;
+              const g = (bigint >> 8) & 255;
+              const b = bigint & 255;
+              return `${r}, ${g}, ${b}`;
+            } catch (e) {
+              return '240, 98, 146';
+            }
+          };
+
+          const primaryRgb = hexToRgb(primaryVal);
+
+          root.style.setProperty('--primary-color', primaryVal);
+          root.style.setProperty('--primary-gradient', primaryGradient);
+          root.style.setProperty('--primary-rgb', primaryRgb);
+          root.style.setProperty('--primary-color-alpha', `rgba(${primaryRgb}, 0.08)`);
+          root.style.setProperty('--primary-color-glow', `rgba(${primaryRgb}, 0.35)`);
+          root.style.setProperty('--app-primary', primaryVal);
+          root.style.setProperty('--app-primary-rgb', primaryRgb);
           root.style.setProperty('--background-color', themeData.colors.background);
           root.style.setProperty('--surface-color', themeData.colors.surface);
           root.style.setProperty('--text-color', themeData.colors.text);
@@ -3990,7 +4333,7 @@ const ChatPage = () => {
 
           const metaThemeColor = document.querySelector('meta[name="theme-color"]');
           if (metaThemeColor) {
-            metaThemeColor.setAttribute('content', themeData.colors.primary);
+            metaThemeColor.setAttribute('content', primaryVal);
           }
         } catch (e) {
           console.warn('Error loading theme in ChatPage:', e);
@@ -4097,6 +4440,7 @@ const ChatPage = () => {
       }
     };
 
+    window.addEventListener('themeChanged', applySavedThemeAndPattern);
     window.addEventListener('patternChanged', handlePatternChange);
     window.addEventListener('opacityChanged', handleOpacityChange);
 
@@ -4107,6 +4451,7 @@ const ChatPage = () => {
     } catch (e) { /* ignore parse errors */ }
 
     return () => {
+      window.removeEventListener('themeChanged', applySavedThemeAndPattern);
       window.removeEventListener('patternChanged', handlePatternChange);
       window.removeEventListener('opacityChanged', handleOpacityChange);
     };
@@ -4452,17 +4797,18 @@ const ChatPage = () => {
         left: 0,
         right: 0,
         zIndex: 1201,
-        bgcolor: '#000',
+        background: isDarkTheme ? '#120f17' : 'linear-gradient(180deg, var(--background-color, #fffafd) 0%, var(--surface-color, #fff4f8) 100%)',
         pt: 'env(safe-area-inset-top, 24px)',
         display: isMobile && !isInChat ? 'block' : 'none'
       }}>
         <AppBar
           position="static"
           sx={{
-            bgcolor: 'var(--surface-color, #fff)',
-            boxShadow: 'none',
-            borderBottom: '1px solid rgba(241,220,220,0.6)',
-            // Smooth transitions
+            background: isDarkTheme ? 'rgba(26, 20, 36, 0.96)' : 'var(--surface-color, rgba(255, 255, 255, 0.96))',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+            boxShadow: isDarkTheme ? '0 6px 24px rgba(0, 0, 0, 0.3)' : '0 6px 24px rgba(0, 0, 0, 0.06)',
+            borderBottom: isDarkTheme ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(125, 125, 125, 0.15)',
             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
           }}
         >
@@ -4471,20 +4817,44 @@ const ChatPage = () => {
             sx={{
               justifyContent: 'space-between',
               alignItems: 'center',
-              minHeight: { xs: 56, sm: 60, md: 72 },
+              minHeight: { xs: 56, sm: 60, md: 68 },
               px: { xs: 1.5, sm: 2, md: 3 },
-              py: { xs: 0.5, sm: 1, md: 1.5 },
+              py: { xs: 0.5, sm: 1 },
               gap: { xs: 1, sm: 1.5, md: 2 }
             }}
           >
-            {/* Logo */}
+            {/* Logo - Tap opens Gesture Draw */}
             <Box
+              onClick={() => {
+                setGestureUnlockTarget(null);
+                setShowGestureOverlay(true);
+              }}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setGestureUnlockTarget(null);
+                  setShowGestureOverlay(true);
+                }
+              }}
+              aria-label="Open gesture drawing"
+              title="Tap to draw gesture to open chat"
               sx={{
                 flexShrink: 0,
                 display: 'flex',
                 alignItems: 'center',
                 userSelect: 'none',
-                ml: 0
+                ml: 0,
+                cursor: 'pointer',
+                transition: 'all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                '&:hover': {
+                  transform: 'scale(1.05)',
+                  filter: 'drop-shadow(0 4px 12px rgba(255, 64, 129, 0.35))'
+                },
+                '&:active': {
+                  transform: 'scale(0.95)'
+                }
               }}
             >
               <Box
@@ -4492,7 +4862,7 @@ const ChatPage = () => {
                 src={newJuicyLogo}
                 alt="Juicy"
                 sx={{
-                  height: { xs: 50, sm: 56, md: 62 }, // Slightly larger viewable size
+                  height: { xs: 46, sm: 52, md: 58 },
                   width: 'auto',
                   objectFit: 'contain',
                   display: 'block'
@@ -4505,7 +4875,7 @@ const ChatPage = () => {
               sx={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: { xs: 0.5, sm: 0.75, md: 1 }
+                gap: { xs: 0.75, sm: 1, md: 1.25 }
               }}
             >
               {/* Camera Icon */}
@@ -4513,20 +4883,25 @@ const ChatPage = () => {
                 key="camera-btn"
                 onClick={handleCaptureClick}
                 sx={{
-                  p: { xs: 1, sm: 1.25, md: 1.5 },
-                  color: 'var(--text-color, #000)',
+                  width: { xs: 38, sm: 42 },
+                  height: { xs: 38, sm: 42 },
+                  color: 'var(--primary-color, #ff4081)',
+                  bgcolor: isDarkTheme ? 'rgba(255, 255, 255, 0.06)' : 'var(--surface-color, rgba(255, 255, 255, 0.9))',
+                  border: isDarkTheme ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(125, 125, 125, 0.2)',
+                  boxShadow: '0 3px 10px rgba(0, 0, 0, 0.08)',
                   borderRadius: '50%',
                   transition: 'all 0.2s ease',
                   '&:hover': {
-                    bgcolor: 'rgba(240, 98, 146, 0.08)',
-                    transform: 'scale(1.05)'
+                    bgcolor: isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'var(--background-color, #fff0f5)',
+                    transform: 'translateY(-1px) scale(1.06)',
+                    boxShadow: '0 6px 16px rgba(0, 0, 0, 0.16)'
                   },
-                  '&:active': { transform: 'scale(0.95)' }
+                  '&:active': { transform: 'scale(0.94)' }
                 }}
                 aria-label="camera"
                 size="medium"
               >
-                <CameraAltIcon sx={{ fontSize: { xs: 22, sm: 24, md: 26 } }} />
+                <CameraAltIcon sx={{ fontSize: { xs: 20, sm: 22 } }} />
               </IconButton>
 
               {/* Search Icon */}
@@ -4534,20 +4909,25 @@ const ChatPage = () => {
                 key="search-btn"
                 onClick={() => { setBottomNav(2); setSelectedUser(null); }}
                 sx={{
-                  p: { xs: 1, sm: 1.25, md: 1.5 },
-                  color: 'var(--text-color, #000)',
+                  width: { xs: 38, sm: 42 },
+                  height: { xs: 38, sm: 42 },
+                  color: 'var(--primary-color, #ff4081)',
+                  bgcolor: isDarkTheme ? 'rgba(255, 255, 255, 0.06)' : 'var(--surface-color, rgba(255, 255, 255, 0.9))',
+                  border: isDarkTheme ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(125, 125, 125, 0.2)',
+                  boxShadow: '0 3px 10px rgba(0, 0, 0, 0.08)',
                   borderRadius: '50%',
                   transition: 'all 0.2s ease',
                   '&:hover': {
-                    bgcolor: 'rgba(240, 98, 146, 0.08)',
-                    transform: 'scale(1.05)'
+                    bgcolor: isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'var(--background-color, #fff0f5)',
+                    transform: 'translateY(-1px) scale(1.06)',
+                    boxShadow: '0 6px 16px rgba(0, 0, 0, 0.16)'
                   },
-                  '&:active': { transform: 'scale(0.95)' }
+                  '&:active': { transform: 'scale(0.94)' }
                 }}
                 aria-label="search"
                 size="medium"
               >
-                <SearchIcon sx={{ fontSize: { xs: 22, sm: 24, md: 26 } }} />
+                <SearchIcon sx={{ fontSize: { xs: 20, sm: 22 } }} />
               </IconButton>
 
               {/* Notification Icon with Badge */}
@@ -4555,18 +4935,24 @@ const ChatPage = () => {
                 key="notifications-btn"
                 onClick={() => { setIsNotificationView(true); setBottomNav(4); setSelectedUser(null); }}
                 sx={{
-                  p: { xs: 1, sm: 1.25, md: 1.5 },
-                  color: pendingIncomingRequests.length > 0 ? '#fff' : 'var(--text-color, #000)',
-                  bgcolor: pendingIncomingRequests.length > 0 ? 'var(--primary-color, #f06292)' : 'transparent',
+                  width: { xs: 38, sm: 42 },
+                  height: { xs: 38, sm: 42 },
+                  color: pendingIncomingRequests.length > 0 ? '#fff' : 'var(--primary-color, #ff4081)',
+                  background: pendingIncomingRequests.length > 0
+                    ? 'var(--primary-gradient, linear-gradient(135deg, #ff5c8d 0%, #ff2d6c 100%))'
+                    : (isDarkTheme ? 'rgba(255, 255, 255, 0.06)' : 'var(--surface-color, rgba(255, 255, 255, 0.9))'),
+                  border: isDarkTheme ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(125, 125, 125, 0.2)',
+                  boxShadow: '0 3px 10px rgba(0, 0, 0, 0.08)',
                   borderRadius: '50%',
                   transition: 'all 0.2s ease',
                   '&:hover': {
-                    bgcolor: pendingIncomingRequests.length > 0
-                      ? 'var(--primary-color, #e91e63)'
-                      : 'rgba(240, 98, 146, 0.08)',
-                    transform: 'scale(1.05)'
+                    background: pendingIncomingRequests.length > 0
+                      ? 'var(--primary-gradient, linear-gradient(135deg, #ff4081 0%, #e91e63 100%))'
+                      : (isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'var(--background-color, #fff0f5)'),
+                    transform: 'translateY(-1px) scale(1.06)',
+                    boxShadow: '0 6px 16px rgba(0, 0, 0, 0.16)'
                   },
-                  '&:active': { transform: 'scale(0.95)' }
+                  '&:active': { transform: 'scale(0.94)' }
                 }}
                 aria-label="friend-requests"
                 size="medium"
@@ -4577,7 +4963,7 @@ const ChatPage = () => {
                   invisible={pendingIncomingRequests.length === 0}
                   sx={{
                     '& .MuiBadge-badge': {
-                      backgroundColor: '#ff1744',
+                      backgroundColor: 'var(--primary-color, #ff1744)',
                       color: '#fff',
                       fontWeight: 700,
                       minWidth: 18,
@@ -4588,7 +4974,7 @@ const ChatPage = () => {
                     }
                   }}
                 >
-                  <NotificationsIcon sx={{ fontSize: { xs: 22, sm: 24, md: 26 } }} />
+                  <NotificationsIcon sx={{ fontSize: { xs: 20, sm: 22 } }} />
                 </Badge>
               </IconButton>
 
@@ -4597,31 +4983,34 @@ const ChatPage = () => {
                 key="profile-menu-btn"
                 onClick={(e) => setAnchorEl(e.currentTarget)}
                 sx={{
-                  p: { xs: 0.5, sm: 0.75, md: 1 },
-                  ml: { xs: 0.25, sm: 0.5, md: 0.75 },
+                  p: 0.25,
                   borderRadius: '50%',
+                  border: isDarkTheme ? '1.5px solid rgba(255, 255, 255, 0.15)' : '1.5px solid rgba(125, 125, 125, 0.2)',
+                  boxShadow: '0 3px 10px rgba(0, 0, 0, 0.08)',
                   transition: 'all 0.2s ease',
                   '&:hover': {
-                    bgcolor: 'rgba(240, 98, 146, 0.08)',
-                    transform: 'scale(1.05)'
+                    transform: 'scale(1.06)',
+                    borderColor: 'var(--primary-color, #ff4081)'
                   },
-                  '&:active': { transform: 'scale(0.95)' }
+                  '&:active': { transform: 'scale(0.94)' }
                 }}
                 aria-label="profile-menu"
                 size="medium"
               >
-                {user && user.profileImage ? (
+                {user && (user.profileImage || user.profilePic) ? (
                   <Avatar
-                    src={user.profileImage.startsWith('data:') ? user.profileImage : `data:image/jpeg;base64,${user.profileImage}`}
+                    src={getProfileSrc(user)}
                     sx={{
-                      width: { xs: 30, sm: 34, md: 38 },
-                      height: { xs: 30, sm: 34, md: 38 },
-                      border: '2px solid var(--primary-color, #f06292)',
+                      width: { xs: 34, sm: 38 },
+                      height: { xs: 34, sm: 38 },
+                      border: '1.5px solid var(--primary-color, #ff4081)',
                       transition: 'all 0.2s ease'
                     }}
                   />
                 ) : (
-                  <MoreVertIcon sx={{ fontSize: { xs: 22, sm: 24, md: 26 } }} />
+                  <Avatar sx={{ width: { xs: 34, sm: 38 }, height: { xs: 34, sm: 38 }, bgcolor: 'var(--primary-color, #ff4081)', color: '#fff', fontWeight: 'bold' }}>
+                    {user?.username?.charAt(0).toUpperCase() || 'U'}
+                  </Avatar>
                 )}
               </IconButton>
 
@@ -4631,21 +5020,27 @@ const ChatPage = () => {
                 onClose={() => setAnchorEl(null)}
                 PaperProps={{
                   sx: {
-                    bgcolor: 'var(--surface-color, #fff)',
-                    color: 'var(--text-color, #000)',
+                    bgcolor: isDarkTheme ? 'rgba(26, 20, 36, 0.96)' : 'var(--surface-color, rgba(255, 255, 255, 0.96))',
+                    backdropFilter: 'blur(20px)',
+                    color: 'var(--text-color, #1e293b)',
                     mt: 1.5,
-                    borderRadius: 2,
-                    boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
-                    minWidth: 180,
+                    borderRadius: '20px',
+                    border: isDarkTheme ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(125, 125, 125, 0.2)',
+                    boxShadow: isDarkTheme ? '0 12px 36px rgba(0, 0, 0, 0.5)' : '0 12px 36px rgba(0, 0, 0, 0.15)',
+                    minWidth: 190,
+                    p: 0.5,
                     overflow: 'hidden',
                     '& .MuiMenuItem-root': {
-                      fontSize: { xs: '0.875rem', sm: '0.9375rem', md: '1rem' },
-                      py: { xs: 1.25, sm: 1.5, md: 1.75 },
-                      px: { xs: 2, sm: 2.5, md: 3 },
+                      fontSize: { xs: '0.875rem', sm: '0.9375rem' },
+                      py: 1.25,
+                      px: 2,
+                      borderRadius: '12px',
                       gap: 1.5,
+                      fontWeight: 600,
                       transition: 'all 0.15s ease',
                       '&:hover': {
-                        bgcolor: 'rgba(240, 98, 146, 0.06)'
+                        bgcolor: isDarkTheme ? 'rgba(255, 255, 255, 0.08)' : 'rgba(125, 125, 125, 0.08)',
+                        color: 'var(--primary-color, #ff4081)'
                       }
                     }
                   }
@@ -4657,145 +5052,147 @@ const ChatPage = () => {
                 <MenuItem
                   key="account-menu"
                   onClick={() => { setAnchorEl(null); setIsNotificationView(false); setBottomNav(4); }}
-                  sx={{ color: 'var(--text-color, #000)' }}
+                  sx={{ color: 'var(--text-color, #1e293b)' }}
                 >
-                  <AccountCircleIcon sx={{ fontSize: 20, color: 'var(--primary-color, #f06292)', opacity: 0.8 }} />
+                  <AccountCircleIcon sx={{ fontSize: 20, color: 'var(--primary-color, #ff4081)' }} />
                   Account
                 </MenuItem>
                 <MenuItem
                   key="scanner-menu"
                   onClick={() => { setAnchorEl(null); setScannerOpen(true); }}
-                  sx={{ color: 'var(--text-color, #000)' }}
+                  sx={{ color: 'var(--text-color, #1e293b)' }}
                 >
-                  <QrCodeScannerIcon sx={{ fontSize: 20, color: 'var(--primary-color, #f06292)', opacity: 0.8 }} />
+                  <QrCodeScannerIcon sx={{ fontSize: 20, color: 'var(--primary-color, #ff4081)' }} />
                   Linked Devices
                 </MenuItem>
                 <MenuItem
                   key="signout-menu"
                   onClick={() => { setAnchorEl(null); setSignOutDialogOpen(true); }}
-                  sx={{ color: 'var(--text-color, #000)' }}
+                  sx={{ color: 'var(--text-color, #1e293b)' }}
                 >
-                  <LogoutIcon sx={{ fontSize: 20, color: 'var(--primary-color, #f06292)', opacity: 0.8 }} />
+                  <LogoutIcon sx={{ fontSize: 20, color: 'var(--primary-color, #ff4081)' }} />
                   Sign Out
                 </MenuItem>
               </Menu>
             </Box>
           </Toolbar>
 
-          {/* Divider */}
-          <Box sx={{
-            height: '1px',
-            bgcolor: 'rgba(241,220,220,0.4)',
-            mx: { xs: 1.5, sm: 2, md: 3 }
-          }} />
-
-          {/* Tab Navigation - WhatsApp Style (No Box wrapper, direct in AppBar) */}
-          <Tabs
-            value={bottomNav}
-            onChange={(event, newValue) => { setBottomNav(newValue); }}
-            textColor="primary"
-            indicatorColor="primary"
-            variant="fullWidth"
-            sx={{
-              minHeight: { xs: 44, sm: 48, md: 52 },
-              px: { xs: 0.5, sm: 1, md: 2 },
-              '& .MuiTabs-flexContainer': {
-                justifyContent: 'space-around',
-                gap: { xs: 0, sm: 0.5, md: 1 }
-              },
-              '& .MuiTabs-indicator': {
-                height: { xs: 2.5, sm: 3, md: 3 },
-                borderRadius: '3px 3px 0 0',
-                bgcolor: 'var(--primary-color, #f06292)'
-              },
-              '& .MuiTab-root': {
-                minHeight: { xs: 44, sm: 48, md: 52 },
-                textTransform: 'none',
-                fontSize: { xs: '0.8rem', sm: '0.875rem', md: '0.9375rem' },
-                fontWeight: 500,
-                color: 'var(--text-color, #666)',
-                px: { xs: 1, sm: 1.5, md: 2 },
-                py: { xs: 1, sm: 1.25, md: 1.5 },
-                borderRadius: '8px 8px 0 0',
-                transition: 'all 0.2s ease',
-                '&:hover': {
-                  bgcolor: 'rgba(240, 98, 146, 0.04)',
-                  color: 'var(--primary-color, #f06292)'
+          {/* Tab Navigation - 3D Rounded Pill Buttons */}
+          <Box sx={{ px: { xs: 0.75, sm: 1.5, md: 2 }, pb: 1.2, pt: 0.5, width: '100%', boxSizing: 'border-box' }}>
+            <Tabs
+              value={bottomNav}
+              onChange={(event, newValue) => { setBottomNav(newValue); }}
+              textColor="primary"
+              variant="fullWidth"
+              sx={{
+                minHeight: { xs: 36, sm: 40, md: 42 },
+                '& .MuiTabs-scroller': {
+                  overflow: 'visible !important'
                 },
-                '&.Mui-selected': {
-                  fontWeight: 700,
-                  color: 'var(--primary-color, #f06292)'
+                '& .MuiTabs-flexContainer': {
+                  gap: { xs: 0.5, sm: 0.85, md: 1.25 },
+                  width: '100%'
+                },
+                '& .MuiTabs-indicator': {
+                  display: 'none'
+                },
+                '& .MuiTab-root': {
+                  minWidth: '0 !important',
+                  maxWidth: 'none !important',
+                  flex: '1 1 0 !important',
+                  minHeight: { xs: 36, sm: 40, md: 42 },
+                  textTransform: 'none',
+                  fontSize: { xs: '0.78rem', sm: '0.86rem', md: '0.9rem' },
+                  fontWeight: 600,
+                  borderRadius: '20px',
+                  px: { xs: 0.5, sm: 1.2, md: 2 },
+                  py: 0.5,
+                  letterSpacing: { xs: '-0.2px', sm: 'normal' },
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+                  bgcolor: isDarkTheme ? 'rgba(255, 255, 255, 0.06)' : 'var(--surface-color, rgba(255, 255, 255, 0.82))',
+                  color: isDarkTheme ? '#94a3b8' : '#64748b',
+                  border: isDarkTheme ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(125, 125, 125, 0.2)',
+                  boxShadow: '0 2px 6px rgba(0, 0, 0, 0.02)',
+                  '&:hover': {
+                    bgcolor: isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : 'var(--background-color, rgba(255, 240, 246, 0.95))',
+                    color: 'var(--primary-color, #ff4081)'
+                  },
+                  '&.Mui-selected': {
+                    background: 'var(--primary-gradient, linear-gradient(135deg, #ff5c8d 0%, #ff2d6c 100%))',
+                    color: '#ffffff !important',
+                    fontWeight: 700,
+                    boxShadow: '0 4px 14px rgba(0, 0, 0, 0.25)',
+                    border: '1px solid rgba(255, 255, 255, 0.25)'
+                  }
                 }
-              }
-            }}
-          >
-            <Tab
-              value={0}
-              key="chats-tab"
-              label={
-                <Box sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: { xs: 0.4, sm: 0.5, md: 0.75 }
-                }}>
-                  <Typography
-                    component="span"
-                    sx={{
-                      textTransform: 'none',
-                      fontWeight: 'inherit',
-                      fontSize: 'inherit'
-                    }}
-                  >
-                    Chats
-                  </Typography>
-                  {totalUnreadCount > 0 && (
-                    <Box
-                      sx={{
-                        bgcolor: 'var(--primary-color, #f06292)',
-                        color: '#fff',
-                        borderRadius: totalUnreadCount > 99 ? '10px' : '50%',
-                        width: totalUnreadCount > 99 ? 'auto' : { xs: 18, sm: 20, md: 22 },
-                        height: { xs: 18, sm: 20, md: 22 },
-                        px: totalUnreadCount > 99 ? 0.6 : 0,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: { xs: '0.65rem', sm: '0.7rem', md: '0.75rem' },
-                        fontWeight: 700,
-                        minWidth: { xs: 18, sm: 20, md: 22 },
-                        boxShadow: '0 2px 4px rgba(240, 98, 146, 0.3)',
-                        animation: 'pulse 2s infinite'
-                      }}
-                    >
-                      {totalUnreadCount > 99 ? '99+' : totalUnreadCount}
-                    </Box>
-                  )}
-                </Box>
-              }
-              onClick={() => { setBottomNav(0); handleBackToList(); }}
-            />
+              }}
+            >
+              <Tab
+                value={0}
+                key="chats-tab"
+                label={
+                  <Box sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: { xs: 0.4, sm: 0.5 },
+                    minWidth: 0,
+                    maxWidth: '100%'
+                  }}>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Chats</span>
+                    {totalUnreadCount > 0 && (
+                      <Box
+                        sx={{
+                          bgcolor: bottomNav === 0 ? '#ffffff' : 'var(--primary-color, #ff4081)',
+                          color: bottomNav === 0 ? 'var(--primary-color, #ff2d6c)' : '#ffffff',
+                          borderRadius: totalUnreadCount > 99 ? '10px' : '50%',
+                          width: totalUnreadCount > 99 ? 'auto' : 16,
+                          height: 16,
+                          px: totalUnreadCount > 99 ? 0.5 : 0,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '0.62rem',
+                          fontWeight: 700,
+                          minWidth: 16,
+                          flexShrink: 0,
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
+                          animation: 'pulse 2s infinite'
+                        }}
+                      >
+                        {totalUnreadCount > 99 ? '99+' : totalUnreadCount}
+                      </Box>
+                    )}
+                  </Box>
+                }
+                onClick={() => { setBottomNav(0); handleBackToList(); }}
+              />
 
-            <Tab
-              value={2}
-              key="search-tab"
-              label="Search"
-              onClick={() => setBottomNav(2)}
-            />
+              <Tab
+                value={2}
+                key="search-tab"
+                label="Search"
+                onClick={() => setBottomNav(2)}
+              />
 
-            <Tab
-              value={1}
-              key="calls-tab"
-              label="Calls"
-              onClick={() => { setBottomNav(1); setSelectedUser(null); }}
-            />
+              <Tab
+                value={1}
+                key="calls-tab"
+                label="Calls"
+                onClick={() => { setBottomNav(1); setSelectedUser(null); }}
+              />
 
-            <Tab
-              value={3}
-              key="settings-tab"
-              label="Settings"
-              onClick={() => { setBottomNav(3); setSelectedUser(null); }}
-            />
-          </Tabs>
+              <Tab
+                value={3}
+                key="settings-tab"
+                label="Settings"
+                onClick={() => { setBottomNav(3); setSelectedUser(null); }}
+              />
+            </Tabs>
+          </Box>
 
           {/* Add pulse animation */}
           <Box
@@ -4880,7 +5277,7 @@ const ChatPage = () => {
       >
         {/* Audio elements for call audio - always mounted */}
         <audio ref={videoCall.callerAudioRef} src={callerAudioFile} loop />
-        <audio ref={videoCall.receiverAudioRef} src={receiverAudioFile} loop />
+        <audio ref={videoCall.receiverAudioRef} src={receiverRingtoneSrc || receiverAudioFile} loop id="juicy-receiver-audio" />
         <audio
           ref={videoCall.remoteAudioRef}
           id="juicy-remote-audio-element"
@@ -4889,8 +5286,15 @@ const ChatPage = () => {
           muted={false}
           controls={false}
           crossOrigin="anonymous"
-          preload="auto"
-          style={{ display: 'none' }}
+          style={{
+            position: 'fixed',
+            top: -9999,
+            left: -9999,
+            width: 1,
+            height: 1,
+            opacity: 0.01,
+            pointerEvents: 'none'
+          }}
         />
 
         <Box
@@ -4902,13 +5306,14 @@ const ChatPage = () => {
         >
           {!isMobile && (
             <Box sx={{
-              width: 64,
-              bgcolor: isDarkTheme ? '#202c33' : '#f0f2f5',
-              borderRight: isDarkTheme ? '1px solid rgba(255,255,255,0.05)' : '1px solid rgba(0,0,0,0.08)',
+              width: 68,
+              background: isDarkTheme ? 'rgba(20, 16, 25, 0.95)' : 'var(--surface-color, #fff)',
+              borderRight: isDarkTheme ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(125, 125, 125, 0.15)',
+              boxShadow: isDarkTheme ? 'none' : '2px 0 12px rgba(0, 0, 0, 0.04)',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              py: 2,
+              py: 2.5,
               gap: 2,
               height: '100%',
               boxSizing: 'border-box'
@@ -4918,12 +5323,16 @@ const ChatPage = () => {
                 key="nav-chats"
                 onClick={() => { setBottomNav(0); handleBackToList(); }}
                 sx={{
-                  color: bottomNav === 0 ? (isDarkTheme ? '#00a884' : '#008069') : (isDarkTheme ? '#aeacb4' : '#54656f'),
-                  bgcolor: bottomNav === 0 ? (isDarkTheme ? 'rgba(0, 168, 132, 0.1)' : 'rgba(0, 128, 105, 0.1)') : 'transparent',
-                  borderRadius: '12px',
+                  color: bottomNav === 0 ? '#ffffff' : (isDarkTheme ? '#94a3b8' : '#64748b'),
+                  background: bottomNav === 0 ? 'var(--primary-gradient, linear-gradient(135deg, #ff5c8d 0%, #ff2d6c 100%))' : 'transparent',
+                  boxShadow: bottomNav === 0 ? '0 4px 14px rgba(0, 0, 0, 0.25), inset 0 1px 1px rgba(255, 255, 255, 0.4)' : 'none',
+                  borderRadius: '16px',
                   p: 1.25,
+                  transition: 'all 0.2s ease',
                   '&:hover': {
-                    bgcolor: isDarkTheme ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'
+                    background: bottomNav === 0 ? 'var(--primary-gradient, linear-gradient(135deg, #ff5c8d 0%, #ff2d6c 100%))' : (isDarkTheme ? 'rgba(255, 255, 255, 0.08)' : 'rgba(125, 125, 125, 0.08)'),
+                    color: bottomNav === 0 ? '#ffffff' : 'var(--primary-color, #ff4081)',
+                    transform: 'translateY(-1px)'
                   }
                 }}
               >
@@ -4935,7 +5344,7 @@ const ChatPage = () => {
                       fontSize: '0.65rem',
                       minWidth: 16,
                       height: 16,
-                      bgcolor: '#00a884',
+                      bgcolor: 'var(--primary-color, #ff2d6c)',
                       color: '#fff'
                     }
                   }}
@@ -4948,12 +5357,16 @@ const ChatPage = () => {
                 key="nav-phone"
                 onClick={() => { setBottomNav(1); setSelectedUser(null); }}
                 sx={{
-                  color: bottomNav === 1 ? (isDarkTheme ? '#00a884' : '#008069') : (isDarkTheme ? '#aeacb4' : '#54656f'),
-                  bgcolor: bottomNav === 1 ? (isDarkTheme ? 'rgba(0, 168, 132, 0.1)' : 'rgba(0, 128, 105, 0.1)') : 'transparent',
-                  borderRadius: '12px',
+                  color: bottomNav === 1 ? '#ffffff' : (isDarkTheme ? '#94a3b8' : '#64748b'),
+                  background: bottomNav === 1 ? 'var(--primary-gradient, linear-gradient(135deg, #ff5c8d 0%, #ff2d6c 100%))' : 'transparent',
+                  boxShadow: bottomNav === 1 ? '0 4px 14px rgba(0, 0, 0, 0.25), inset 0 1px 1px rgba(255, 255, 255, 0.4)' : 'none',
+                  borderRadius: '16px',
                   p: 1.25,
+                  transition: 'all 0.2s ease',
                   '&:hover': {
-                    bgcolor: isDarkTheme ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'
+                    background: bottomNav === 1 ? 'var(--primary-gradient, linear-gradient(135deg, #ff5c8d 0%, #ff2d6c 100%))' : (isDarkTheme ? 'rgba(255, 255, 255, 0.08)' : 'rgba(125, 125, 125, 0.08)'),
+                    color: bottomNav === 1 ? '#ffffff' : 'var(--primary-color, #ff4081)',
+                    transform: 'translateY(-1px)'
                   }
                 }}
               >
@@ -4964,12 +5377,16 @@ const ChatPage = () => {
                 key="nav-search"
                 onClick={() => setBottomNav(2)}
                 sx={{
-                  color: bottomNav === 2 ? (isDarkTheme ? '#00a884' : '#008069') : (isDarkTheme ? '#aeacb4' : '#54656f'),
-                  bgcolor: bottomNav === 2 ? (isDarkTheme ? 'rgba(0, 168, 132, 0.1)' : 'rgba(0, 128, 105, 0.1)') : 'transparent',
-                  borderRadius: '12px',
+                  color: bottomNav === 2 ? '#ffffff' : (isDarkTheme ? '#94a3b8' : '#64748b'),
+                  background: bottomNav === 2 ? 'var(--primary-gradient, linear-gradient(135deg, #ff5c8d 0%, #ff2d6c 100%))' : 'transparent',
+                  boxShadow: bottomNav === 2 ? '0 4px 14px rgba(0, 0, 0, 0.25), inset 0 1px 1px rgba(255, 255, 255, 0.4)' : 'none',
+                  borderRadius: '16px',
                   p: 1.25,
+                  transition: 'all 0.2s ease',
                   '&:hover': {
-                    bgcolor: isDarkTheme ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'
+                    background: bottomNav === 2 ? 'var(--primary-gradient, linear-gradient(135deg, #ff5c8d 0%, #ff2d6c 100%))' : (isDarkTheme ? 'rgba(255, 255, 255, 0.08)' : 'rgba(125, 125, 125, 0.08)'),
+                    color: bottomNav === 2 ? '#ffffff' : 'var(--primary-color, #ff4081)',
+                    transform: 'translateY(-1px)'
                   }
                 }}
               >
@@ -4980,12 +5397,16 @@ const ChatPage = () => {
                 key="nav-settings"
                 onClick={() => setBottomNav(3)}
                 sx={{
-                  color: bottomNav === 3 ? (isDarkTheme ? '#00a884' : '#008069') : (isDarkTheme ? '#aeacb4' : '#54656f'),
-                  bgcolor: bottomNav === 3 ? (isDarkTheme ? 'rgba(0, 168, 132, 0.1)' : 'rgba(0, 128, 105, 0.1)') : 'transparent',
-                  borderRadius: '12px',
+                  color: bottomNav === 3 ? '#ffffff' : (isDarkTheme ? '#94a3b8' : '#64748b'),
+                  background: bottomNav === 3 ? 'var(--primary-gradient, linear-gradient(135deg, #ff5c8d 0%, #ff2d6c 100%))' : 'transparent',
+                  boxShadow: bottomNav === 3 ? '0 4px 14px rgba(0, 0, 0, 0.25), inset 0 1px 1px rgba(255, 255, 255, 0.4)' : 'none',
+                  borderRadius: '16px',
                   p: 1.25,
+                  transition: 'all 0.2s ease',
                   '&:hover': {
-                    bgcolor: isDarkTheme ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'
+                    background: bottomNav === 3 ? 'var(--primary-gradient, linear-gradient(135deg, #ff5c8d 0%, #ff2d6c 100%))' : (isDarkTheme ? 'rgba(255, 255, 255, 0.08)' : 'rgba(125, 125, 125, 0.08)'),
+                    color: bottomNav === 3 ? '#ffffff' : 'var(--primary-color, #ff4081)',
+                    transform: 'translateY(-1px)'
                   }
                 }}
               >
@@ -5001,20 +5422,21 @@ const ChatPage = () => {
                 onClick={() => { setIsNotificationView(false); setBottomNav(4); setSelectedUser(null); }}
                 sx={{
                   p: 0.5,
-                  border: bottomNav === 4 ? `2px solid ${isDarkTheme ? '#00a884' : '#008069'}` : '2px solid transparent',
+                  border: bottomNav === 4 ? '2.5px solid var(--primary-color, #ff4081)' : '2.5px solid transparent',
+                  borderRadius: '50%',
                   transition: 'all 0.2s ease',
                   '&:hover': {
-                    transform: 'scale(1.05)'
+                    transform: 'scale(1.08)'
                   }
                 }}
               >
-                {user && user.profileImage ? (
+                {user && (user.profileImage || user.profilePic) ? (
                   <Avatar
-                    src={user.profileImage.startsWith('data:') ? user.profileImage : `data:image/jpeg;base64,${user.profileImage}`}
-                    sx={{ width: 34, height: 34 }}
+                    src={getProfileSrc(user)}
+                    sx={{ width: 36, height: 36, border: '1.5px solid #fff' }}
                   />
                 ) : (
-                  <Avatar sx={{ width: 34, height: 34, bgcolor: 'var(--primary-color, #f06292)' }}>
+                  <Avatar sx={{ width: 36, height: 36, bgcolor: 'var(--primary-color, #ff4081)', color: '#fff', fontWeight: 'bold' }}>
                     {user?.username?.charAt(0).toUpperCase() || 'U'}
                   </Avatar>
                 )}
@@ -5068,6 +5490,7 @@ const ChatPage = () => {
                   setShowFinder={setShowFinder}
                   handleDeleteChats={handleDeleteChats}
                   onSignOut={() => setSignOutDialogOpen(true)}
+                  hideJerryBot={showCatalog || showUserGuide}
                 />
               ) : (
                 // Desktop always displays ChatList in this column
@@ -5099,6 +5522,7 @@ const ChatPage = () => {
                   setShowFinder={setShowFinder}
                   handleDeleteChats={handleDeleteChats}
                   onSignOut={() => setSignOutDialogOpen(true)}
+                  hideJerryBot={showCatalog || showUserGuide}
                 />
               )}
             </Box>
@@ -5152,7 +5576,7 @@ const ChatPage = () => {
           {/* Chat details pane (for active chat) or desktop splash screen */}
           {showChatPane && selectedUser ? (
             <Box
-              className="chat-pane-container"
+              className="chat-pane-container juicy-chat-ambient-bg"
               sx={{
                 flex: 1,
                 display: 'flex',
@@ -5160,7 +5584,10 @@ const ChatPage = () => {
                 height: '100%',
                 overflow: 'hidden',
                 position: 'relative',
-                bgcolor: 'var(--background-color, #fff)',
+                bgcolor: isDarkTheme ? '#120f17' : '#fff5f8',
+                background: isDarkTheme
+                  ? 'radial-gradient(circle at 50% 8%, rgba(255, 45, 108, 0.08) 0%, transparent 65%), #120f17'
+                  : 'radial-gradient(circle at 50% 8%, rgba(255, 92, 141, 0.12) 0%, rgba(255, 245, 248, 0.6) 60%), #fff7f9',
                 paddingBottom: isMobile ? `${keyboardHeight}px` : 0,
                 '&::before': {
                   content: '""',
@@ -5170,7 +5597,7 @@ const ChatPage = () => {
                   backgroundSize: 'var(--pattern-size, 20px 20px)',
                   backgroundRepeat: 'var(--pattern-repeat, repeat)',
                   backgroundPosition: 'var(--pattern-position, center)',
-                  opacity: 'var(--pattern-opacity, 0.05)',
+                  opacity: 'var(--pattern-opacity, 0.035)',
                   pointerEvents: 'none',
                   zIndex: 0,
                 }
@@ -5209,16 +5636,19 @@ const ChatPage = () => {
                 } : {
                   display: 'flex',
                   alignItems: 'center',
-                  bgcolor: 'var(--surface-color, #fff)',
-                  borderBottom: '1px solid #f1dcdc',
+                  bgcolor: isDarkTheme ? 'rgba(28, 22, 32, 0.92)' : 'rgba(255, 255, 255, 0.92)',
+                  backdropFilter: 'blur(20px)',
+                  WebkitBackdropFilter: 'blur(20px)',
+                  borderBottom: isDarkTheme ? '1px solid rgba(255, 92, 141, 0.15)' : '1px solid rgba(255, 92, 141, 0.14)',
+                  boxShadow: '0 4px 20px rgba(255, 45, 108, 0.06)',
                   justifyContent: 'space-between',
-                  p: 1,
+                  px: 2,
                   position: 'sticky !important',
                   top: '0 !important',
                   left: 'auto !important',
                   right: 'auto !important',
                   width: '100% !important',
-                  height: '56px !important',
+                  height: '60px !important',
                   zIndex: 1200,
                   flexShrink: 0,
                   boxSizing: 'border-box'
@@ -5230,23 +5660,25 @@ const ChatPage = () => {
                     <IconButton
                       onClick={handleBackToList}
                       sx={{
-                        width: 52,
-                        height: 52,
+                        width: 48,
+                        height: 48,
                         borderRadius: '50%',
                         backdropFilter: 'blur(20px)',
                         WebkitBackdropFilter: 'blur(20px)',
-                        background: 'var(--surface-color, #fff) !important',
-                        border: '1px solid var(--border-color, rgba(0,0,0,0.08))',
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                        background: isDarkTheme ? 'rgba(30, 24, 34, 0.88) !important' : 'rgba(255, 255, 255, 0.92) !important',
+                        border: isDarkTheme ? '1px solid rgba(255, 92, 141, 0.25)' : '1.5px solid rgba(255, 92, 141, 0.2)',
+                        boxShadow: '0 8px 24px rgba(255, 45, 108, 0.12), inset 0 1px 0 rgba(255,255,255,0.8)',
                         color: 'var(--text-color, #000) !important',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         p: 0,
-                        flexShrink: 0
+                        flexShrink: 0,
+                        transition: 'transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                        '&:active': { transform: 'scale(0.92)' }
                       }}
                     >
-                      <ArrowBackIcon sx={{ color: 'var(--text-color, #000)', fontSize: 24 }} />
+                      <ArrowBackIcon sx={{ color: 'var(--text-color, #000)', fontSize: 22 }} />
                     </IconButton>
 
                     {/* User Card Pill */}
@@ -5254,17 +5686,17 @@ const ChatPage = () => {
                       sx={{
                         flex: 1,
                         minWidth: 0,
-                        height: 52,
-                        borderRadius: '26px',
+                        height: 48,
+                        borderRadius: '24px',
                         backdropFilter: 'blur(20px)',
                         WebkitBackdropFilter: 'blur(20px)',
-                        background: 'var(--surface-color, #fff)',
-                        border: '1px solid var(--border-color, rgba(0,0,0,0.08))',
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                        background: isDarkTheme ? 'rgba(30, 24, 34, 0.88)' : 'rgba(255, 255, 255, 0.92)',
+                        border: isDarkTheme ? '1px solid rgba(255, 92, 141, 0.25)' : '1.5px solid rgba(255, 92, 141, 0.2)',
+                        boxShadow: '0 8px 24px rgba(255, 45, 108, 0.12), inset 0 1px 0 rgba(255,255,255,0.8)',
                         display: 'flex',
                         alignItems: 'center',
                         px: 1.5,
-                        gap: 1.5
+                        gap: 1.25
                       }}
                     >
                       <Box sx={{ position: 'relative', flexShrink: 0 }}>
@@ -5273,10 +5705,15 @@ const ChatPage = () => {
                           sx={{
                             width: 36,
                             height: 36,
-                            bgcolor: (!selectedUser.profilePic && !selectedUser.image) ? 'var(--primary-color, #ff4d86)' : 'transparent',
+                            background: (!selectedUser.profilePic && !selectedUser.image) ? 'var(--primary-gradient, linear-gradient(135deg, #ff5c8d 0%, #ff2d6c 100%))' : 'transparent',
                             color: '#fff',
                             fontWeight: 'bold',
-                            fontSize: '1rem'
+                            fontSize: '1rem',
+                            boxShadow: '0 2px 8px var(--primary-color-glow, rgba(255, 45, 108, 0.25))',
+                            '& .MuiAvatar-img': (selectedUser.isBot || selectedUser._id === 'lovebot') ? {
+                              objectPosition: 'center 85%',
+                              transform: 'scale(1.25) translateY(-3px)'
+                            } : {}
                           }}
                         >
                           {(selectedUser.username || selectedUser.name || '?')[0].toUpperCase()}
@@ -5290,15 +5727,15 @@ const ChatPage = () => {
                             height: 10,
                             borderRadius: '50%',
                             backgroundColor: selectedUser.isBot ? '#31a24c' : (isUserOnline(selectedUser._id) ? '#31a24c' : '#bdbdbd'),
-                            border: '2px solid var(--surface-color, #fff)',
-                            boxShadow: '0 0 4px rgba(0,0,0,0.2)'
+                            border: isDarkTheme ? '2px solid #1e1822' : '2px solid #ffffff',
+                            boxShadow: selectedUser.isBot || isUserOnline(selectedUser._id) ? '0 0 6px #31a24c' : 'none'
                           }}
                         />
                       </Box>
                       <Box sx={{ minWidth: 0, flex: 1 }}>
                         <Typography
                           sx={{
-                            fontWeight: 'bold',
+                            fontWeight: 700,
                             color: 'var(--text-color, #000)',
                             fontSize: '15px',
                             lineHeight: 1.2,
@@ -5318,7 +5755,8 @@ const ChatPage = () => {
                                 className={`lastseen-scroll-text ${isLong ? 'marquee-active' : ''}`}
                                 style={{
                                   fontSize: '11px',
-                                  color: selectedUser.isBot ? '#ff4d86' : (isUserOnline(selectedUser._id) ? '#31a24c' : 'var(--text-color, #666)'),
+                                  fontWeight: 500,
+                                  color: selectedUser.isBot ? '#ff2d6c' : (isUserOnline(selectedUser._id) ? '#31a24c' : 'var(--text-color, #666)'),
                                   opacity: selectedUser.isBot || isUserOnline(selectedUser._id) ? 1 : 0.7,
                                 }}
                               >
@@ -5334,16 +5772,16 @@ const ChatPage = () => {
                     {!selectedUser.isBot && (
                       <Box
                         sx={{
-                          height: 52,
-                          borderRadius: '26px',
+                          height: 48,
+                          borderRadius: '24px',
                           backdropFilter: 'blur(20px)',
                           WebkitBackdropFilter: 'blur(20px)',
-                          background: 'var(--surface-color, #fff)',
-                          border: '1px solid var(--border-color, rgba(0,0,0,0.08))',
-                          boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                          background: isDarkTheme ? 'rgba(30, 24, 34, 0.88)' : 'rgba(255, 255, 255, 0.92)',
+                          border: isDarkTheme ? '1px solid rgba(255, 92, 141, 0.25)' : '1.5px solid rgba(255, 92, 141, 0.2)',
+                          boxShadow: '0 8px 24px rgba(255, 45, 108, 0.12), inset 0 1px 0 rgba(255,255,255,0.8)',
                           display: 'flex',
                           alignItems: 'center',
-                          px: 1,
+                          px: 0.75,
                           gap: 0.5,
                           flexShrink: 0
                         }}
@@ -5357,12 +5795,14 @@ const ChatPage = () => {
                             color: '#34c759 !important',
                             width: 36,
                             height: 36,
+                            borderRadius: '50%',
+                            transition: 'all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
                             '&:hover': {
-                              background: 'rgba(52, 199, 89, 0.1)',
-                              transform: 'scale(1.08)'
+                              background: 'rgba(52, 199, 89, 0.12)',
+                              transform: 'scale(1.1)'
                             },
                             '&:active': {
-                              transform: 'scale(0.95)'
+                              transform: 'scale(0.92)'
                             }
                           }}
                         >
@@ -5374,19 +5814,21 @@ const ChatPage = () => {
                           disabled={videoCall.switchingCamera}
                           title="Video call"
                           sx={{
-                            color: 'var(--primary-color, #ff4d86) !important',
+                            color: '#ff2d6c !important',
                             width: 36,
                             height: 36,
+                            borderRadius: '50%',
+                            transition: 'all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
                             '&:hover': {
-                              background: 'rgba(255, 77, 134, 0.1)',
-                              transform: 'scale(1.08)'
+                              background: 'rgba(255, 45, 108, 0.12)',
+                              transform: 'scale(1.1)'
                             },
                             '&:active': {
-                              transform: 'scale(0.95)'
+                              transform: 'scale(0.92)'
                             }
                           }}
                         >
-                          <VideoCallIcon sx={{ fontSize: 20 }} />
+                          <VideoCallIcon sx={{ fontSize: 22 }} />
                         </IconButton>
                       </Box>
                     )}
@@ -5396,20 +5838,30 @@ const ChatPage = () => {
                     <Box sx={{ display: 'flex', alignItems: 'center' }}>
                       <IconButton
                         onClick={handleBackToList}
-                        sx={{ mr: 1 }}
+                        sx={{
+                          mr: 1,
+                          color: 'var(--text-color, #000)',
+                          borderRadius: '50%',
+                          '&:hover': { bgcolor: 'rgba(255, 77, 134, 0.08)' }
+                        }}
                       >
                         <ArrowBackIcon sx={{ color: 'var(--text-color, #000)' }} />
                       </IconButton>
-                      <Box sx={{ position: 'relative', mr: 1 }}>
+                      <Box sx={{ position: 'relative', mr: 1.5 }}>
                         <Avatar
                           src={selectedUser.profilePic || selectedUser.image || undefined}
                           sx={{
-                            width: 36,
-                            height: 36,
-                            bgcolor: (!selectedUser.profilePic && !selectedUser.image) ? 'var(--primary-color, #ff4d86)' : 'transparent',
+                            width: 40,
+                            height: 40,
+                            background: (!selectedUser.profilePic && !selectedUser.image) ? 'var(--primary-gradient, linear-gradient(135deg, #ff5c8d 0%, #ff2d6c 100%))' : 'transparent',
                             color: '#fff',
                             fontWeight: 'bold',
-                            fontSize: '1rem'
+                            fontSize: '1rem',
+                            boxShadow: '0 2px 8px var(--primary-color-glow, rgba(255, 45, 108, 0.2))',
+                            '& .MuiAvatar-img': (selectedUser.isBot || selectedUser._id === 'lovebot') ? {
+                              objectPosition: 'center 85%',
+                              transform: 'scale(1.25) translateY(-3px)'
+                            } : {}
                           }}
                         >
                           {(selectedUser.username || selectedUser.name || '?')[0].toUpperCase()}
@@ -5423,25 +5875,26 @@ const ChatPage = () => {
                             height: 12,
                             borderRadius: '50%',
                             backgroundColor: selectedUser.isBot ? '#31a24c' : (isUserOnline(selectedUser._id) ? '#31a24c' : '#bdbdbd'),
-                            border: '2px solid white',
-                            boxShadow: '0 0 4px rgba(0,0,0,0.2)'
+                            border: isDarkTheme ? '2px solid #1c1620' : '2px solid white',
+                            boxShadow: selectedUser.isBot || isUserOnline(selectedUser._id) ? '0 0 6px #31a24c' : 'none'
                           }}
                         />
                       </Box>
                       <Box>
-                        <Typography sx={{ fontWeight: 500, color: 'var(--text-color, #000)' }}>
+                        <Typography sx={{ fontWeight: 700, color: 'var(--text-color, #000)', fontSize: '1rem' }}>
                           {selectedUser.username || selectedUser.name}
                         </Typography>
                         {(() => {
                           const statusText = selectedUser.isBot ? 'AI Love Assistant 🤖' : (isUserOnline(selectedUser._id) ? 'Online' : formatLastSeen(lastSeenTimes[selectedUser._id?.toString()], 'whatsapp'));
                           const isLong = statusText && statusText.length > 20 && !isUserOnline(selectedUser._id);
                           return (
-                            <div className="lastseen-scroll-container" style={{ maxWidth: '180px' }}>
+                            <div className="lastseen-scroll-container" style={{ maxWidth: '220px' }}>
                               <span
                                 className={`lastseen-scroll-text ${isLong ? 'marquee-active' : ''}`}
                                 style={{
                                   fontSize: '0.75rem',
-                                  color: selectedUser.isBot ? 'var(--primary-color, #ff4d86)' : (isUserOnline(selectedUser._id) ? '#31a24c' : '#999'),
+                                  fontWeight: 500,
+                                  color: selectedUser.isBot ? '#ff2d6c' : (isUserOnline(selectedUser._id) ? '#31a24c' : '#999'),
                                 }}
                               >
                                 {isLong ? `${statusText} \u00a0\u00a0\u00a0\u00a0\u00a0\u00a0 ${statusText} \u00a0\u00a0\u00a0\u00a0\u00a0\u00a0` : statusText}
@@ -5462,16 +5915,16 @@ const ChatPage = () => {
                           }}
                           title="Audio call"
                           sx={{
-                            background: 'linear-gradient(135deg, rgba(76, 217, 100, 0.08), rgba(52, 199, 89, 0.15))',
-                            border: '1px solid rgba(52, 199, 89, 0.25)',
-                            borderRadius: '12px',
-                            p: 1,
+                            background: 'linear-gradient(135deg, rgba(76, 217, 100, 0.1), rgba(52, 199, 89, 0.18))',
+                            border: '1px solid rgba(52, 199, 89, 0.3)',
+                            borderRadius: '14px',
+                            p: 1.1,
                             transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
                             '&:hover': {
-                              background: 'linear-gradient(135deg, rgba(76, 217, 100, 0.15), rgba(52, 199, 89, 0.25))',
+                              background: 'linear-gradient(135deg, rgba(76, 217, 100, 0.2), rgba(52, 199, 89, 0.3))',
                               transform: 'translateY(-2px) scale(1.08)',
-                              boxShadow: '0 4px 12px rgba(52, 199, 89, 0.2)',
-                              borderColor: 'rgba(52, 199, 89, 0.45)',
+                              boxShadow: '0 4px 14px rgba(52, 199, 89, 0.25)',
+                              borderColor: 'rgba(52, 199, 89, 0.5)',
                             },
                             '&:active': {
                               transform: 'translateY(0) scale(0.95)',
@@ -5488,23 +5941,23 @@ const ChatPage = () => {
                           }}
                           title="Video call"
                           sx={{
-                            background: 'linear-gradient(135deg, rgba(255, 77, 134, 0.08), rgba(240, 98, 146, 0.15))',
-                            border: '1px solid rgba(255, 77, 134, 0.25)',
-                            borderRadius: '12px',
-                            p: 1,
+                            background: 'linear-gradient(135deg, rgba(255, 92, 141, 0.12), rgba(255, 45, 108, 0.2))',
+                            border: '1px solid rgba(255, 92, 141, 0.3)',
+                            borderRadius: '14px',
+                            p: 1.1,
                             transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
                             '&:hover': {
-                              background: 'linear-gradient(135deg, rgba(255, 77, 134, 0.15), rgba(240, 98, 146, 0.25))',
+                              background: 'linear-gradient(135deg, rgba(255, 92, 141, 0.22), rgba(255, 45, 108, 0.32))',
                               transform: 'translateY(-2px) scale(1.08)',
-                              boxShadow: '0 4px 12px rgba(255, 77, 134, 0.2)',
-                              borderColor: 'rgba(255, 77, 134, 0.45)',
+                              boxShadow: '0 4px 14px rgba(255, 45, 108, 0.25)',
+                              borderColor: 'rgba(255, 45, 108, 0.5)',
                             },
                             '&:active': {
                               transform: 'translateY(0) scale(0.95)',
                             }
                           }}
                         >
-                          <VideoCallIcon sx={{ color: 'var(--primary-color, #ff4d86)', fontSize: 20 }} />
+                          <VideoCallIcon sx={{ color: 'var(--primary-color, #ff2d6c)', fontSize: 22 }} />
                         </IconButton>
                       </Box>
                     )}
@@ -5556,8 +6009,24 @@ const ChatPage = () => {
                         const prev = currentConversationMessages[idx - 1];
                         const showDateSeparator = !prev || prev.date !== msg.date;
                         return showDateSeparator ? (
-                          <Box sx={{ textAlign: 'center', mb: 2, mt: 2 }}>
-                            <Typography variant="caption" sx={{ color: '#999' }}>
+                          <Box sx={{ textAlign: 'center', mb: 2.5, mt: 2 }}>
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                color: isDarkTheme ? '#e0c8d6' : '#8a6279',
+                                bgcolor: isDarkTheme ? 'rgba(38, 28, 42, 0.75)' : 'rgba(255, 255, 255, 0.82)',
+                                backdropFilter: 'blur(10px)',
+                                WebkitBackdropFilter: 'blur(10px)',
+                                px: 2,
+                                py: 0.5,
+                                borderRadius: '12px',
+                                fontSize: '0.75rem',
+                                fontWeight: 600,
+                                boxShadow: '0 2px 8px rgba(255, 45, 108, 0.08)',
+                                border: isDarkTheme ? '1px solid rgba(255, 92, 141, 0.2)' : '1px solid rgba(255, 92, 141, 0.15)',
+                                display: 'inline-block'
+                              }}
+                            >
                               {msg.date || formatDate(new Date(msg.timestamp || Date.now()))}
                             </Typography>
                           </Box>
@@ -5668,36 +6137,44 @@ const ChatPage = () => {
                           }}
 
                           sx={{
-                            p: msg.type === 'sticker' ? 0.5 : '8px 12px 6px',
-                            maxWidth: msg.document ? { xs: '85%', sm: '75%' } : '75%',
-                            borderRadius: msg.type === 'sticker' ? 0 : ((msg.senderId === user?._id || msg.sender === 'You') ? '8px 0px 8px 8px' : '0px 8px 8px 8px'),
-                            bgcolor: msg.type === 'sticker' ? 'transparent' : ((msg.senderId === user?._id || msg.sender === 'You') ? (isDarkTheme ? '#005c4b' : '#d9fdd3') : (isDarkTheme ? '#202c33' : '#ffffff')),
-                            color: msg.type === 'sticker' ? 'inherit' : (isDarkTheme ? '#e9edef' : '#111b21'),
-                            boxShadow: msg.type === 'sticker' ? 'none' : '0 1px 1.5px rgba(0,0,0,0.12)',
+                            p: msg.type === 'sticker' ? 0.5 : '10px 14px 8px',
+                            maxWidth: msg.document ? { xs: '85%', sm: '75%' } : '78%',
+                            borderRadius: msg.type === 'sticker'
+                              ? 0
+                              : ((msg.senderId === user?._id || msg.sender === 'You')
+                                ? '20px 20px 4px 20px'
+                                : '20px 20px 20px 4px'),
+                            background: msg.type === 'sticker'
+                              ? 'transparent'
+                              : ((msg.senderId === user?._id || msg.sender === 'You')
+                                ? 'var(--primary-gradient, linear-gradient(135deg, #ff5c8d 0%, #ff2d6c 100%))'
+                                : (isDarkTheme ? 'rgba(32, 26, 36, 0.95)' : '#ffffff')),
+                            color: msg.type === 'sticker'
+                              ? 'inherit'
+                              : ((msg.senderId === user?._id || msg.sender === 'You')
+                                ? '#ffffff'
+                                : (isDarkTheme ? '#f3e8ee' : '#1e1a24')),
+                            border: msg.type === 'sticker'
+                              ? 'none'
+                              : ((msg.senderId === user?._id || msg.sender === 'You')
+                                ? '1px solid rgba(255, 255, 255, 0.18)'
+                                : (isDarkTheme ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(125, 125, 125, 0.15)')),
+                            boxShadow: msg.type === 'sticker'
+                              ? 'none'
+                              : ((msg.senderId === user?._id || msg.sender === 'You')
+                                ? '0 6px 18px var(--primary-color-glow, rgba(255, 45, 108, 0.22)), 0 2px 6px var(--primary-color-alpha, rgba(255, 45, 108, 0.12))'
+                                : (isDarkTheme ? '0 4px 16px rgba(0, 0, 0, 0.35)' : '0 4px 16px rgba(0, 0, 0, 0.06), 0 2px 4px rgba(0,0,0,0.03)')),
                             position: 'relative',
                             overflow: 'visible',
                             cursor: (detectWishType(msg.text) || detectHeartKeyword(msg.text)) ? 'pointer' : 'default',
                             transition: 'transform 0.15s ease-in-out, box-shadow 0.15s ease-in-out',
                             '&:hover': (detectWishType(msg.text) || detectHeartKeyword(msg.text)) ? {
                               transform: 'scale(1.03)',
-                              boxShadow: '0 4px 10px rgba(0,0,0,0.15)',
+                              boxShadow: '0 8px 20px rgba(255, 45, 108, 0.25)',
                             } : {},
                             '&:active': (detectWishType(msg.text) || detectHeartKeyword(msg.text)) ? {
                               transform: 'scale(0.98)',
                             } : {},
-                            // WhatsApp-style bubble tail
-                            '&::after': (msg.type === 'sticker' || msg.type === 'deleted' || msg.deletedForEveryone) ? {} : {
-                              content: '""',
-                              position: 'absolute',
-                              top: 0,
-                              right: (msg.senderId === user?._id || msg.sender === 'You') ? -8 : 'auto',
-                              left: (msg.senderId === user?._id || msg.sender === 'You') ? 'auto' : -8,
-                              width: 8,
-                              height: 13,
-                              bgcolor: (msg.senderId === user?._id || msg.sender === 'You') ? (isDarkTheme ? '#005c4b' : '#d9fdd3') : (isDarkTheme ? '#202c33' : '#ffffff'),
-                              clipPath: (msg.senderId === user?._id || msg.sender === 'You') ? 'polygon(0 0, 100% 0, 0 100%)' : 'polygon(0 0, 100% 0, 100% 100%)',
-                              zIndex: 1
-                            },
                             ...(msg.replyTo && {
                               mt: 1,
                               '&::before': {
@@ -5708,7 +6185,7 @@ const ChatPage = () => {
                                 right: (msg.senderId === user?._id || msg.sender === 'You') ? 12 : 'auto',
                                 width: 2,
                                 height: 8,
-                                bgcolor: 'var(--primary-color, #ff4d86)'
+                                bgcolor: (msg.senderId === user?._id || msg.sender === 'You') ? '#ffffff' : 'var(--primary-color, #ff4d86)'
                               }
                             })
                           }}
@@ -5768,9 +6245,13 @@ const ChatPage = () => {
                                     }
                                   }}
                                   sx={{
-                                    bgcolor: 'rgba(0,0,0,0.04)',
-                                    borderLeft: '4px solid var(--primary-color, #ff4d86)',
-                                    borderRadius: '4px',
+                                    bgcolor: (msg.senderId === user?._id || msg.sender === 'You')
+                                      ? 'rgba(0, 0, 0, 0.16)'
+                                      : (isDarkTheme ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 92, 141, 0.08)'),
+                                    borderLeft: (msg.senderId === user?._id || msg.sender === 'You')
+                                      ? '4px solid #ffffff'
+                                      : '4px solid var(--primary-color, #ff4d86)',
+                                    borderRadius: '8px',
                                     p: 1,
                                     mb: 1,
                                     fontSize: '0.9em',
@@ -5778,19 +6259,23 @@ const ChatPage = () => {
                                     userSelect: 'none',
                                     transition: 'background-color 0.2s ease',
                                     '&:hover': {
-                                      bgcolor: 'rgba(0,0,0,0.08)'
+                                      bgcolor: (msg.senderId === user?._id || msg.sender === 'You')
+                                        ? 'rgba(0, 0, 0, 0.22)'
+                                        : 'rgba(255, 92, 141, 0.14)'
                                     },
                                     '&:active': {
-                                      bgcolor: 'rgba(0,0,0,0.12)'
+                                      bgcolor: (msg.senderId === user?._id || msg.sender === 'You')
+                                        ? 'rgba(0, 0, 0, 0.28)'
+                                        : 'rgba(255, 92, 141, 0.2)'
                                     }
                                   }}
                                 >
-                                  <Typography variant="caption" sx={{ color: 'var(--primary-color, #ff4d86)', fontWeight: 700 }}>
+                                  <Typography variant="caption" sx={{ color: (msg.senderId === user?._id || msg.sender === 'You') ? '#ffffff' : 'var(--primary-color, #ff4d86)', fontWeight: 700 }}>
                                     {((msg.replyTo || msg.replyMetadata).type === 'message_reply')
                                       ? '💬 Replying to message'
                                       : (((msg.replyTo || msg.replyMetadata).originalType === 'emoji') ? '😊 Replying to emoji' : '💬 Replying to mood')}
                                   </Typography>
-                                  <Typography sx={{ color: 'text.secondary', mt: 0.25, wordBreak: 'break-word' }}>
+                                  <Typography sx={{ color: (msg.senderId === user?._id || msg.sender === 'You') ? 'rgba(255, 255, 255, 0.9)' : 'text.secondary', mt: 0.25, wordBreak: 'break-word' }}>
                                     {formatReplyContent((msg.replyTo || msg.replyMetadata).originalContent)}
                                   </Typography>
                                 </Box>
@@ -6080,7 +6565,9 @@ const ChatPage = () => {
                               <Typography
                                 variant="caption"
                                 sx={{
-                                  color: isDarkTheme ? '#8696a0' : '#667781',
+                                  color: (msg.senderId === user?._id || msg.sender === 'You')
+                                    ? 'rgba(255, 255, 255, 0.75)'
+                                    : (isDarkTheme ? '#8696a0' : '#8e8e93'),
                                   fontSize: '0.65rem',
                                   mr: 0.5,
                                 }}
@@ -6091,7 +6578,9 @@ const ChatPage = () => {
                             <Typography
                               variant="caption"
                               sx={{
-                                color: isDarkTheme ? '#8696a0' : '#667781',
+                                color: (msg.senderId === user?._id || msg.sender === 'You')
+                                  ? 'rgba(255, 255, 255, 0.85)'
+                                  : (isDarkTheme ? '#8696a0' : '#8e8e93'),
                                 fontSize: '0.7rem',
                                 whiteSpace: 'nowrap',
                               }}
@@ -6099,16 +6588,17 @@ const ChatPage = () => {
                               {msg.timestamp}
                             </Typography>
                             {(msg.senderId === user?._id || msg.sender === 'You') && (() => {
-                              // WhatsApp-style read receipts
-                              // single gray tick  → sent (temp ID, not yet confirmed by server)
-                              // double gray ticks → delivered (server confirmed, not yet read)
-                              // double teal ticks → read/seen
+                              // Read receipts
                               const isTempId = msg.id && !/^[0-9a-fA-F]{24}$/.test(String(msg.id));
                               const isRead = msg.read === true;
                               const isDelivered = !isTempId; // has a real MongoDB _id → delivered
 
+                              const tickColorSeen = '#ffffff';
+                              const tickColorDelivered = 'rgba(255, 255, 255, 0.75)';
+                              const tickColorSent = 'rgba(255, 255, 255, 0.75)';
+
                               if (isRead) {
-                                // Double teal ticks (seen)
+                                // Double ticks (seen)
                                 return (
                                   <Box
                                     component="span"
@@ -6116,15 +6606,13 @@ const ChatPage = () => {
                                     title="Seen"
                                   >
                                     <svg width="18" height="11" viewBox="0 0 18 11" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                      {/* First tick */}
-                                      <path d="M1 5.5L4.5 9L10 2" stroke="#53BDEB" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                                      {/* Second tick (offset right) */}
-                                      <path d="M6 5.5L9.5 9L17 1" stroke="#53BDEB" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                                      <path d="M1 5.5L4.5 9L10 2" stroke={tickColorSeen} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                                      <path d="M6 5.5L9.5 9L17 1" stroke={tickColorSeen} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                                     </svg>
                                   </Box>
                                 );
                               } else if (isDelivered) {
-                                // Double gray ticks (delivered, not yet read)
+                                // Double ticks (delivered, not yet read)
                                 return (
                                   <Box
                                     component="span"
@@ -6132,13 +6620,13 @@ const ChatPage = () => {
                                     title="Delivered"
                                   >
                                     <svg width="18" height="11" viewBox="0 0 18 11" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                      <path d="M1 5.5L4.5 9L10 2" stroke={isDarkTheme ? '#8696a0' : '#92A8B4'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                                      <path d="M6 5.5L9.5 9L17 1" stroke={isDarkTheme ? '#8696a0' : '#92A8B4'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                                      <path d="M1 5.5L4.5 9L10 2" stroke={tickColorDelivered} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                                      <path d="M6 5.5L9.5 9L17 1" stroke={tickColorDelivered} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                                     </svg>
                                   </Box>
                                 );
                               } else {
-                                // Single gray tick (sent, pending server confirmation)
+                                // Single tick (sent, pending server confirmation)
                                 return (
                                   <Box
                                     component="span"
@@ -6146,7 +6634,7 @@ const ChatPage = () => {
                                     title="Sent"
                                   >
                                     <svg width="12" height="11" viewBox="0 0 12 11" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                      <path d="M1 5.5L4.5 9L11 1" stroke={isDarkTheme ? '#8696a0' : '#92A8B4'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                                      <path d="M1 5.5L4.5 9L11 1" stroke={tickColorSent} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                                     </svg>
                                   </Box>
                                 );
@@ -6170,19 +6658,19 @@ const ChatPage = () => {
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: '2px',
-                                bgcolor: 'var(--surface-color, #fff)',
-                                border: '1px solid rgba(0, 0, 0, 0.08)',
-                                borderRadius: '12px',
-                                px: '6px',
-                                py: '1.5px',
-                                boxShadow: '0 2px 5px rgba(0,0,0,0.12)',
+                                bgcolor: isDarkTheme ? '#2a222f' : '#ffffff',
+                                border: isDarkTheme ? '1px solid rgba(255, 92, 141, 0.3)' : '1px solid rgba(255, 92, 141, 0.2)',
+                                borderRadius: '14px',
+                                px: '7px',
+                                py: '2px',
+                                boxShadow: '0 4px 12px rgba(255, 45, 108, 0.15)',
                                 zIndex: 3,
                                 cursor: 'pointer',
                                 userSelect: 'none',
                                 transition: 'all 0.2s ease',
                                 '&:hover': {
                                   transform: 'scale(1.08)',
-                                  boxShadow: '0 3px 8px rgba(0,0,0,0.18)'
+                                  boxShadow: '0 6px 16px rgba(255, 45, 108, 0.25)'
                                 }
                               }}
                               onClick={(e) => {
@@ -6255,17 +6743,43 @@ const ChatPage = () => {
                 )}
                 {/* Reply Badge (when active, show above input) */}
                 {replyMetadata && (
-                  <Paper sx={{ p: 1, bgcolor: '#fff0f4', borderRadius: 1, display: 'flex', alignItems: 'center', gap: 1, mx: 1, mt: 1 }}>
+                  <Paper
+                    sx={{
+                      p: 1.25,
+                      bgcolor: isDarkTheme ? 'rgba(38, 28, 42, 0.92)' : 'rgba(255, 240, 246, 0.95)',
+                      backdropFilter: 'blur(16px)',
+                      WebkitBackdropFilter: 'blur(16px)',
+                      borderRadius: '16px',
+                      border: isDarkTheme ? '1px solid rgba(255, 92, 141, 0.25)' : '1px solid rgba(255, 92, 141, 0.2)',
+                      borderLeft: '4px solid var(--primary-color, #ff2d6c)',
+                      boxShadow: '0 4px 14px var(--primary-color-alpha, rgba(255, 45, 108, 0.1))',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1.25,
+                      mx: 1.5,
+                      mt: 1
+                    }}
+                  >
                     <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Typography variant="caption" sx={{ color: '#ff4d86', fontWeight: 700 }}>
+                      <Typography variant="caption" sx={{ color: 'var(--primary-color, #ff2d6c)', fontWeight: 700, fontSize: '0.75rem' }}>
                         Replying to
                       </Typography>
-                      <Typography sx={{ fontSize: 12, color: '#333', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <Typography sx={{ fontSize: 13, color: isDarkTheme ? '#e0c8d6' : '#333', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {formatReplyContent(replyMetadata.originalContent)}
                       </Typography>
                     </Box>
-                    <IconButton size="small" onClick={() => setReplyMetadata(null)} sx={{ bgcolor: '#fff', flexShrink: 0, p: 0.5 }}>
-                      <CloseIcon sx={{ fontSize: 16 }} />
+                    <IconButton
+                      size="small"
+                      onClick={() => setReplyMetadata(null)}
+                      sx={{
+                        bgcolor: isDarkTheme ? 'rgba(255, 255, 255, 0.1)' : '#ffffff',
+                        border: '1px solid rgba(255, 92, 141, 0.2)',
+                        flexShrink: 0,
+                        p: 0.5,
+                        '&:hover': { bgcolor: 'rgba(255, 77, 134, 0.1)' }
+                      }}
+                    >
+                      <CloseIcon sx={{ fontSize: 16, color: 'var(--text-color, #000)' }} />
                     </IconButton>
                   </Paper>
                 )}
@@ -6278,12 +6792,13 @@ const ChatPage = () => {
                     alignItems: 'center',
                     py: 1.5,
                     px: 3,
-                    bgcolor: 'rgba(255, 145, 0, 0.08)',
-                    borderRadius: '18px',
+                    bgcolor: isDarkTheme ? 'rgba(255, 145, 0, 0.12)' : 'rgba(255, 145, 0, 0.08)',
+                    borderRadius: '20px',
                     mx: 1.5,
                     my: 1,
-                    border: '1px solid rgba(255, 145, 0, 0.2)',
-                    width: '100%'
+                    border: '1px solid rgba(255, 145, 0, 0.25)',
+                    width: 'calc(100% - 24px)',
+                    boxSizing: 'border-box'
                   }}>
                     <Typography sx={{ color: '#ff9100', fontWeight: 600, fontSize: '0.9rem', textAlign: 'center' }}>
                       You blocked this contact.{' '}
@@ -6302,24 +6817,33 @@ const ChatPage = () => {
                   <Box sx={{
                     position: 'relative',
                     display: 'flex',
-                    gap: 1.5,
+                    gap: 1.25,
                     alignItems: 'center',
-                    px: 1.5,
+                    px: { xs: 1.25, sm: 2 },
                     py: 1,
                     bgcolor: 'transparent',
                     width: '100%',
+                    boxSizing: 'border-box'
                   }}>
                     {/* Input Pill */}
                     <Box sx={{
                       display: 'flex',
                       alignItems: 'center',
                       flex: 1,
-                      bgcolor: 'var(--surface-color, #fff)',
-                      borderRadius: '24px',
+                      bgcolor: isDarkTheme ? 'rgba(30, 24, 34, 0.9)' : 'rgba(255, 255, 255, 0.92)',
+                      backdropFilter: 'blur(20px)',
+                      WebkitBackdropFilter: 'blur(20px)',
+                      borderRadius: '28px',
                       px: 1,
                       py: 0.5,
-                      boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                      border: isDarkTheme ? '1px solid rgba(255, 92, 141, 0.25)' : '1.5px solid rgba(255, 92, 141, 0.2)',
+                      boxShadow: isDarkTheme ? '0 4px 18px rgba(0, 0, 0, 0.3)' : '0 6px 20px rgba(255, 45, 108, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9)',
                       position: 'relative',
+                      transition: 'border-color 0.2s, box-shadow 0.2s',
+                      '&:focus-within': {
+                        borderColor: 'var(--primary-color, #ff2d6c)',
+                        boxShadow: '0 8px 24px var(--primary-color-glow, rgba(255, 45, 108, 0.16))',
+                      }
                     }}>
                       {/* Attach button */}
                       {!selectedUser.isBot && (
@@ -6330,8 +6854,12 @@ const ChatPage = () => {
                             setShowEmojiPicker(false);
                           }}
                           sx={{
-                            color: 'var(--primary-color, #ff4d4d)',
-                            '&:hover': { bgcolor: 'rgba(255, 77, 77, 0.08)' },
+                            color: 'var(--primary-color, #ff2d6c)',
+                            transition: 'all 0.2s ease',
+                            '&:hover': {
+                              bgcolor: 'rgba(255, 77, 134, 0.12)',
+                              transform: 'scale(1.08)'
+                            },
                             flexShrink: 0,
                             p: 0.75,
                           }}
@@ -6347,9 +6875,12 @@ const ChatPage = () => {
                             position: 'absolute',
                             bottom: '100%',
                             left: 8,
-                            bgcolor: 'var(--surface-color, #fff)',
-                            borderRadius: 2,
-                            boxShadow: 3,
+                            bgcolor: isDarkTheme ? 'rgba(30, 24, 34, 0.96)' : 'rgba(255, 255, 255, 0.96)',
+                            backdropFilter: 'blur(20px)',
+                            WebkitBackdropFilter: 'blur(20px)',
+                            borderRadius: '22px',
+                            border: isDarkTheme ? '1px solid rgba(255, 92, 141, 0.25)' : '1px solid rgba(255, 92, 141, 0.2)',
+                            boxShadow: '0 12px 36px rgba(255, 45, 108, 0.18)',
                             p: 2,
                             display: 'flex',
                             gap: 2,
@@ -6361,12 +6892,14 @@ const ChatPage = () => {
                               display: 'flex',
                               flexDirection: 'column',
                               alignItems: 'center',
-                              cursor: 'pointer'
+                              cursor: 'pointer',
+                              transition: 'transform 0.15s ease',
+                              '&:hover': { transform: 'scale(1.1)' }
                             }}
                             onClick={() => fileInputRef.current?.click()}
                           >
-                            <ImageIcon sx={{ color: 'var(--primary-color, #ff4d4d)', fontSize: 28 }} />
-                            <Typography variant="caption" sx={{ color: 'var(--text-color, #000)' }}>File</Typography>
+                            <ImageIcon sx={{ color: 'var(--primary-color, #ff2d6c)', fontSize: 28 }} />
+                            <Typography variant="caption" sx={{ color: 'var(--text-color, #000)', fontWeight: 600 }}>File</Typography>
                           </Box>
 
                           <Box
@@ -6375,7 +6908,8 @@ const ChatPage = () => {
                               flexDirection: 'column',
                               alignItems: 'center',
                               cursor: 'pointer',
-                              '&:hover': { opacity: 0.8 }
+                              transition: 'transform 0.15s ease',
+                              '&:hover': { transform: 'scale(1.1)' }
                             }}
                             onClick={() => {
                               handleCaptureClick();
@@ -6383,7 +6917,7 @@ const ChatPage = () => {
                             }}
                           >
                             <CameraAltIcon sx={{ color: '#1976d2', fontSize: 28 }} />
-                            <Typography variant="caption" sx={{ color: 'var(--text-color, #000)' }}>Camera</Typography>
+                            <Typography variant="caption" sx={{ color: 'var(--text-color, #000)', fontWeight: 600 }}>Camera</Typography>
                           </Box>
 
                           <Box
@@ -6392,7 +6926,8 @@ const ChatPage = () => {
                               flexDirection: 'column',
                               alignItems: 'center',
                               cursor: 'pointer',
-                              '&:hover': { opacity: 0.8 }
+                              transition: 'transform 0.15s ease',
+                              '&:hover': { transform: 'scale(1.1)' }
                             }}
                             onClick={() => {
                               setShowStickerDialog(true);
@@ -6400,7 +6935,7 @@ const ChatPage = () => {
                             }}
                           >
                             <EmojiEmotionsIcon sx={{ color: '#2e7d32', fontSize: 28 }} />
-                            <Typography variant="caption" sx={{ color: 'var(--text-color, #000)' }}>Sticker</Typography>
+                            <Typography variant="caption" sx={{ color: 'var(--text-color, #000)', fontWeight: 600 }}>Sticker</Typography>
                           </Box>
 
                           <Box
@@ -6409,15 +6944,16 @@ const ChatPage = () => {
                               flexDirection: 'column',
                               alignItems: 'center',
                               cursor: 'pointer',
-                              '&:hover': { opacity: 0.8 }
+                              transition: 'transform 0.15s ease',
+                              '&:hover': { transform: 'scale(1.1)' }
                             }}
                             onClick={() => {
                               setDoodleMode(true);
                               setShowAttachMenu(false);
                             }}
                           >
-                            <BrushIcon sx={{ color: '#6b21a8', fontSize: 28 }} />
-                            <Typography variant="caption" sx={{ color: 'var(--text-color, #000)' }}>Draw</Typography>
+                            <BrushIcon sx={{ color: '#8e24aa', fontSize: 28 }} />
+                            <Typography variant="caption" sx={{ color: 'var(--text-color, #000)', fontWeight: 600 }}>Draw</Typography>
                           </Box>
 
                           <Box
@@ -6426,7 +6962,8 @@ const ChatPage = () => {
                               flexDirection: 'column',
                               alignItems: 'center',
                               cursor: 'pointer',
-                              '&:hover': { opacity: 0.8 }
+                              transition: 'transform 0.15s ease',
+                              '&:hover': { transform: 'scale(1.1)' }
                             }}
                             onClick={() => {
                               setGameSelectorOpen(true);
@@ -6434,7 +6971,7 @@ const ChatPage = () => {
                             }}
                           >
                             <SportsEsportsIcon sx={{ color: '#ff9800', fontSize: 28 }} />
-                            <Typography variant="caption" sx={{ color: 'var(--text-color, #000)' }}>Games</Typography>
+                            <Typography variant="caption" sx={{ color: 'var(--text-color, #000)', fontWeight: 600 }}>Games</Typography>
                           </Box>
                         </Box>
                       )}
@@ -6484,8 +7021,12 @@ const ChatPage = () => {
                           setShowAttachMenu(false);
                         }}
                         sx={{
-                          color: 'var(--primary-color, #ff4d4d)',
-                          '&:hover': { bgcolor: 'rgba(255, 77, 77, 0.08)' },
+                          color: 'var(--primary-color, #ff2d6c)',
+                          transition: 'all 0.2s ease',
+                          '&:hover': {
+                            bgcolor: 'rgba(255, 77, 134, 0.12)',
+                            transform: 'scale(1.08)'
+                          },
                           flexShrink: 0,
                           p: 0.75,
                         }}
@@ -6529,22 +7070,26 @@ const ChatPage = () => {
                         onClick={handleSendMessage}
                         disabled={!message.trim()}
                         sx={{
-                          bgcolor: 'var(--primary-color, #ff4d4d)',
-                          color: '#ffffff',
-                          width: 46,
-                          height: 46,
+                          background: 'var(--primary-gradient, linear-gradient(135deg, #ff5c8d 0%, #ff2d6c 100%)) !important',
+                          color: '#ffffff !important',
+                          width: 48,
+                          height: 48,
+                          borderRadius: '50%',
+                          flexShrink: 0,
+                          boxShadow: '0 8px 20px var(--primary-color-glow, rgba(255, 45, 108, 0.35)), inset 0 1px 1px rgba(255, 255, 255, 0.4)',
+                          transition: 'all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
                           '&:hover': {
-                            bgcolor: 'var(--primary-color, #ff4d4d)',
-                            opacity: 0.9,
+                            transform: 'translateY(-2px) scale(1.05)',
+                            boxShadow: '0 12px 26px var(--primary-color-glow, rgba(255, 45, 108, 0.45))',
+                          },
+                          '&:active': {
+                            transform: 'scale(0.92)',
                           },
                           '&.Mui-disabled': {
-                            bgcolor: isDarkTheme ? 'rgba(255, 255, 255, 0.16)' : 'rgba(0, 0, 0, 0.12)',
-                            color: isDarkTheme ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.35)',
-                            border: isDarkTheme ? '1px solid rgba(255, 255, 255, 0.25)' : '1px solid rgba(0, 0, 0, 0.08)',
+                            background: isDarkTheme ? 'rgba(255, 255, 255, 0.12) !important' : 'rgba(0, 0, 0, 0.12) !important',
+                            color: isDarkTheme ? 'rgba(255, 255, 255, 0.35) !important' : 'rgba(0, 0, 0, 0.25) !important',
+                            boxShadow: 'none',
                           },
-                          flexShrink: 0,
-                          boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
-                          transition: 'all 0.2s ease',
                         }}
                       >
                         <SendIcon sx={{ fontSize: 22 }} />
@@ -6553,17 +7098,21 @@ const ChatPage = () => {
                       <IconButton
                         onClick={handleMicClick}
                         sx={{
-                          bgcolor: 'var(--primary-color, #ff4d4d)',
-                          color: '#fff',
-                          width: 46,
-                          height: 46,
-                          '&:hover': {
-                            bgcolor: 'var(--primary-color, #ff4d4d)',
-                            opacity: 0.9,
-                          },
+                          background: 'var(--primary-gradient, linear-gradient(135deg, #ff5c8d 0%, #ff2d6c 100%)) !important',
+                          color: '#ffffff !important',
+                          width: 48,
+                          height: 48,
+                          borderRadius: '50%',
                           flexShrink: 0,
-                          boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
-                          transition: 'all 0.2s ease',
+                          boxShadow: '0 8px 20px rgba(255, 45, 108, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.4)',
+                          transition: 'all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                          '&:hover': {
+                            transform: 'translateY(-2px) scale(1.05)',
+                            boxShadow: '0 12px 26px rgba(255, 45, 108, 0.45)',
+                          },
+                          '&:active': {
+                            transform: 'scale(0.92)',
+                          },
                         }}
                       >
                         <MicIcon sx={{ fontSize: 22 }} />
@@ -6691,11 +7240,14 @@ const ChatPage = () => {
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    bgcolor: isDarkTheme ? '#222e35' : '#f8f9fa',
+                    bgcolor: isDarkTheme ? '#120f17' : '#fff5f8',
+                    background: isDarkTheme
+                      ? 'radial-gradient(circle at 50% 40%, rgba(255, 45, 108, 0.08) 0%, transparent 70%), #120f17'
+                      : 'radial-gradient(circle at 50% 40%, rgba(255, 92, 141, 0.12) 0%, rgba(255, 245, 248, 0.6) 65%), #fff7f9',
                     position: 'relative',
                     px: 4,
                     textAlign: 'center',
-                    borderLeft: isDarkTheme ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(241,220,220,0.5)',
+                    borderLeft: isDarkTheme ? '1px solid rgba(255, 92, 141, 0.15)' : '1px solid rgba(255, 92, 141, 0.12)',
                     '&::before': {
                       content: '""',
                       position: 'absolute',
@@ -6707,29 +7259,64 @@ const ChatPage = () => {
                     }
                   }}
                 >
-                  <Box sx={{ maxWidth: 460, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <Box
+                    sx={{
+                      maxWidth: 440,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      p: 4,
+                      borderRadius: '28px',
+                      bgcolor: isDarkTheme ? 'rgba(30, 24, 34, 0.8)' : 'rgba(255, 255, 255, 0.85)',
+                      backdropFilter: 'blur(20px)',
+                      WebkitBackdropFilter: 'blur(20px)',
+                      border: isDarkTheme ? '1px solid rgba(255, 92, 141, 0.25)' : '1px solid rgba(255, 92, 141, 0.18)',
+                      boxShadow: '0 16px 40px rgba(255, 45, 108, 0.1), inset 0 1px 0 rgba(255,255,255,0.8)'
+                    }}
+                  >
                     <Box
                       component="img"
                       src={newJuicyLogo}
                       alt="Juicy Web"
                       sx={{
-                        width: 120,
+                        width: 110,
                         height: 'auto',
-                        mb: 3,
-                        opacity: 0.8,
-                        filter: isDarkTheme ? 'drop-shadow(0 0 12px rgba(236, 64, 122, 0.2))' : 'none'
+                        mb: 2.5,
+                        filter: 'drop-shadow(0 8px 16px rgba(255, 45, 108, 0.25))'
                       }}
                     />
-                    <Typography variant="h5" sx={{ fontWeight: 300, color: 'var(--text-color, #000)', mb: 1 }}>
+                    <Typography
+                      variant="h5"
+                      sx={{
+                        fontWeight: 700,
+                        color: 'var(--text-color, #000)',
+                        mb: 1,
+                        background: 'var(--primary-gradient, linear-gradient(135deg, #ff5c8d 0%, #ff2d6c 100%))',
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent'
+                      }}
+                    >
                       Juicy for Web
                     </Typography>
-                    <Typography sx={{ color: 'var(--text-color, #666)', fontSize: '0.875rem', mb: 4, lineHeight: 1.6 }}>
-                      Send and receive messages without keeping your phone online.<br />
-                      Use Juicy on up to 4 linked devices and 1 phone at the same time.
+                    <Typography sx={{ color: isDarkTheme ? '#c8b6c0' : '#6b5360', fontSize: '0.9rem', mb: 3, lineHeight: 1.6 }}>
+                      Send and receive messages with rich 3D style and vibrant vibes.<br />
+                      Smooth connection on all your devices.
                     </Typography>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 4, color: 'var(--text-color, #999)', fontSize: '0.75rem' }}>
+                    <Box sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1,
+                      px: 2,
+                      py: 0.75,
+                      borderRadius: '16px',
+                      bgcolor: isDarkTheme ? 'rgba(255, 92, 141, 0.12)' : 'rgba(255, 92, 141, 0.08)',
+                      border: '1px solid rgba(255, 92, 141, 0.2)',
+                      color: isDarkTheme ? '#ff759f' : '#ff2d6c',
+                      fontSize: '0.78rem',
+                      fontWeight: 600
+                    }}>
                       <Box component="span" sx={{ fontSize: '0.85rem' }}>🔒</Box>
-                      <Typography variant="caption" sx={{ color: 'inherit' }}>
+                      <Typography variant="caption" sx={{ color: 'inherit', fontWeight: 600 }}>
                         End-to-end encrypted
                       </Typography>
                     </Box>
@@ -6782,29 +7369,21 @@ const ChatPage = () => {
             {/* Profile Image */}
             <Box
               component="img"
-              src={
-                quickProfileUser.profileImage
-                  ? (quickProfileUser.profileImage.startsWith('data:')
-                    ? quickProfileUser.profileImage
-                    : `data:image/jpeg;base64,${quickProfileUser.profileImage}`)
-                  : (quickProfileUser.profilePic || quickProfileUser.image || 'https://via.placeholder.com/250')
-              }
+              src={getProfileSrc(quickProfileUser) || 'https://via.placeholder.com/250'}
               alt={quickProfileUser.username || quickProfileUser.name}
               sx={{
                 width: '100%',
                 height: '100%',
                 objectFit: 'cover',
+                objectPosition: (quickProfileUser?.isBot || quickProfileUser?._id === 'lovebot') ? 'center 85%' : 'center',
+                transform: (quickProfileUser?.isBot || quickProfileUser?._id === 'lovebot') ? 'scale(1.15) translateY(-6px)' : 'none',
                 cursor: 'pointer',
                 transition: 'transform 0.3s ease',
-                '&:hover': { transform: 'scale(1.03)' }
+                '&:hover': { transform: (quickProfileUser?.isBot || quickProfileUser?._id === 'lovebot') ? 'scale(1.18) translateY(-6px)' : 'scale(1.03)' }
               }}
               onClick={() => {
                 // Open the full-screen image viewer for the profile picture
-                const imgSrc = quickProfileUser.profileImage
-                  ? (quickProfileUser.profileImage.startsWith('data:')
-                    ? quickProfileUser.profileImage
-                    : `data:image/jpeg;base64,${quickProfileUser.profileImage}`)
-                  : (quickProfileUser.profilePic || quickProfileUser.image || '');
+                const imgSrc = getProfileSrc(quickProfileUser);
                 if (imgSrc) {
                   setFullScreenImage({ src: imgSrc, isProfileImage: true });
                 }
@@ -6874,11 +7453,7 @@ const ChatPage = () => {
           <IconButton
             onClick={() => {
               if (quickProfileUser) {
-                const imgSrc = quickProfileUser.profileImage
-                  ? (quickProfileUser.profileImage.startsWith('data:')
-                    ? quickProfileUser.profileImage
-                    : `data:image/jpeg;base64,${quickProfileUser.profileImage}`)
-                  : (quickProfileUser.profilePic || quickProfileUser.image || '');
+                const imgSrc = getProfileSrc(quickProfileUser);
                 if (imgSrc) {
                   setFullScreenImage({ src: imgSrc, isProfileImage: true });
                 }
@@ -6904,16 +7479,14 @@ const ChatPage = () => {
       >
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', p: 3 }}>
           <Avatar
-            src={
-              profileDialogUser?.profileImage
-                ? (profileDialogUser.profileImage.startsWith('data:')
-                  ? profileDialogUser.profileImage
-                  : `data:image/jpeg;base64,${profileDialogUser.profileImage}`)
-                : (profileDialogUser?.profilePic || profileDialogUser?.image)
-            }
+            src={getProfileSrc(profileDialogUser)}
             sx={{
               width: 100, height: 100, mb: 2, bgcolor: 'var(--primary-color, #f8bbd0)',
-              border: '3px solid var(--primary-color, #ec407a)', fontSize: 40
+              border: '3px solid var(--primary-color, #ec407a)', fontSize: 40,
+              '& .MuiAvatar-img': (profileDialogUser?.isBot || profileDialogUser?._id === 'lovebot') ? {
+                objectPosition: 'center 85%',
+                transform: 'scale(1.25) translateY(-6px)'
+              } : {}
             }}
           />
           {profileDialogUser?.about && (
@@ -7165,7 +7738,7 @@ const ChatPage = () => {
       <div>
         {/* Other UI components like chat list, messages, etc. */}
 
-        {/* ✅ CALLING DIALOG - Show "Calling..." with 30-second timeout */}
+        {/* ✅ CALLING DIALOG - 3D Glassmorphic Outgoing Call Screen */}
         {videoCall.calling && !videoCall.callAccepted && !videoCall.callBusy && (
           <Dialog
             open={videoCall.calling && !videoCall.callAccepted && !videoCall.callBusy}
@@ -7173,212 +7746,398 @@ const ChatPage = () => {
             fullScreen
             PaperProps={{
               sx: {
-                background: 'linear-gradient(135deg, var(--primary-color, #ff4d86) 0%, #0f0507 100%)',
-                backdropFilter: 'blur(10px)'
+                background: 'radial-gradient(ellipse at 50% 18%, #4a0026 0%, #290015 40%, #14000a 75%, #080004 100%)',
+                backdropFilter: 'blur(20px)'
               }
             }}
-            BackdropProps={{ sx: { backgroundColor: 'rgba(0,0,0,0.5)' } }}
+            BackdropProps={{ sx: { backgroundColor: 'rgba(0,0,0,0.6)' } }}
           >
             <Box sx={{
               height: '100dvh',
+              maxHeight: '100dvh',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'space-between',
               position: 'relative',
               color: '#fff',
-              background: 'linear-gradient(135deg, var(--primary-color, #ff4d86) 0%, #0f0507 100%)',
-              overflow: 'hidden'
+              background: 'radial-gradient(ellipse at 50% 18%, #4a0026 0%, #290015 40%, #14000a 75%, #080004 100%)',
+              overflow: 'hidden',
+              py: { xs: 2, sm: 3.5 },
+              px: 2
             }}>
-              {/* Status bar simulation (top) */}
+              {/* Ambient Radial Glow Behind Avatar */}
               <Box sx={{
                 position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
+                top: { xs: '32%', sm: '30%' },
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: { xs: 360, sm: 440 },
+                height: { xs: 360, sm: 440 },
+                borderRadius: '50%',
+                background: 'radial-gradient(circle, rgba(255, 45, 108, 0.45) 0%, rgba(255, 45, 108, 0.15) 50%, transparent 70%)',
+                filter: 'blur(45px)',
+                pointerEvents: 'none',
+                zIndex: 1,
+                animation: 'juicyAuraGlow 4s ease-in-out infinite alternate'
+              }} />
+
+              {/* Ambient Floating Orbs */}
+              <Box sx={{
+                position: 'absolute',
+                width: { xs: 260, sm: 340 },
+                height: { xs: 260, sm: 340 },
+                borderRadius: '50%',
+                background: 'radial-gradient(circle, rgba(255, 105, 180, 0.25) 0%, transparent 70%)',
+                top: '-60px',
+                left: '-60px',
+                filter: 'blur(40px)',
+                pointerEvents: 'none',
+                animation: 'juicyFloatSlow 7s ease-in-out infinite'
+              }} />
+              <Box sx={{
+                position: 'absolute',
+                width: { xs: 280, sm: 360 },
+                height: { xs: 280, sm: 360 },
+                borderRadius: '50%',
+                background: 'radial-gradient(circle, rgba(168, 85, 247, 0.2) 0%, transparent 70%)',
+                bottom: '-70px',
+                right: '-70px',
+                filter: 'blur(50px)',
+                pointerEvents: 'none',
+                animation: 'juicyFloatSlow 9s ease-in-out infinite reverse'
+              }} />
+
+              {/* Subtle Glowing Particles */}
+              {[
+                { top: '15%', left: '20%', size: 4, delay: '0s' },
+                { top: '22%', right: '18%', size: 5, delay: '1.2s' },
+                { top: '48%', left: '12%', size: 3, delay: '2s' },
+                { top: '52%', right: '14%', size: 4, delay: '0.6s' },
+                { top: '72%', left: '22%', size: 3, delay: '1.8s' }
+              ].map((p, idx) => (
+                <Box
+                  key={idx}
+                  sx={{
+                    position: 'absolute',
+                    top: p.top,
+                    left: p.left,
+                    right: p.right,
+                    width: p.size,
+                    height: p.size,
+                    borderRadius: '50%',
+                    bgcolor: 'rgba(255, 182, 193, 0.7)',
+                    boxShadow: '0 0 8px rgba(255, 105, 180, 0.9)',
+                    pointerEvents: 'none',
+                    zIndex: 2,
+                    animation: `particleTwinkle 3s ease-in-out ${p.delay} infinite`
+                  }}
+                />
+              ))}
+
+              {/* Top Status Area with Time & Encrypted Badge */}
+              <Box sx={{
+                width: '100%',
+                maxWidth: 480,
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                px: 3,
-                pt: 1.5,
-                color: '#fff',
-                fontSize: '0.9rem',
-                fontWeight: 600,
-                zIndex: 10,
-                height: 40
+                px: { xs: 1.5, sm: 2 },
+                pt: { xs: 0.5, sm: 1 },
+                zIndex: 10
               }}>
-                <Typography sx={{ fontSize: '0.9rem', fontWeight: 600 }}>
+                <Typography sx={{ fontSize: '0.9rem', fontWeight: 600, color: 'rgba(255,255,255,0.92)' }}>
                   {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
                 </Typography>
-              </Box>
-
-              {/* Animated background circles */}
-              <Box sx={{
-                position: 'absolute',
-                width: 400,
-                height: 400,
-                borderRadius: '50%',
-                bgcolor: 'rgba(255,255,255,0.08)',
-                top: '-100px',
-                left: '-100px',
-                animation: 'float 6s ease-in-out infinite',
-                '@keyframes float': {
-                  '0%': { transform: 'translate(0, 0)' },
-                  '50%': { transform: 'translate(20px, 20px)' },
-                  '100%': { transform: 'translate(0, 0)' }
-                }
-              }} />
-              <Box sx={{
-                position: 'absolute',
-                width: 300,
-                height: 300,
-                borderRadius: '50%',
-                bgcolor: 'rgba(255,255,255,0.05)',
-                bottom: '-80px',
-                right: '-80px',
-                animation: 'float 8s ease-in-out infinite reverse'
-              }} />
-
-              {/* Recipient Avatar - Large centered */}
-              <Box sx={{
-                position: 'relative',
-                mt: { xs: 8, sm: 10 },
-                animation: 'slideDown 0.8s cubic-bezier(0.34, 1.56, 0.64, 1)',
-                '@keyframes slideDown': {
-                  '0%': { transform: 'translateY(-80px)', opacity: 0 },
-                  '100%': { transform: 'translateY(0)', opacity: 1 }
-                }
-              }}>
-                <Avatar
-                  src={selectedUser?.profilePic}
-                  sx={{
-                    width: { xs: 100, sm: 130 },
-                    height: { xs: 100, sm: 130 },
-                    border: '4px solid rgba(255,255,255,0.3)',
-                    boxShadow: '0 8px 32px rgba(0,0,0,0.1)'
-                  }}
-                />
-              </Box>
-
-              {/* Name */}
-              <Box sx={{ textAlign: 'center', mt: 4 }}>
-                <Typography variant="h5" sx={{
-                  fontWeight: 700,
-                  fontSize: { xs: '1.5rem', sm: '1.8rem' },
-                  mb: 0.5
-                }}>
-                  {selectedUser?.username}
-                </Typography>
-                <Typography sx={{
-                  fontSize: '1rem',
-                  opacity: 0.9,
-                  mb: 2
-                }}>
-                  {videoCall.callType === 'video' ? '📹 Video Call' : '📞 Audio Call'}
-                </Typography>
-
-                {/* Calling... with timeout indicator */}
-                <Typography sx={{
-                  fontSize: '0.95rem',
-                  opacity: 0.8,
-                  mb: 1,
-                  animation: 'pulse 1.5s ease-in-out infinite',
-                  '@keyframes pulse': {
-                    '0%': { opacity: 0.8 },
-                    '50%': { opacity: 1 },
-                    '100%': { opacity: 0.8 }
-                  }
-                }}>
-                  {videoCall.callingTimeout
-                    ? '❌ Call not answered'
-                    : videoCall.isRinging
-                      ? '🔔 Ringing...'
-                      : '📞 Calling...'}
-                </Typography>
-
-                {/* 30-second countdown timer display */}
-                <Typography sx={{
-                  fontSize: '0.85rem',
-                  opacity: 0.7,
-                  mt: 1
-                }}>
-                  {videoCall.isRinging ? 'Ringing user phone...' : 'Waiting for response... (up to 30 seconds)'}
-                </Typography>
-              </Box>
-
-              {/* Animated calling pulses */}
-              <Box sx={{
-                position: 'relative',
-                my: 3,
-                height: 120,
-                width: 120,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                {/* Outer pulse ring */}
                 <Box sx={{
-                  position: 'absolute',
-                  width: '100%',
-                  height: '100%',
-                  borderRadius: '50%',
-                  border: '2px solid rgba(76, 175, 80, 0.3)',
-                  animation: 'ring 2s ease-out infinite',
-                  '@keyframes ring': {
-                    '0%': { transform: 'scale(0.5)', opacity: 1 },
-                    '100%': { transform: 'scale(1.3)', opacity: 0 }
-                  }
-                }} />
-
-                {/* Middle pulse ring */}
-                <Box sx={{
-                  position: 'absolute',
-                  width: '80%',
-                  height: '80%',
-                  borderRadius: '50%',
-                  border: '2px solid rgba(76, 175, 80, 0.5)',
-                  animation: 'ring 2s ease-out 0.4s infinite',
-                  '@keyframes ring': {
-                    '0%': { transform: 'scale(0.5)', opacity: 1 },
-                    '100%': { transform: 'scale(1.3)', opacity: 0 }
-                  }
-                }} />
-
-                {/* Inner call icon */}
-                <Box sx={{
-                  position: 'relative',
-                  zIndex: 1,
-                  fontSize: '2.5rem'
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 0.6,
+                  bgcolor: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.22)',
+                  backdropFilter: 'blur(12px)',
+                  px: 1.4,
+                  py: 0.45,
+                  borderRadius: '16px',
+                  fontSize: '0.72rem',
+                  fontWeight: 500,
+                  color: 'rgba(255, 255, 255, 0.9)'
                 }}>
-                  {videoCall.isRinging ? '🔔' : '📞'}
+                  <LockIcon sx={{ fontSize: 13, color: 'rgba(255,255,255,0.85)' }} />
+                  End-to-end Encrypted
                 </Box>
               </Box>
 
-              {/* End Call Button */}
-              <Box sx={{ mb: 4, width: '100%', px: 3 }}>
-                <Button
-                  fullWidth
-                  variant="contained"
-                  onClick={handleCallEnd}
-                  sx={{
-                    height: 56,
-                    borderRadius: 50,
-                    bgcolor: '#f44336',
-                    color: '#fff',
-                    fontSize: '1rem',
+              {/* Upper-Middle & Middle Section: 3D Avatar, Orbit Rings, Name, Status Pill */}
+              <Box sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                my: 'auto',
+                zIndex: 5,
+                width: '100%',
+                maxWidth: 380,
+                px: 2
+              }}>
+                {/* 3D Glass Avatar Container + Orbit Rings */}
+                <Box sx={{
+                  width: { xs: 160, sm: 180 },
+                  height: { xs: 160, sm: 180 },
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  position: 'relative',
+                  mb: 2.5
+                }}>
+                  {/* Floating Orbit Ring 1 */}
+                  <Box sx={{
+                    position: 'absolute',
+                    inset: -18,
+                    borderRadius: '50%',
+                    border: '1.5px dashed rgba(255, 105, 180, 0.35)',
+                    boxShadow: '0 0 25px rgba(255, 77, 134, 0.2)',
+                    animation: 'juicyOrbitSpin 20s linear infinite',
+                    pointerEvents: 'none'
+                  }}>
+                    <Box sx={{
+                      position: 'absolute',
+                      top: '12%',
+                      right: '12%',
+                      width: 6,
+                      height: 6,
+                      borderRadius: '50%',
+                      bgcolor: '#ff6595',
+                      boxShadow: '0 0 10px #ff2d6c'
+                    }} />
+                  </Box>
+
+                  {/* Floating Orbit Ring 2 */}
+                  <Box sx={{
+                    position: 'absolute',
+                    inset: -9,
+                    borderRadius: '50%',
+                    border: '1.5px solid rgba(255, 182, 193, 0.4)',
+                    boxShadow: '0 0 20px rgba(255, 105, 180, 0.25)',
+                    animation: 'juicyOrbitCounterSpin 25s linear infinite',
+                    pointerEvents: 'none'
+                  }}>
+                    <Box sx={{
+                      position: 'absolute',
+                      bottom: '15%',
+                      left: '12%',
+                      width: 5,
+                      height: 5,
+                      borderRadius: '50%',
+                      bgcolor: '#00f2fe',
+                      boxShadow: '0 0 8px #00f2fe'
+                    }} />
+                  </Box>
+
+                  {/* Inner 3D Glass Pedestal Rim */}
+                  <Box sx={{
+                    position: 'absolute',
+                    inset: 0,
+                    borderRadius: '50%',
+                    background: 'radial-gradient(circle, rgba(255, 255, 255, 0.22) 0%, rgba(255, 77, 134, 0.22) 100%)',
+                    border: '3px solid rgba(255, 255, 255, 0.75)',
+                    boxShadow: '0 0 35px rgba(255, 45, 108, 0.65), inset 0 0 16px rgba(255, 255, 255, 0.5), 0 15px 35px rgba(0, 0, 0, 0.45)',
+                    animation: 'juicyRipple1 3s ease-in-out infinite'
+                  }} />
+
+                  {/* 3D Elevated Avatar */}
+                  <Avatar
+                    src={selectedUser?.profilePic || selectedUser?.image}
+                    sx={{
+                      width: { xs: 115, sm: 125 },
+                      height: { xs: 115, sm: 125 },
+                      borderRadius: '50%',
+                      border: '3px solid rgba(255, 255, 255, 0.95)',
+                      boxShadow: '0 12px 30px rgba(0, 0, 0, 0.5), inset 0 2px 4px rgba(255,255,255,0.4)',
+                      fontSize: { xs: 46, sm: 52 },
+                      fontWeight: 700,
+                      bgcolor: '#ff2d6c'
+                    }}
+                  >
+                    {selectedUser?.username ? selectedUser.username.charAt(0).toUpperCase() : (selectedUser?.name ? selectedUser.name.charAt(0).toUpperCase() : 'J')}
+                  </Avatar>
+
+                  {/* Call Type Floating Badge */}
+                  <Box sx={{
+                    position: 'absolute',
+                    bottom: 4,
+                    right: 4,
+                    width: 38,
+                    height: 38,
+                    borderRadius: '50%',
+                    bgcolor: 'rgba(255, 45, 108, 0.95)',
+                    border: '2px solid rgba(255, 255, 255, 0.9)',
+                    boxShadow: '0 4px 16px rgba(255, 45, 108, 0.7), inset 0 1px 2px rgba(255,255,255,0.6)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 4
+                  }}>
+                    {videoCall.callType === 'video'
+                      ? <VideocamIcon sx={{ fontSize: 20, color: '#fff' }} />
+                      : <PhoneIcon sx={{ fontSize: 18, color: '#fff' }} />}
+                  </Box>
+                </Box>
+
+                {/* Recipient Name */}
+                <Typography sx={{
+                  fontSize: { xs: '1.75rem', sm: '2.1rem' },
+                  fontWeight: 800,
+                  color: '#fff',
+                  textAlign: 'center',
+                  mb: 1,
+                  letterSpacing: '-0.02em',
+                  textShadow: '0 2px 10px rgba(0,0,0,0.6), 0 0 25px rgba(255, 77, 134, 0.4)'
+                }}>
+                  {selectedUser?.username || selectedUser?.name || 'Juicy Call'}
+                </Typography>
+
+                {/* Status Capsule Pill */}
+                <Box sx={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  px: 2.2,
+                  py: 0.75,
+                  borderRadius: '24px',
+                  bgcolor: 'rgba(255, 255, 255, 0.12)',
+                  border: '1px solid rgba(255, 255, 255, 0.25)',
+                  backdropFilter: 'blur(16px)',
+                  WebkitBackdropFilter: 'blur(16px)',
+                  boxShadow: '0 4px 18px rgba(0,0,0,0.25), inset 0 1px 1px rgba(255,255,255,0.3)',
+                  mb: 1
+                }}>
+                  <Box sx={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    bgcolor: videoCall.callingTimeout ? '#ef4444' : (videoCall.isRinging ? '#34d399' : '#00f2fe'),
+                    boxShadow: videoCall.callingTimeout ? '0 0 10px #ef4444' : (videoCall.isRinging ? '0 0 10px #34d399' : '0 0 10px #00f2fe'),
+                    animation: 'callBlink 1.2s ease-in-out infinite'
+                  }} />
+                  <Typography sx={{
+                    fontSize: { xs: '0.85rem', sm: '0.92rem' },
                     fontWeight: 600,
-                    '&:hover': { bgcolor: '#d32f2f' },
-                    boxShadow: '0 4px 20px rgba(244, 67, 54, 0.4)'
+                    color: 'rgba(255,255,255,0.95)',
+                    letterSpacing: '0.03em'
+                  }}>
+                    {videoCall.callingTimeout
+                      ? 'Call not answered'
+                      : videoCall.isRinging
+                        ? 'Ringing...'
+                        : 'Calling...'}
+                  </Typography>
+                </Box>
+
+                {/* Subtext info */}
+                <Typography sx={{
+                  fontSize: '0.82rem',
+                  color: 'rgba(255, 255, 255, 0.7)',
+                  textAlign: 'center',
+                  fontWeight: 500,
+                  letterSpacing: 0.3,
+                  mb: 2
+                }}>
+                  {videoCall.isRinging ? 'Ringing user phone...' : 'Waiting for response... (up to 30s)'}
+                </Typography>
+
+                {/* Soundwave Visualizer */}
+                <Box sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 0.8,
+                  height: 36,
+                  my: 0.5
+                }}>
+                  {[0, 1, 2, 3, 4].map(i => (
+                    <Box
+                      key={i}
+                      sx={{
+                        width: 3.5,
+                        bgcolor: 'rgba(255, 255, 255, 0.85)',
+                        borderRadius: 2,
+                        boxShadow: '0 0 8px rgba(255,255,255,0.5)',
+                        animation: `wave 0.8s ease-in-out ${i * 0.15}s infinite`
+                      }}
+                    />
+                  ))}
+                </Box>
+              </Box>
+
+              {/* Bottom: 3D Red End Call Button */}
+              <Box sx={{
+                width: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 1.2,
+                pb: { xs: 3, sm: 4.5 },
+                zIndex: 5
+              }}>
+                <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      inset: -8,
+                      borderRadius: '50%',
+                      bgcolor: 'rgba(248, 113, 113, 0.25)',
+                      filter: 'blur(10px)',
+                      pointerEvents: 'none',
+                      animation: 'juicyRipple1 2.2s infinite ease-in-out'
+                    }}
+                  />
+                  <IconButton
+                    onClick={handleCallEnd}
+                    sx={{
+                      width: { xs: 72, sm: 78 },
+                      height: { xs: 72, sm: 78 },
+                      borderRadius: '50%',
+                      bgcolor: '#ef4444',
+                      backgroundImage: 'linear-gradient(145deg, #f87171 0%, #ef4444 50%, #b91c1c 100%)',
+                      color: '#fff',
+                      border: '2.5px solid rgba(255, 255, 255, 0.75)',
+                      boxShadow: '0 14px 34px rgba(239, 68, 68, 0.6), 0 0 35px rgba(248, 113, 113, 0.45), inset 0 2.5px 4px rgba(255, 255, 255, 0.75), inset 0 -3px 6px rgba(0, 0, 0, 0.35)',
+                      transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                      position: 'relative',
+                      zIndex: 2,
+                      animation: 'declineGlowPulse 2.2s infinite ease-in-out',
+                      '&:hover': {
+                        transform: 'scale(1.12) translateY(-2px)',
+                        boxShadow: '0 18px 44px rgba(239, 68, 68, 0.8), 0 0 50px rgba(248, 113, 113, 0.65)'
+                      },
+                      '&:active': {
+                        transform: 'scale(0.94)'
+                      }
+                    }}
+                  >
+                    <PhoneIcon sx={{ fontSize: { xs: 32, sm: 36 }, transform: 'rotate(135deg)' }} />
+                  </IconButton>
+                </Box>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: '#fff',
+                    opacity: 0.95,
+                    fontWeight: 700,
+                    fontSize: '0.92rem',
+                    letterSpacing: 0.5,
+                    textShadow: '0 2px 6px rgba(0,0,0,0.6)'
                   }}
                 >
                   End Call
-                </Button>
+                </Typography>
               </Box>
             </Box>
           </Dialog>
         )}
 
-        {/* ✅ BUSY SIGNAL DIALOG - Show when simultaneous calls detected */}
+        {/* ✅ BUSY SIGNAL DIALOG - 3D Glassmorphic Theme */}
         {videoCall.callBusy && (
           <Dialog
             open={videoCall.callBusy}
@@ -7386,127 +8145,151 @@ const ChatPage = () => {
             fullScreen
             PaperProps={{
               sx: {
-                background: 'linear-gradient(135deg, var(--primary-color, #ff4d86) 0%, #0f0507 100%)',
-                backdropFilter: 'blur(10px)'
+                background: 'radial-gradient(ellipse at 50% 18%, #4a0026 0%, #290015 40%, #14000a 75%, #080004 100%)',
+                backdropFilter: 'blur(20px)'
               }
             }}
-            BackdropProps={{ sx: { backgroundColor: 'rgba(0,0,0,0.5)' } }}
+            BackdropProps={{ sx: { backgroundColor: 'rgba(0,0,0,0.6)' } }}
           >
             <Box sx={{
               height: '100dvh',
+              maxHeight: '100dvh',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              justifyContent: 'center',
+              justifyContent: 'space-between',
               position: 'relative',
               color: '#fff',
-              background: 'linear-gradient(135deg, var(--primary-color, #ff4d86) 0%, #0f0507 100%)',
+              background: 'radial-gradient(ellipse at 50% 18%, #4a0026 0%, #290015 40%, #14000a 75%, #080004 100%)',
               overflow: 'hidden',
-              gap: 3
+              py: { xs: 2, sm: 3.5 },
+              px: 2
             }}>
-              {/* Status bar simulation (top) */}
+              {/* Status bar */}
               <Box sx={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
+                width: '100%',
+                maxWidth: 480,
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                px: 3,
-                pt: 1.5,
-                color: '#fff',
-                fontSize: '0.9rem',
-                fontWeight: 600,
-                zIndex: 10,
-                height: 40
+                px: { xs: 1.5, sm: 2 },
+                pt: { xs: 0.5, sm: 1 },
+                zIndex: 10
               }}>
-                <Typography sx={{ fontSize: '0.9rem', fontWeight: 600 }}>
+                <Typography sx={{ fontSize: '0.9rem', fontWeight: 600, color: 'rgba(255,255,255,0.92)' }}>
                   {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
                 </Typography>
+                <Box sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 0.6,
+                  bgcolor: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.22)',
+                  backdropFilter: 'blur(12px)',
+                  px: 1.4,
+                  py: 0.45,
+                  borderRadius: '16px',
+                  fontSize: '0.72rem',
+                  fontWeight: 500,
+                  color: 'rgba(255, 255, 255, 0.9)'
+                }}>
+                  <LockIcon sx={{ fontSize: 13, color: 'rgba(255,255,255,0.85)' }} />
+                  End-to-end Encrypted
+                </Box>
               </Box>
 
-              {/* Busy Icon with Pulse Animation */}
+              {/* Center Busy Card */}
               <Box sx={{
-                position: 'relative',
-                mt: 8,
-                animation: 'pulse 2s ease-in-out infinite',
-                '@keyframes pulse': {
-                  '0%': { transform: 'scale(1)', opacity: 1 },
-                  '50%': { transform: 'scale(1.1)', opacity: 0.8 },
-                  '100%': { transform: 'scale(1)', opacity: 1 }
-                }
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                my: 'auto',
+                zIndex: 5,
+                width: '100%',
+                maxWidth: 380,
+                px: 2
               }}>
+                {/* Busy Icon Pedestal */}
                 <Box sx={{
                   width: 100,
                   height: 100,
                   borderRadius: '50%',
-                  bgcolor: 'rgba(255,255,255,0.2)',
+                  background: 'linear-gradient(145deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 77, 134, 0.25) 100%)',
+                  border: '2.5px solid rgba(255, 255, 255, 0.6)',
+                  boxShadow: '0 0 35px rgba(255, 45, 108, 0.6), inset 0 0 15px rgba(255, 255, 255, 0.4)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: '3rem'
+                  fontSize: '2.5rem',
+                  mb: 2.5,
+                  animation: 'juicyRipple1 2.5s infinite ease-in-out'
                 }}>
                   📞
                 </Box>
-              </Box>
 
-              {/* Line Busy Text */}
-              <Box sx={{ textAlign: 'center', mt: 3 }}>
                 <Typography variant="h4" sx={{
-                  fontWeight: 700,
+                  fontWeight: 800,
                   fontSize: { xs: '1.8rem', sm: '2.2rem' },
                   mb: 1,
-                  textShadow: '0 2px 10px rgba(0,0,0,0.3)'
+                  textAlign: 'center',
+                  textShadow: '0 2px 10px rgba(0,0,0,0.6)'
                 }}>
                   Line Busy
                 </Typography>
-                <Typography sx={{
-                  fontSize: '1rem',
-                  opacity: 0.9,
-                  textShadow: '0 1px 5px rgba(0,0,0,0.2)'
+
+                <Box sx={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  px: 2,
+                  py: 0.75,
+                  borderRadius: '24px',
+                  bgcolor: 'rgba(255, 255, 255, 0.12)',
+                  border: '1px solid rgba(255, 255, 255, 0.25)',
+                  backdropFilter: 'blur(12px)',
+                  mb: 1.5
                 }}>
-                  Simultaneous calls detected
-                </Typography>
+                  <Typography sx={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.95)', fontWeight: 600 }}>
+                    Simultaneous calls detected
+                  </Typography>
+                </Box>
+
                 <Typography sx={{
                   fontSize: '0.85rem',
-                  opacity: 0.8,
-                  mt: 2,
-                  textShadow: '0 1px 5px rgba(0,0,0,0.2)'
+                  color: 'rgba(255, 255, 255, 0.75)',
+                  textAlign: 'center',
+                  mb: 2
                 }}>
                   Auto-ending in 30 seconds...
                 </Typography>
+
+                {/* Sound Indicator Wave */}
+                <Box sx={{
+                  display: 'flex',
+                  gap: 0.8,
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  {[0, 1, 2, 3, 4].map(i => (
+                    <Box
+                      key={i}
+                      sx={{
+                        width: 3.5,
+                        bgcolor: '#fff',
+                        borderRadius: 2,
+                        boxShadow: '0 0 8px rgba(255,255,255,0.5)',
+                        animation: `wave 0.7s ease-in-out ${i * 0.12}s infinite`
+                      }}
+                    />
+                  ))}
+                </Box>
               </Box>
 
-              {/* Busy Sound Indicator */}
-              <Box sx={{
-                display: 'flex',
-                gap: 1,
-                alignItems: 'center',
-                justifyContent: 'center',
-                mt: 3
-              }}>
-                {[0, 1, 2, 3, 4].map(i => (
-                  <Box
-                    key={i}
-                    sx={{
-                      width: 4,
-                      height: { xs: 20 + i * 6, sm: 24 + i * 8 },
-                      bgcolor: '#fff',
-                      borderRadius: 2,
-                      animation: `wave 0.6s ease-in-out ${i * 0.1}s infinite`,
-                      '@keyframes wave': {
-                        '0%': { height: 20 + i * 6 },
-                        '50%': { height: 40 + i * 10 },
-                        '100%': { height: 20 + i * 6 }
-                      }
-                    }}
-                  />
-                ))}
-              </Box>
-
-              {/* Busy.mp3 Audio Element (plays via VideoCall.js) */}
+              {/* Busy audio */}
               <audio autoPlay loop style={{ display: 'none' }} id="busy-audio" src="/busy.mp3" />
+
+              <Box sx={{ pb: { xs: 3, sm: 4 } }} />
             </Box>
           </Dialog>
         )}
@@ -7518,284 +8301,1268 @@ const ChatPage = () => {
             fullScreen
             PaperProps={{
               sx: {
-                background: 'linear-gradient(135deg, var(--primary-color, #ff4d86) 0%, #0f0507 100%)',
-                backdropFilter: 'blur(10px)'
+                background: 'radial-gradient(ellipse at 50% 18%, #4a0026 0%, #290015 40%, #14000a 75%, #080004 100%)',
+                backdropFilter: 'blur(20px)'
               }
             }}
-            BackdropProps={{ sx: { backgroundColor: 'rgba(0,0,0,0.5)' } }}
+            BackdropProps={{ sx: { backgroundColor: 'rgba(0,0,0,0.6)' } }}
           >
             <Box sx={{
               height: '100dvh',
+              maxHeight: '100dvh',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'space-between',
               position: 'relative',
               color: '#fff',
-              background: 'linear-gradient(135deg, var(--primary-color, #ff4d86) 0%, #0f0507 100%)',
-              overflow: 'hidden' // Prevent scroll
+              background: 'radial-gradient(ellipse at 50% 18%, #4a0026 0%, #290015 40%, #14000a 75%, #080004 100%)',
+              overflow: 'hidden',
+              py: { xs: 2, sm: 3.5 },
+              px: 2
             }}>
-              {/* Status bar simulation (top) */}
+              {/* Ambient Radial Glow Behind Avatar */}
               <Box sx={{
                 position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
+                top: { xs: '32%', sm: '30%' },
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: { xs: 360, sm: 440 },
+                height: { xs: 360, sm: 440 },
+                borderRadius: '50%',
+                background: 'radial-gradient(circle, rgba(255, 45, 108, 0.45) 0%, rgba(255, 45, 108, 0.15) 50%, transparent 70%)',
+                filter: 'blur(45px)',
+                pointerEvents: 'none',
+                zIndex: 1,
+                animation: 'juicyAuraGlow 4s ease-in-out infinite alternate'
+              }} />
+
+              {/* Ambient Floating Orbs */}
+              <Box sx={{
+                position: 'absolute',
+                width: { xs: 260, sm: 340 },
+                height: { xs: 260, sm: 340 },
+                borderRadius: '50%',
+                background: 'radial-gradient(circle, rgba(255, 105, 180, 0.25) 0%, transparent 70%)',
+                top: '-60px',
+                left: '-60px',
+                filter: 'blur(40px)',
+                pointerEvents: 'none',
+                animation: 'juicyFloatSlow 7s ease-in-out infinite'
+              }} />
+              <Box sx={{
+                position: 'absolute',
+                width: { xs: 280, sm: 360 },
+                height: { xs: 280, sm: 360 },
+                borderRadius: '50%',
+                background: 'radial-gradient(circle, rgba(168, 85, 247, 0.2) 0%, transparent 70%)',
+                bottom: '-70px',
+                right: '-70px',
+                filter: 'blur(50px)',
+                pointerEvents: 'none',
+                animation: 'juicyFloatSlow 9s ease-in-out infinite reverse'
+              }} />
+
+              {/* Subtle Glowing Particles */}
+              {[
+                { top: '15%', left: '20%', size: 4, delay: '0s' },
+                { top: '22%', right: '18%', size: 5, delay: '1.2s' },
+                { top: '48%', left: '12%', size: 3, delay: '2s' },
+                { top: '52%', right: '14%', size: 4, delay: '0.6s' },
+                { top: '72%', left: '22%', size: 3, delay: '1.8s' }
+              ].map((p, idx) => (
+                <Box
+                  key={idx}
+                  sx={{
+                    position: 'absolute',
+                    top: p.top,
+                    left: p.left,
+                    right: p.right,
+                    width: p.size,
+                    height: p.size,
+                    borderRadius: '50%',
+                    bgcolor: 'rgba(255, 182, 193, 0.7)',
+                    boxShadow: '0 0 8px rgba(255, 105, 180, 0.9)',
+                    pointerEvents: 'none',
+                    zIndex: 2,
+                    animation: `particleTwinkle 3s ease-in-out ${p.delay} infinite`
+                  }}
+                />
+              ))}
+
+              {/* Top Status Area with Time & Encrypted Badge */}
+              <Box sx={{
+                width: '100%',
+                maxWidth: 480,
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                px: 3,
-                pt: 1.5,
-                color: '#fff',
-                fontSize: '0.9rem',
-                fontWeight: 600,
-                zIndex: 10,
-                height: 40
+                px: { xs: 1.5, sm: 2 },
+                pt: { xs: 0.5, sm: 1 },
+                zIndex: 10
               }}>
-                <Typography sx={{ fontSize: '0.9rem', fontWeight: 600 }}>
+                <Typography sx={{ fontSize: '0.9rem', fontWeight: 600, color: 'rgba(255,255,255,0.92)' }}>
                   {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
                 </Typography>
-              </Box>
-
-              {/* Animated background circles */}
-              <Box sx={{
-                position: 'absolute',
-                width: 400,
-                height: 400,
-                borderRadius: '50%',
-                bgcolor: 'rgba(255,255,255,0.08)',
-                top: '-100px',
-                left: '-100px',
-                animation: 'float 6s ease-in-out infinite',
-                '@keyframes float': {
-                  '0%': { transform: 'translate(0, 0)' },
-                  '50%': { transform: 'translate(20px, 20px)' },
-                  '100%': { transform: 'translate(0, 0)' }
-                }
-              }} />
-              <Box sx={{
-                position: 'absolute',
-                width: 300,
-                height: 300,
-                borderRadius: '50%',
-                bgcolor: 'rgba(255,255,255,0.05)',
-                bottom: '-80px',
-                right: '-80px',
-                animation: 'float 8s ease-in-out infinite reverse'
-              }} />
-
-              {/* Caller Avatar - Large centered with border */}
-              <Box sx={{
-                position: 'relative',
-                mt: { xs: 8, sm: 10 },
-                animation: 'slideDown 0.8s cubic-bezier(0.34, 1.56, 0.64, 1)',
-                '@keyframes slideDown': {
-                  '0%': { transform: 'translateY(-80px)', opacity: 0 },
-                  '100%': { transform: 'translateY(0)', opacity: 1 }
-                }
-              }}>
-                <Avatar
-                  src={videoCall.call?.from ? dbFriends.find(f => f._id === videoCall.call.from)?.profilePic : selectedUser?.profilePic}
-                  sx={{
-                    width: { xs: 120, sm: 140 },
-                    height: { xs: 120, sm: 140 },
-                    border: '6px solid rgba(255,255,255,0.4)',
-                    boxShadow: '0 30px 80px rgba(0,0,0,0.4)',
-                    fontSize: 50
-                  }}
-                />
-                {/* Pulsing ring animation */}
-                <Box sx={{
-                  position: 'absolute',
-                  inset: -16,
-                  borderRadius: '50%',
-                  border: '3px solid rgba(255,255,255,0.4)',
-                  animation: 'ringing 2s ease-out infinite',
-                  '@keyframes ringing': {
-                    '0%': {
-                      transform: 'scale(1)',
-                      opacity: 1
-                    },
-                    '100%': {
-                      transform: 'scale(1.5)',
-                      opacity: 0
-                    }
-                  }
-                }} />
-              </Box>
-
-              {/* Caller Info - Username below avatar */}
-              <Box sx={{
-                textAlign: 'center',
-                mt: { xs: 3, sm: 4 },
-                zIndex: 5
-              }}>
-                <Typography sx={{
-                  fontSize: { xs: '0.95rem', sm: '1.1rem' },
-                  opacity: 0.9,
-                  letterSpacing: 1,
-                  mb: 1.5,
-                  fontWeight: 500
-                }}>
-                  {videoCall.callType === 'video' ? 'INCOMING VIDEO CALL' : 'INCOMING CALL'}
-                </Typography>
-
-                {/* Caller Name */}
-                <Typography sx={{
-                  fontSize: { xs: 28, sm: 36 },
-                  fontWeight: 700,
-                  mb: 1,
-                  textShadow: '0 2px 8px rgba(0,0,0,0.3)'
-                }}>
-                  {videoCall.call.callerName || 'Unknown'}
-                </Typography>
-
-                {/* Ringing status with dot */}
                 <Box sx={{
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 1.5,
-                  animation: 'pulse 2s ease-in-out infinite'
+                  gap: 0.6,
+                  bgcolor: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.22)',
+                  backdropFilter: 'blur(12px)',
+                  px: 1.4,
+                  py: 0.45,
+                  borderRadius: '16px',
+                  fontSize: '0.72rem',
+                  fontWeight: 500,
+                  color: 'rgba(255, 255, 255, 0.9)'
                 }}>
-                  <Box sx={{
-                    width: 10,
-                    height: 10,
-                    borderRadius: '50%',
-                    bgcolor: '#4fc3f7',
-                    animation: 'blink 1s ease-in-out infinite',
-                    '@keyframes blink': {
-                      '0%, 100%': { opacity: 1 },
-                      '50%': { opacity: 0.3 }
-                    }
-                  }} />
-                  <Typography sx={{
-                    fontSize: '1rem',
-                    opacity: 0.95,
-                    fontWeight: 500,
-                    letterSpacing: 0.5
-                  }}>
-                    {videoCall.callType === 'video' ? 'Incoming video call...' : 'Ringing...'}
-                  </Typography>
+                  <LockIcon sx={{ fontSize: 13, color: 'rgba(255,255,255,0.85)' }} />
+                  End-to-end Encrypted
                 </Box>
               </Box>
 
-              {/* Option Buttons: Decline & Message */}
+              {/* Upper-Middle & Middle Section: 3D Avatar, Orbit Rings, Name, Status Pill */}
               <Box sx={{
                 display: 'flex',
-                justifyContent: 'space-around',
-                width: '100%',
-                maxWidth: 290,
-                mt: { xs: 4, sm: 6 },
-                mb: 2,
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                my: 'auto',
                 zIndex: 5,
-                animation: 'slideUp 0.8s cubic-bezier(0.34, 1.56, 0.64, 1)'
+                width: '100%',
+                maxWidth: 380,
+                px: 2
               }}>
-                {/* Remind Me / Decline Option */}
-                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                {/* 3D Glass Avatar Container + Orbit Rings */}
+                <Box sx={{
+                  width: { xs: 160, sm: 180 },
+                  height: { xs: 160, sm: 180 },
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  position: 'relative',
+                  mb: 2.5
+                }}>
+                  {/* Floating Orbit Ring 1 */}
+                  <Box sx={{
+                    position: 'absolute',
+                    inset: -18,
+                    borderRadius: '50%',
+                    border: '1.5px dashed rgba(255, 105, 180, 0.35)',
+                    boxShadow: '0 0 25px rgba(255, 77, 134, 0.2)',
+                    animation: 'juicyOrbitSpin 20s linear infinite',
+                    pointerEvents: 'none'
+                  }}>
+                    {/* Orbit glowing particle point */}
+                    <Box sx={{
+                      position: 'absolute',
+                      top: '12%',
+                      right: '12%',
+                      width: 6,
+                      height: 6,
+                      borderRadius: '50%',
+                      bgcolor: '#ff6595',
+                      boxShadow: '0 0 10px #ff2d6c'
+                    }} />
+                  </Box>
+
+                  {/* Floating Orbit Ring 2 */}
+                  <Box sx={{
+                    position: 'absolute',
+                    inset: -9,
+                    borderRadius: '50%',
+                    border: '1.5px solid rgba(255, 182, 193, 0.4)',
+                    boxShadow: '0 0 20px rgba(255, 105, 180, 0.25)',
+                    animation: 'juicyOrbitCounterSpin 25s linear infinite',
+                    pointerEvents: 'none'
+                  }}>
+                    {/* Orbit glowing particle point */}
+                    <Box sx={{
+                      position: 'absolute',
+                      bottom: '15%',
+                      left: '12%',
+                      width: 5,
+                      height: 5,
+                      borderRadius: '50%',
+                      bgcolor: '#00f2fe',
+                      boxShadow: '0 0 8px #00f2fe'
+                    }} />
+                  </Box>
+
+                  {/* Inner 3D Glass Pedestal Rim */}
+                  <Box sx={{
+                    position: 'absolute',
+                    inset: 0,
+                    borderRadius: '50%',
+                    background: 'radial-gradient(circle, rgba(255, 255, 255, 0.22) 0%, rgba(255, 77, 134, 0.22) 100%)',
+                    border: '3px solid rgba(255, 255, 255, 0.75)',
+                    boxShadow: '0 0 35px rgba(255, 45, 108, 0.65), inset 0 0 16px rgba(255, 255, 255, 0.5), 0 15px 35px rgba(0, 0, 0, 0.45)',
+                    animation: 'juicyRipple1 3s ease-in-out infinite'
+                  }} />
+
+                  {/* 3D Elevated Avatar */}
+                  <Avatar
+                    src={videoCall.call?.from ? dbFriends.find(f => f._id === videoCall.call.from)?.profilePic : selectedUser?.profilePic}
+                    sx={{
+                      width: { xs: 115, sm: 125 },
+                      height: { xs: 115, sm: 125 },
+                      borderRadius: '50%',
+                      border: '3px solid rgba(255, 255, 255, 0.95)',
+                      boxShadow: '0 12px 30px rgba(0, 0, 0, 0.5), inset 0 2px 4px rgba(255,255,255,0.4)',
+                      fontSize: { xs: 46, sm: 52 },
+                      fontWeight: 700,
+                      bgcolor: '#ff2d6c'
+                    }}
+                  >
+                    {videoCall.call?.callerName ? videoCall.call.callerName.charAt(0).toUpperCase() : (selectedUser?.username ? selectedUser.username.charAt(0).toUpperCase() : 'J')}
+                  </Avatar>
+
+                  {/* Call Type Floating Badge */}
+                  <Box sx={{
+                    position: 'absolute',
+                    bottom: 4,
+                    right: 4,
+                    width: 38,
+                    height: 38,
+                    borderRadius: '50%',
+                    bgcolor: 'rgba(255, 45, 108, 0.95)',
+                    border: '2px solid rgba(255, 255, 255, 0.9)',
+                    boxShadow: '0 4px 16px rgba(255, 45, 108, 0.7), inset 0 1px 2px rgba(255,255,255,0.6)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 4
+                  }}>
+                    {videoCall.callType === 'video'
+                      ? <VideocamIcon sx={{ fontSize: 20, color: '#fff' }} />
+                      : <PhoneIcon sx={{ fontSize: 18, color: '#fff' }} />}
+                  </Box>
+                </Box>
+
+                {/* Caller Name */}
+                <Typography sx={{
+                  fontSize: { xs: '1.75rem', sm: '2.1rem' },
+                  fontWeight: 800,
+                  color: '#fff',
+                  textAlign: 'center',
+                  mb: 1,
+                  letterSpacing: '-0.02em',
+                  textShadow: '0 2px 10px rgba(0,0,0,0.6), 0 0 25px rgba(255, 77, 134, 0.4)'
+                }}>
+                  {videoCall.call?.callerName || selectedUser?.username || selectedUser?.name || 'Juicy User'}
+                </Typography>
+
+                {/* Incoming Call Glass Status Pill */}
+                <Box sx={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  px: 2.2,
+                  py: 0.75,
+                  borderRadius: '24px',
+                  bgcolor: 'rgba(255, 255, 255, 0.12)',
+                  border: '1px solid rgba(255, 255, 255, 0.25)',
+                  backdropFilter: 'blur(16px)',
+                  WebkitBackdropFilter: 'blur(16px)',
+                  boxShadow: '0 4px 18px rgba(0,0,0,0.25), inset 0 1px 1px rgba(255,255,255,0.3)',
+                  mb: 1
+                }}>
+                  <Box sx={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    bgcolor: '#00f2fe',
+                    boxShadow: '0 0 10px #00f2fe',
+                    animation: 'callBlink 1.2s ease-in-out infinite'
+                  }} />
+                  <Typography sx={{
+                    fontSize: { xs: '0.85rem', sm: '0.92rem' },
+                    fontWeight: 600,
+                    color: 'rgba(255,255,255,0.95)',
+                    letterSpacing: '0.03em'
+                  }}>
+                    {videoCall.callType === 'video' ? 'Incoming Video Call...' : 'Incoming Audio Call...'}
+                  </Typography>
+                </Box>
+
+                {/* Optional Subtitle / Number */}
+                <Typography sx={{
+                  fontSize: '0.82rem',
+                  color: 'rgba(255, 255, 255, 0.7)',
+                  textAlign: 'center',
+                  fontWeight: 500,
+                  letterSpacing: 0.3
+                }}>
+                  {videoCall.call?.callerPhone || videoCall.call?.phone || 'Juicy HD Encrypted Call'}
+                </Typography>
+              </Box>
+
+              {/* Lower-Middle: Action Row (Remind Me & Message) */}
+              <Box sx={{
+                display: 'flex',
+                justifyContent: 'center',
+                gap: { xs: 6, sm: 8 },
+                width: '100%',
+                maxWidth: 320,
+                my: { xs: 1.5, sm: 2 },
+                zIndex: 5
+              }}>
+                {/* Remind Me */}
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.8 }}>
                   <IconButton
                     onClick={videoCall.rejectCall}
                     sx={{
-                      width: 50,
-                      height: 50,
+                      width: { xs: 54, sm: 58 },
+                      height: { xs: 54, sm: 58 },
                       borderRadius: '50%',
-                      bgcolor: 'rgba(255, 255, 255, 0.1)',
+                      background: 'linear-gradient(145deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.06) 100%)',
+                      border: '1.2px solid rgba(255, 255, 255, 0.28)',
+                      backdropFilter: 'blur(16px)',
+                      WebkitBackdropFilter: 'blur(16px)',
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.45)',
                       color: '#fff',
-                      border: '1px solid rgba(255, 255, 255, 0.2)',
-                      backdropFilter: 'blur(5px)',
                       transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
                       '&:hover': {
-                        bgcolor: 'rgba(255, 59, 48, 0.2)',
-                        color: '#ff3b30',
-                        border: '1px solid rgba(255, 59, 48, 0.4)',
-                        transform: 'scale(1.1)'
+                        transform: 'translateY(-3px) scale(1.08)',
+                        background: 'linear-gradient(145deg, rgba(255, 59, 48, 0.3) 0%, rgba(255, 255, 255, 0.1) 100%)',
+                        border: '1.2px solid rgba(255, 59, 48, 0.5)',
+                        boxShadow: '0 12px 28px rgba(255, 59, 48, 0.35)'
+                      },
+                      '&:active': {
+                        transform: 'scale(0.94)'
                       }
                     }}
                   >
                     <AccessTimeIcon sx={{ fontSize: 24 }} />
                   </IconButton>
-                  <Typography variant="caption" sx={{ color: '#fff', opacity: 0.8, fontWeight: 500 }}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: '#fff',
+                      opacity: 0.9,
+                      fontWeight: 600,
+                      fontSize: '0.82rem',
+                      letterSpacing: 0.3,
+                      textShadow: '0 1px 4px rgba(0,0,0,0.5)'
+                    }}
+                  >
                     Remind Me
                   </Typography>
                 </Box>
 
-                {/* Message Option */}
-                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                {/* Message */}
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.8 }}>
                   <IconButton
                     onClick={videoCall.rejectCall}
                     sx={{
-                      width: 50,
-                      height: 50,
+                      width: { xs: 54, sm: 58 },
+                      height: { xs: 54, sm: 58 },
                       borderRadius: '50%',
-                      bgcolor: 'rgba(255, 255, 255, 0.1)',
+                      background: 'linear-gradient(145deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.06) 100%)',
+                      border: '1.2px solid rgba(255, 255, 255, 0.28)',
+                      backdropFilter: 'blur(16px)',
+                      WebkitBackdropFilter: 'blur(16px)',
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.45)',
                       color: '#fff',
-                      border: '1px solid rgba(255, 255, 255, 0.2)',
-                      backdropFilter: 'blur(5px)',
                       transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
                       '&:hover': {
-                        bgcolor: 'rgba(255, 255, 255, 0.2)',
-                        transform: 'scale(1.1)'
+                        transform: 'translateY(-3px) scale(1.08)',
+                        background: 'linear-gradient(145deg, rgba(255, 255, 255, 0.25) 0%, rgba(255, 255, 255, 0.1) 100%)',
+                        border: '1.2px solid rgba(255, 255, 255, 0.45)',
+                        boxShadow: '0 12px 28px rgba(0, 0, 0, 0.4)'
+                      },
+                      '&:active': {
+                        transform: 'scale(0.94)'
                       }
                     }}
                   >
                     <MessageIcon sx={{ fontSize: 24 }} />
                   </IconButton>
-                  <Typography variant="caption" sx={{ color: '#fff', opacity: 0.8, fontWeight: 500 }}>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: '#fff',
+                      opacity: 0.9,
+                      fontWeight: 600,
+                      fontSize: '0.82rem',
+                      letterSpacing: 0.3,
+                      textShadow: '0 1px 4px rgba(0,0,0,0.5)'
+                    }}
+                  >
                     Message
                   </Typography>
                 </Box>
               </Box>
 
-              {/* Slide to Answer component at the bottom */}
+              {/* Bottom: 3D Accept & Decline Call Buttons */}
               <Box sx={{
                 width: '100%',
                 display: 'flex',
                 justifyContent: 'center',
-                pb: { xs: 8, sm: 10 },
-                zIndex: 5,
-                animation: 'slideUp 0.8s cubic-bezier(0.34, 1.56, 0.64, 1)'
+                pb: { xs: 2.5, sm: 4 },
+                zIndex: 5
               }}>
                 <SlideToAnswer onAnswer={answerCallHandler} onReject={videoCall.rejectCall} />
               </Box>
             </Box>
           </Dialog>
         )}
+        {/* ✅ WhatsApp-style minimized in-app call banner — shown when call is active but user minimized the screen */}
+        {videoCall.callAccepted && videoCall.callStarted && !showCallScreen && (
+          <Box
+            onClick={() => setShowCallScreen(true)}
+            sx={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              zIndex: 9999,
+              bgcolor: videoCall.callType === 'video' ? '#1a1a2e' : '#128C7E',
+              color: '#fff',
+              px: 2,
+              py: 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 1.5,
+              cursor: 'pointer',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.35)',
+              '&:active': { opacity: 0.9 },
+              userSelect: 'none',
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flex: 1, minWidth: 0 }}>
+              {/* Pulsing green dot */}
+              <Box sx={{
+                width: 10, height: 10, borderRadius: '50%', bgcolor: '#25D366', flexShrink: 0,
+                boxShadow: '0 0 0 0 rgba(37,211,102,0.6)',
+                animation: 'juicyPulse 1.8s ease-in-out infinite',
+                '@keyframes juicyPulse': {
+                  '0%': { boxShadow: '0 0 0 0 rgba(37,211,102,0.6)' },
+                  '70%': { boxShadow: '0 0 0 8px rgba(37,211,102,0)' },
+                  '100%': { boxShadow: '0 0 0 0 rgba(37,211,102,0)' },
+                }
+              }} />
+              <Typography sx={{ fontSize: '0.85rem', fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {videoCall.callType === 'video' ? '📹' : '📞'}&nbsp;
+                {videoCall.call?.callerName || selectedUser?.username || selectedUser?.name || 'Ongoing Call'}
+              </Typography>
+              <Typography sx={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.75)', fontWeight: 500, flexShrink: 0 }}>
+                {videoCall.callDuration}
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Typography sx={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.85)', fontWeight: 600, letterSpacing: 0.3 }}>Tap to return</Typography>
+              {/* End call button in banner */}
+              <IconButton
+                size="small"
+                onClick={(e) => { e.stopPropagation(); handleCallEnd(); }}
+                sx={{
+                  bgcolor: '#ef4444', color: '#fff', width: 32, height: 32,
+                  borderRadius: '50%', flexShrink: 0,
+                  '&:hover': { bgcolor: '#dc2626' },
+                  '&:active': { transform: 'scale(0.92)' },
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                <PhoneIcon sx={{ fontSize: 16, transform: 'rotate(135deg)' }} />
+              </IconButton>
+            </Box>
+          </Box>
+        )}
+
         {videoCall.callAccepted && videoCall.callStarted && (
           <Dialog
-            open={videoCall.callAccepted && videoCall.callStarted}
-            onClose={() => { }}
+            open={videoCall.callAccepted && videoCall.callStarted && showCallScreen}
+            onClose={() => setShowCallScreen(false)}
             fullScreen
             PaperProps={{
               sx: {
-                background: '#000',
-                margin: 0,
-                padding: 0,
-                width: '100vw',
-                height: '100dvh',
-                overflow: 'hidden'
+                background: 'radial-gradient(ellipse at 50% 18%, #4a0026 0%, #290015 40%, #14000a 75%, #080004 100%)',
+                backdropFilter: 'blur(20px)'
               }
             }}
             BackdropProps={{ sx: { backgroundColor: 'transparent' } }}
           >
             <Box sx={{
               height: '100dvh',
-              width: '100vw',
+              maxHeight: '100dvh',
               display: 'flex',
               flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'space-between',
               position: 'relative',
-              backgroundColor: '#000',
+              color: '#fff',
+              background: 'radial-gradient(ellipse at 50% 18%, #4a0026 0%, #290015 40%, #14000a 75%, #080004 100%)',
               overflow: 'hidden'
             }}>
-              <ZegoCallRoom
-                roomID={videoCall.roomId || `call_${[String(user?._id || '').replace(/[^a-zA-Z0-9]/g, ''), String(selectedUser?._id || videoCall.callerId || videoCall.call?.from || '').replace(/[^a-zA-Z0-9]/g, '')].sort().join('_')}`}
-                userID={String(user?._id || 'guest')}
-                userName={user?.username || user?.name || 'User'}
-                callType={videoCall.callType || 'video'}
-                isSpeakerOn={videoCall.isSpeakerOn}
-                onToggleSpeaker={videoCall.toggleSpeakerPhone}
-                applyAudioRouting={videoCall.applyAudioRouting}
-                onLeave={handleCallEnd}
-              />
+              {/* Status bar + minimize button — hidden in Android PiP mode */}
+              {!isPipMode && (
+                <Box sx={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  px: { xs: 2, sm: 3 },
+                  pt: { xs: 1, sm: 1.5 },
+                  color: '#fff',
+                  fontSize: '0.9rem',
+                  fontWeight: 600,
+                  zIndex: 20,
+                  height: 48
+                }}>
+                  <Typography sx={{ fontSize: '0.9rem', fontWeight: 600, color: 'rgba(255,255,255,0.92)' }}>
+                    {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
+                  </Typography>
+
+                  {/* End-to-end Encrypted Center Badge */}
+                  <Box sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 0.6,
+                    bgcolor: 'rgba(255, 255, 255, 0.1)',
+                    border: '1px solid rgba(255, 255, 255, 0.22)',
+                    backdropFilter: 'blur(12px)',
+                    px: 1.4,
+                    py: 0.4,
+                    borderRadius: '16px',
+                    fontSize: '0.72rem',
+                    fontWeight: 500,
+                    color: 'rgba(255, 255, 255, 0.9)'
+                  }}>
+                    <LockIcon sx={{ fontSize: 13, color: 'rgba(255,255,255,0.85)' }} />
+                    End-to-end Encrypted
+                  </Box>
+
+                  {/* 3D Glass Minimize Button — hides call screen without ending the call */}
+                  <Tooltip title="Minimize call">
+                    <IconButton
+                      onClick={() => setShowCallScreen(false)}
+                      sx={{
+                        color: '#fff',
+                        background: 'linear-gradient(145deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.06) 100%)',
+                        border: '1px solid rgba(255, 255, 255, 0.25)',
+                        backdropFilter: 'blur(12px)',
+                        WebkitBackdropFilter: 'blur(12px)',
+                        width: 38,
+                        height: 38,
+                        borderRadius: '50%',
+                        boxShadow: '0 4px 14px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.4)',
+                        transition: 'all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                        '&:hover': {
+                          transform: 'scale(1.1) translateY(-2px)',
+                          background: 'linear-gradient(145deg, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0.12) 100%)',
+                          boxShadow: '0 8px 20px rgba(0,0,0,0.4)'
+                        },
+                        '&:active': { transform: 'scale(0.92)' }
+                      }}
+                    >
+                      <ArrowDownwardIcon sx={{ fontSize: 20 }} />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              )}
+
+              {/* Ambient Background Elements (Shown for Audio Call or Connecting) */}
+              {!(videoCall.callType === 'video' && videoCall.remoteStream) && (
+                <>
+                  <Box sx={{
+                    position: 'absolute',
+                    top: { xs: '32%', sm: '30%' },
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    width: { xs: 360, sm: 440 },
+                    height: { xs: 360, sm: 440 },
+                    borderRadius: '50%',
+                    background: 'radial-gradient(circle, rgba(255, 45, 108, 0.45) 0%, rgba(255, 45, 108, 0.15) 50%, transparent 70%)',
+                    filter: 'blur(45px)',
+                    pointerEvents: 'none',
+                    zIndex: 1,
+                    animation: 'juicyAuraGlow 4s ease-in-out infinite alternate'
+                  }} />
+                  <Box sx={{
+                    position: 'absolute',
+                    width: { xs: 260, sm: 340 },
+                    height: { xs: 260, sm: 340 },
+                    borderRadius: '50%',
+                    background: 'radial-gradient(circle, rgba(255, 105, 180, 0.25) 0%, transparent 70%)',
+                    top: '-60px',
+                    left: '-60px',
+                    filter: 'blur(40px)',
+                    pointerEvents: 'none',
+                    animation: 'juicyFloatSlow 7s ease-in-out infinite'
+                  }} />
+                  <Box sx={{
+                    position: 'absolute',
+                    width: { xs: 280, sm: 360 },
+                    height: { xs: 280, sm: 360 },
+                    borderRadius: '50%',
+                    background: 'radial-gradient(circle, rgba(168, 85, 247, 0.2) 0%, transparent 70%)',
+                    bottom: '-70px',
+                    right: '-70px',
+                    filter: 'blur(50px)',
+                    pointerEvents: 'none',
+                    animation: 'juicyFloatSlow 9s ease-in-out infinite reverse'
+                  }} />
+                  {[
+                    { top: '15%', left: '20%', size: 4, delay: '0s' },
+                    { top: '22%', right: '18%', size: 5, delay: '1.2s' },
+                    { top: '48%', left: '12%', size: 3, delay: '2s' },
+                    { top: '52%', right: '14%', size: 4, delay: '0.6s' },
+                    { top: '72%', left: '22%', size: 3, delay: '1.8s' }
+                  ].map((p, idx) => (
+                    <Box
+                      key={idx}
+                      sx={{
+                        position: 'absolute',
+                        top: p.top,
+                        left: p.left,
+                        right: p.right,
+                        width: p.size,
+                        height: p.size,
+                        borderRadius: '50%',
+                        bgcolor: 'rgba(255, 182, 193, 0.7)',
+                        boxShadow: '0 0 8px rgba(255, 105, 180, 0.9)',
+                        pointerEvents: 'none',
+                        zIndex: 2,
+                        animation: `particleTwinkle 3s ease-in-out ${p.delay} infinite`
+                      }}
+                    />
+                  ))}
+                </>
+              )}
+
+              {/* Top Call Header for Video Calls when remoteStream active */}
+              {!isPipMode && videoCall.callType === 'video' && videoCall.remoteStream && (
+                <Box
+                  className="juicy-call-header"
+                  sx={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    textAlign: 'center',
+                    pt: { xs: 6, sm: 7 },
+                    pb: { xs: 2, sm: 3 },
+                    background: 'linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 70%, transparent 100%)',
+                    zIndex: 10,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 0.8
+                  }}
+                >
+                  <Typography sx={{
+                    fontSize: { xs: '1.4rem', sm: '1.75rem' },
+                    fontWeight: 800,
+                    color: '#fff',
+                    textShadow: '0 2px 10px rgba(0,0,0,0.7)'
+                  }}>
+                    {videoCall.call?.callerName || selectedUser?.username || selectedUser?.name || 'Juicy Video Call'}
+                  </Typography>
+
+                  {/* 3D Glass Duration Capsule */}
+                  <Box sx={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 1,
+                    px: 2,
+                    py: 0.4,
+                    borderRadius: '20px',
+                    bgcolor: 'rgba(0, 0, 0, 0.4)',
+                    backdropFilter: 'blur(12px)',
+                    border: '1px solid rgba(255, 255, 255, 0.25)',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+                  }}>
+                    <Box sx={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: '50%',
+                      bgcolor: '#10b981',
+                      boxShadow: '0 0 8px #10b981',
+                      animation: 'callBlink 1.5s ease-in-out infinite'
+                    }} />
+                    <Typography sx={{
+                      fontSize: '0.88rem',
+                      fontWeight: 700,
+                      fontFamily: 'monospace',
+                      color: '#fff',
+                      letterSpacing: 0.5
+                    }}>
+                      {videoCall.callDuration}
+                    </Typography>
+                  </Box>
+                </Box>
+              )}
+
+              {/* Center 3D Glass Avatar & Call Info (Audio Call or Video Connecting) */}
+              {!(videoCall.callType === 'video' && videoCall.remoteStream) && (
+                <Box sx={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  my: 'auto',
+                  zIndex: 5,
+                  width: '100%',
+                  maxWidth: 380,
+                  px: 2
+                }}>
+                  {/* 3D Avatar Container + Rings */}
+                  <Box sx={{
+                    width: { xs: 160, sm: 180 },
+                    height: { xs: 160, sm: 180 },
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    position: 'relative',
+                    mb: 2.5
+                  }}>
+                    {/* Floating Orbit Ring 1 */}
+                    <Box sx={{
+                      position: 'absolute',
+                      inset: -18,
+                      borderRadius: '50%',
+                      border: '1.5px dashed rgba(255, 105, 180, 0.35)',
+                      boxShadow: '0 0 25px rgba(255, 77, 134, 0.2)',
+                      animation: 'juicyOrbitSpin 20s linear infinite',
+                      pointerEvents: 'none'
+                    }} />
+
+                    {/* Floating Orbit Ring 2 */}
+                    <Box sx={{
+                      position: 'absolute',
+                      inset: -9,
+                      borderRadius: '50%',
+                      border: '1.5px solid rgba(255, 182, 193, 0.4)',
+                      boxShadow: '0 0 20px rgba(255, 105, 180, 0.25)',
+                      animation: 'juicyOrbitCounterSpin 25s linear infinite',
+                      pointerEvents: 'none'
+                    }} />
+
+                    {/* Inner 3D Glass Pedestal Rim */}
+                    <Box sx={{
+                      position: 'absolute',
+                      inset: 0,
+                      borderRadius: '50%',
+                      background: 'radial-gradient(circle, rgba(255, 255, 255, 0.22) 0%, rgba(255, 77, 134, 0.22) 100%)',
+                      border: '3px solid rgba(255, 255, 255, 0.75)',
+                      boxShadow: '0 0 35px rgba(255, 45, 108, 0.65), inset 0 0 16px rgba(255, 255, 255, 0.5), 0 15px 35px rgba(0, 0, 0, 0.45)',
+                      animation: 'juicyRipple1 3s ease-in-out infinite'
+                    }} />
+
+                    {/* 3D Elevated Avatar */}
+                    {(() => {
+                      const avatarSrc = selectedUser?.profilePic || selectedUser?.image || (videoCall.call?.from ? dbFriends.find(f => f._id === videoCall.call.from)?.profilePic : null);
+                      const initial = videoCall.call?.callerName ? videoCall.call.callerName.charAt(0).toUpperCase() : (selectedUser?.username ? selectedUser.username.charAt(0).toUpperCase() : 'J');
+                      return (
+                        <Avatar
+                          src={avatarSrc}
+                          sx={{
+                            width: { xs: 115, sm: 125 },
+                            height: { xs: 115, sm: 125 },
+                            borderRadius: '50%',
+                            border: '3px solid rgba(255, 255, 255, 0.95)',
+                            boxShadow: '0 12px 30px rgba(0, 0, 0, 0.5), inset 0 2px 4px rgba(255,255,255,0.4)',
+                            fontSize: { xs: 46, sm: 52 },
+                            fontWeight: 700,
+                            bgcolor: '#ff2d6c'
+                          }}
+                        >
+                          {initial}
+                        </Avatar>
+                      );
+                    })()}
+
+                    {/* Call Type Floating Badge */}
+                    <Box sx={{
+                      position: 'absolute',
+                      bottom: 4,
+                      right: 4,
+                      width: 38,
+                      height: 38,
+                      borderRadius: '50%',
+                      bgcolor: 'rgba(255, 45, 108, 0.95)',
+                      border: '2px solid rgba(255, 255, 255, 0.9)',
+                      boxShadow: '0 4px 16px rgba(255, 45, 108, 0.7), inset 0 1px 2px rgba(255,255,255,0.6)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      zIndex: 4
+                    }}>
+                      {videoCall.callType === 'video'
+                        ? <VideocamIcon sx={{ fontSize: 20, color: '#fff' }} />
+                        : <PhoneIcon sx={{ fontSize: 18, color: '#fff' }} />}
+                    </Box>
+                  </Box>
+
+                  {/* Contact Name */}
+                  <Typography sx={{
+                    fontSize: { xs: '1.75rem', sm: '2.1rem' },
+                    fontWeight: 800,
+                    color: '#fff',
+                    textAlign: 'center',
+                    mb: 1.2,
+                    letterSpacing: '-0.02em',
+                    textShadow: '0 2px 10px rgba(0,0,0,0.6), 0 0 25px rgba(255, 77, 134, 0.4)'
+                  }}>
+                    {videoCall.call?.callerName || selectedUser?.username || selectedUser?.name || 'Juicy Call'}
+                  </Typography>
+
+                  {/* 3D Glass Call Duration & Connection Capsule Pill */}
+                  <Box sx={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 1.2,
+                    px: 2.4,
+                    py: 0.8,
+                    borderRadius: '24px',
+                    bgcolor: 'rgba(255, 255, 255, 0.12)',
+                    border: '1px solid rgba(255, 255, 255, 0.25)',
+                    backdropFilter: 'blur(16px)',
+                    WebkitBackdropFilter: 'blur(16px)',
+                    boxShadow: '0 4px 18px rgba(0,0,0,0.25), inset 0 1px 1px rgba(255,255,255,0.3)',
+                    mb: 1.5
+                  }}>
+                    <Box sx={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: '50%',
+                      bgcolor: '#10b981',
+                      boxShadow: '0 0 10px #10b981',
+                      animation: 'callBlink 1.5s ease-in-out infinite'
+                    }} />
+                    <Typography sx={{
+                      fontSize: '1rem',
+                      fontWeight: 700,
+                      fontFamily: 'monospace',
+                      color: '#fff',
+                      letterSpacing: 0.8
+                    }}>
+                      {videoCall.callDuration}
+                    </Typography>
+                    <Box sx={{ width: 1, height: 14, bgcolor: 'rgba(255,255,255,0.3)' }} />
+                    <Typography sx={{
+                      fontSize: '0.85rem',
+                      fontWeight: 600,
+                      color: 'rgba(255,255,255,0.92)'
+                    }}>
+                      {videoCall.stream ? 'Connected' : 'Connecting...'}
+                    </Typography>
+                  </Box>
+
+                  {/* Soundwave Visualizer for Audio Call */}
+                  <Box sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 0.8,
+                    height: 36,
+                    my: 0.5
+                  }}>
+                    {[0, 1, 2, 3, 4].map(i => (
+                      <Box
+                        key={i}
+                        sx={{
+                          width: 3.5,
+                          bgcolor: 'rgba(255, 255, 255, 0.85)',
+                          borderRadius: 2,
+                          boxShadow: '0 0 8px rgba(255,255,255,0.5)',
+                          animation: `wave 0.8s ease-in-out ${i * 0.15}s infinite`
+                        }}
+                      />
+                    ))}
+                  </Box>
+                </Box>
+              )}
+
+              {/* Video UI - Remote fullscreen */}
+              {videoCall.callType === 'video' && videoCall.remoteStream && (
+                <>
+                  <Box sx={{ position: 'absolute', inset: 0, zIndex: 1, backgroundColor: '#000' }}>
+                    <video
+                      ref={(el) => {
+                        if (videoCall.userVideo) {
+                          videoCall.userVideo.current = el;
+                        }
+                        // ⚡ FIX 5: When the React element mounts, let the single consolidated
+                        // attach path handle srcObject + play() with proper track-unmute waiting.
+                        // Do NOT set srcObject directly here — that races against the
+                        // attachRemoteVideoWhenReady path which waits for the track to unmute first.
+                        if (el && videoCall.remoteStream && videoCall.attachRemoteVideoWhenReady) {
+                          // Only kick off the attach if srcObject isn't already set (idempotent)
+                          if (el.srcObject !== videoCall.remoteStream) {
+                            console.log('📺 [Callback Ref] Element mounted — delegating to attachRemoteVideoWhenReady');
+                            videoCall.attachRemoteVideoWhenReady(videoCall.remoteStream, videoCall.userVideo);
+                          }
+                        }
+                      }}
+                      autoPlay={true}
+                      playsInline={true}
+                      muted={true}
+                      controls={false}
+                      crossOrigin="anonymous"
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        background: '#000',
+                        display: 'block'
+                      }}
+                    />
+                  </Box>
+
+                  {/* Local Self Video (3D Glass PiP Style Overlay) */}
+                  {!isPipMode && videoCall.stream && (
+                    <Box
+                      className="juicy-self-video-pip"
+                      sx={{
+                        position: 'absolute',
+                        top: { xs: 80, sm: 90 },
+                        right: 18,
+                        width: { xs: 115, sm: 140 },
+                        height: { xs: 160, sm: 195 },
+                        borderRadius: '20px',
+                        border: '2px solid rgba(255,255,255,0.4)',
+                        boxShadow: '0 16px 40px rgba(0,0,0,0.6)',
+                        overflow: 'hidden',
+                        zIndex: 4,
+                        backgroundColor: '#1c1c1e',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                        backdropFilter: 'blur(16px)'
+                      }}
+                    >
+                      {!videoCall.isCameraOff ? (
+                        <>
+                          <video
+                            ref={(el) => {
+                              if (el && videoCall.stream) {
+                                if (el.srcObject !== videoCall.stream) {
+                                  el.srcObject = videoCall.stream;
+                                  el.muted = true;
+                                  el.play().catch(err => console.warn('Self-video play failed:', err));
+                                }
+                              }
+                            }}
+                            autoPlay
+                            playsInline
+                            muted
+                            style={{
+                              width: '100%',
+                              height: '100%',
+                              objectFit: 'cover',
+                              transform: videoCall.cameraFacing === 'user' ? 'scaleX(-1)' : 'none',
+                              display: 'block'
+                            }}
+                          />
+                          {/* Round Arrow Switch Camera Button overlayed on PiP */}
+                          <IconButton
+                            disabled={videoCall.switchingCamera}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              videoCall.switchCamera();
+                            }}
+                            sx={{
+                              position: 'absolute',
+                              bottom: 8,
+                              right: 8,
+                              background: 'rgba(0, 0, 0, 0.65)',
+                              color: '#fff',
+                              width: 34,
+                              height: 34,
+                              borderRadius: '50%',
+                              zIndex: 5,
+                              border: '1px solid rgba(255,255,255,0.3)',
+                              boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+                              transition: 'all 0.2s ease',
+                              '&:hover': {
+                                background: 'rgba(0, 0, 0, 0.85)',
+                                transform: 'scale(1.1) rotate(180deg)'
+                              },
+                              '&:active': {
+                                transform: 'scale(0.95)'
+                              }
+                            }}
+                          >
+                            <FlipIcon sx={{ fontSize: 18 }} />
+                          </IconButton>
+                        </>
+                      ) : (
+                        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.5, p: 2 }}>
+                          <Avatar
+                            src={user?.profilePic || user?.image}
+                            sx={{
+                              width: { xs: 44, sm: 54 },
+                              height: { xs: 44, sm: 54 },
+                              border: '2px solid rgba(255,255,255,0.4)',
+                              boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+                            }}
+                          />
+                          <Typography variant="caption" sx={{ color: '#fff', fontSize: '0.75rem', fontWeight: 600, opacity: 0.85, textAlign: 'center' }}>
+                            Camera Off
+                          </Typography>
+                        </Box>
+                      )}
+                    </Box>
+                  )}
+                </>
+              )}
+
+              {/* 3D Glass Floating Call Control Dock — hidden in PiP mode */}
+              <Box sx={{
+                display: isPipMode ? 'none' : 'flex',
+                gap: { xs: 1.5, sm: 2.2 },
+                justifyContent: 'center',
+                alignItems: 'center',
+                position: 'absolute',
+                bottom: { xs: 24, sm: 34 },
+                left: '50%',
+                transform: 'translateX(-50%)',
+                zIndex: 15,
+                bgcolor: 'rgba(25, 5, 15, 0.72)',
+                backdropFilter: 'blur(28px) saturate(180%)',
+                WebkitBackdropFilter: 'blur(28px) saturate(180%)',
+                border: '1.5px solid rgba(255, 255, 255, 0.22)',
+                borderRadius: '50px',
+                px: { xs: 2, sm: 3 },
+                py: { xs: 1.2, sm: 1.5 },
+                boxShadow: '0 20px 50px rgba(0, 0, 0, 0.6), inset 0 1px 2px rgba(255, 255, 255, 0.35)'
+              }}>
+                {/* Mute/Unmute - Microphone */}
+                <Tooltip title={videoCall.isMicrophoneMuted ? "Unmute Microphone" : "Mute Microphone"}>
+                  <IconButton
+                    onClick={videoCall.toggleMicrophone}
+                    sx={{
+                      width: { xs: 48, sm: 54 },
+                      height: { xs: 48, sm: 54 },
+                      borderRadius: '50%',
+                      background: videoCall.isMicrophoneMuted
+                        ? 'linear-gradient(145deg, rgba(239, 68, 68, 0.4) 0%, rgba(185, 28, 28, 0.6) 100%)'
+                        : 'linear-gradient(145deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.08) 100%)',
+                      color: '#fff',
+                      border: videoCall.isMicrophoneMuted ? '1.5px solid #ef4444' : '1px solid rgba(255, 255, 255, 0.3)',
+                      boxShadow: videoCall.isMicrophoneMuted
+                        ? '0 0 16px rgba(239, 68, 68, 0.5), inset 0 1px 1px rgba(255,255,255,0.3)'
+                        : '0 6px 18px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.4)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transition: 'all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                      '&:hover': {
+                        transform: 'scale(1.1) translateY(-2px)',
+                        boxShadow: videoCall.isMicrophoneMuted
+                          ? '0 0 22px rgba(239, 68, 68, 0.7)'
+                          : '0 8px 24px rgba(0,0,0,0.4)'
+                      },
+                      '&:active': {
+                        transform: 'scale(0.94)'
+                      }
+                    }}
+                  >
+                    {videoCall.isMicrophoneMuted ? (
+                      <MicOffIcon sx={{ fontSize: { xs: 24, sm: 26 } }} />
+                    ) : (
+                      <MicIcon sx={{ fontSize: { xs: 24, sm: 26 } }} />
+                    )}
+                  </IconButton>
+                </Tooltip>
+
+                {/* Camera On/Off - only for video calls */}
+                {videoCall.callType === 'video' && (
+                  <Tooltip title={videoCall.isCameraOff ? "Turn Camera On" : "Turn Camera Off"}>
+                    <IconButton
+                      onClick={videoCall.toggleCamera}
+                      sx={{
+                        width: { xs: 48, sm: 54 },
+                        height: { xs: 48, sm: 54 },
+                        borderRadius: '50%',
+                        background: videoCall.isCameraOff
+                          ? 'linear-gradient(145deg, rgba(239, 68, 68, 0.4) 0%, rgba(185, 28, 28, 0.6) 100%)'
+                          : 'linear-gradient(145deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.08) 100%)',
+                        color: '#fff',
+                        border: videoCall.isCameraOff ? '1.5px solid #ef4444' : '1px solid rgba(255, 255, 255, 0.3)',
+                        boxShadow: videoCall.isCameraOff
+                          ? '0 0 16px rgba(239, 68, 68, 0.5), inset 0 1px 1px rgba(255,255,255,0.3)'
+                          : '0 6px 18px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.4)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transition: 'all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                        '&:hover': {
+                          transform: 'scale(1.1) translateY(-2px)',
+                          boxShadow: videoCall.isCameraOff
+                            ? '0 0 22px rgba(239, 68, 68, 0.7)'
+                            : '0 8px 24px rgba(0,0,0,0.4)'
+                        },
+                        '&:active': {
+                          transform: 'scale(0.94)'
+                        }
+                      }}
+                    >
+                      {videoCall.isCameraOff ? (
+                        <VideocamIcon sx={{ fontSize: { xs: 24, sm: 26 }, opacity: 0.6 }} />
+                      ) : (
+                        <VideocamIcon sx={{ fontSize: { xs: 24, sm: 26 } }} />
+                      )}
+                    </IconButton>
+                  </Tooltip>
+                )}
+
+                {/* Switch Camera - Rotate front/back */}
+                {videoCall.callType === 'video' && (
+                  <Tooltip title="Rotate Camera">
+                    <IconButton
+                      disabled={videoCall.switchingCamera}
+                      onClick={videoCall.switchCamera}
+                      sx={{
+                        width: { xs: 48, sm: 54 },
+                        height: { xs: 48, sm: 54 },
+                        borderRadius: '50%',
+                        background: 'linear-gradient(145deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.08) 100%)',
+                        border: '1px solid rgba(255, 255, 255, 0.3)',
+                        color: '#fff',
+                        boxShadow: '0 6px 18px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.4)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transition: 'all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                        '&:hover': {
+                          transform: 'scale(1.1) translateY(-2px)',
+                          boxShadow: '0 8px 24px rgba(0,0,0,0.4)'
+                        },
+                        '&:active': {
+                          transform: 'scale(0.94)'
+                        }
+                      }}
+                    >
+                      <FlipIcon sx={{ fontSize: { xs: 24, sm: 26 } }} />
+                    </IconButton>
+                  </Tooltip>
+                )}
+
+                {/* Native Picture in Picture */}
+                {videoCall.callType === 'video' && document.pictureInPictureEnabled && (
+                  <Tooltip title="Multitask PiP">
+                    <IconButton
+                      onClick={async () => {
+                        try {
+                          if (document.pictureInPictureElement) {
+                            await document.exitPictureInPicture();
+                          } else if (videoCall.userVideo.current) {
+                            await videoCall.userVideo.current.requestPictureInPicture();
+                          }
+                        } catch (err) {
+                          console.error('Failed to toggle Picture-in-Picture:', err);
+                        }
+                      }}
+                      sx={{
+                        width: { xs: 48, sm: 54 },
+                        height: { xs: 48, sm: 54 },
+                        borderRadius: '50%',
+                        background: 'linear-gradient(145deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.08) 100%)',
+                        border: '1px solid rgba(255, 255, 255, 0.3)',
+                        color: '#fff',
+                        boxShadow: '0 6px 18px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.4)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transition: 'all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                        '&:hover': {
+                          transform: 'scale(1.1) translateY(-2px)',
+                          boxShadow: '0 8px 24px rgba(0,0,0,0.4)'
+                        },
+                        '&:active': {
+                          transform: 'scale(0.94)'
+                        }
+                      }}
+                    >
+                      <PictureInPictureIcon sx={{ fontSize: { xs: 24, sm: 26 } }} />
+                    </IconButton>
+                  </Tooltip>
+                )}
+
+                {/* Speaker Phone - Toggle earpiece/speaker for Android */}
+                <Tooltip title={videoCall.isSpeakerOn ? "Switch to earpiece" : "Switch to speaker"}>
+                  <IconButton
+                    onClick={videoCall.toggleSpeakerPhone}
+                    sx={{
+                      width: { xs: 48, sm: 54 },
+                      height: { xs: 48, sm: 54 },
+                      borderRadius: '50%',
+                      background: videoCall.isSpeakerOn
+                        ? 'linear-gradient(145deg, rgba(16, 185, 129, 0.4) 0%, rgba(5, 150, 105, 0.6) 100%)'
+                        : 'linear-gradient(145deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.08) 100%)',
+                      color: '#fff',
+                      border: videoCall.isSpeakerOn ? '1.5px solid #10b981' : '1px solid rgba(255, 255, 255, 0.3)',
+                      boxShadow: videoCall.isSpeakerOn
+                        ? '0 0 16px rgba(16, 185, 129, 0.5), inset 0 1px 1px rgba(255,255,255,0.3)'
+                        : '0 6px 18px rgba(0,0,0,0.3), inset 0 1px 1px rgba(255,255,255,0.4)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transition: 'all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                      '&:hover': {
+                        transform: 'scale(1.1) translateY(-2px)',
+                        boxShadow: videoCall.isSpeakerOn
+                          ? '0 0 22px rgba(16, 185, 129, 0.7)'
+                          : '0 8px 24px rgba(0,0,0,0.4)'
+                      },
+                      '&:active': {
+                        transform: 'scale(0.94)'
+                      }
+                    }}
+                  >
+                    {videoCall.isSpeakerOn ? (
+                      <VolumeUpIcon sx={{ fontSize: { xs: 24, sm: 26 } }} />
+                    ) : (
+                      <PhoneIcon sx={{ fontSize: { xs: 24, sm: 26 } }} />
+                    )}
+                  </IconButton>
+                </Tooltip>
+
+                {/* Divider Line */}
+                <Box sx={{ width: '1px', height: 28, bgcolor: 'rgba(255,255,255,0.25)', mx: 0.5 }} />
+
+                {/* 3D End Call Button */}
+                <Tooltip title="End Call">
+                  <IconButton
+                    onClick={handleCallEnd}
+                    sx={{
+                      width: { xs: 52, sm: 58 },
+                      height: { xs: 52, sm: 58 },
+                      borderRadius: '50%',
+                      bgcolor: '#ef4444',
+                      backgroundImage: 'linear-gradient(145deg, #f87171 0%, #ef4444 50%, #b91c1c 100%)',
+                      color: '#fff',
+                      border: '2px solid rgba(255, 255, 255, 0.75)',
+                      boxShadow: '0 8px 25px rgba(239, 68, 68, 0.7), inset 0 2px 3px rgba(255, 255, 255, 0.7), inset 0 -2px 4px rgba(0, 0, 0, 0.35)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                      animation: 'declineGlowPulse 2.2s infinite ease-in-out',
+                      '&:hover': {
+                        transform: 'scale(1.12) translateY(-2px)',
+                        boxShadow: '0 12px 32px rgba(239, 68, 68, 0.9)'
+                      },
+                      '&:active': {
+                        transform: 'scale(0.93)'
+                      }
+                    }}
+                  >
+                    <PhoneIcon sx={{ fontSize: { xs: 26, sm: 28 }, transform: 'rotate(135deg)', color: '#fff' }} />
+                  </IconButton>
+                </Tooltip>
+              </Box>
             </Box>
           </Dialog>
         )}
@@ -9122,7 +10889,14 @@ const ChatPage = () => {
       {/* Celebration animation canvas overlay */}
       <CelebrationCanvas canvasRef={canvasRef} />
 
-      {/* User Guide Modal - shows only once for new users */}
+      {/* Feature Catalog Modal - shown only once for new users on first login */}
+      <FeatureCatalogModal
+        open={showCatalog}
+        onClose={() => setShowCatalog(false)}
+        isDarkTheme={isDarkTheme}
+      />
+
+      {/* User Guide Modal - accessible from Settings */}
       <UserGuideModal
         open={showUserGuide}
         onClose={() => setShowUserGuide(false)}

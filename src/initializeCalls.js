@@ -2,6 +2,66 @@ import { useEffect, useCallback, useRef } from 'react';
 import useVideoCall from './VideoCall';
 import { generateUniqueNumericId } from './utils/uniqueIdGenerator';
 import API_BASE_URL from './config/apiConfig';
+import { initCallLogsDb, saveCallLogLocally, markCallLogSynced } from './db/callLogsDb';
+
+// ICE servers for NAT traversal and fallback relay (optimized for fast mobile P2P & candidate gathering)
+// Defined at module level so reference remains completely stable across re-renders
+const iceServers = [
+  // Public STUN
+  {
+    urls: [
+      'stun:stun.l.google.com:19302',
+      'stun:stun1.l.google.com:19302',
+      'stun:stun2.l.google.com:19302',
+      'stun:stun3.l.google.com:19302'
+    ]
+  },
+
+  // Your self-hosted STUN
+  {
+    urls: [
+      'stun:turn.juicyapp.in:3478',
+      'stun:turn.juicyapp.in:443'
+    ]
+  },
+
+  // Your self-hosted TURN (Port 3478 + Port 443 for strict firewall bypass)
+  {
+    urls: [
+      'turn:turn.juicyapp.in:3478?transport=udp',
+      'turn:turn.juicyapp.in:3478?transport=tcp',
+      'turn:turn.juicyapp.in:443?transport=tcp',
+      'turn:turn.juicyapp.in:443?transport=udp',
+      'turns:turn.juicyapp.in:443?transport=tcp'
+    ],
+    username: 'juicee',
+    credential: 'JuicYCoTurnCALL'
+  },
+
+  // Temporary fallback TURN
+  {
+    urls: [
+      'turn:openrelay.metered.ca:443',
+      'turn:openrelay.metered.ca:80'
+    ],
+    username: 'openrelayproject',
+    credential: 'openrelayproject'
+  }
+];
+/**
+ * RTCPeerConnection configuration for both initiator and answerer peers.
+ * - bundlePolicy: 'max-bundle'  → All media on one transport (lower latency, fewer TURN relay ports)
+ * - sdpSemantics: 'unified-plan' → Modern SDP format required for reliable track events on all browsers
+ * - iceTransportPolicy: 'all'   → Try STUN (direct) AND TURN (relay) candidates simultaneously
+ * - iceCandidatePoolSize: 10    → Pre-gather candidates before offer/answer (speeds up ICE)
+ */
+const rtcConfig = {
+  iceServers,
+  bundlePolicy: 'max-bundle',
+  sdpSemantics: 'unified-plan',
+  iceTransportPolicy: 'all',
+  iceCandidatePoolSize: 10,
+};
 
 /**
  * Custom hook to initialize video/audio call configurations, socket listeners,
@@ -9,6 +69,48 @@ import API_BASE_URL from './config/apiConfig';
  */
 export const useInitializeCalls = (socket, user, selectedUser, dbFriends, setCallLogs) => {
   const loggingLockRef = useRef(false);
+  // Ref so callEnded socket listener always calls latest handleCallEnd (prevents stale closure race)
+  const handleCallEndRef = useRef(null);
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // ⚡ FIX 3: TURN/ICE Pre-warm
+  // Create a throwaway RTCPeerConnection with the same iceServers, trigger ICE gathering,
+  // then close it. This caches the TURN allocation and STUN binding so the first real call
+  // is not a cold start.
+  // ─────────────────────────────────────────────────────────────────────────────
+  const prewarmIceAndTurn = useCallback(async (cfg) => {
+    if (!cfg || !cfg.iceServers) return;
+    let pc = null;
+    try {
+      console.log('⚡ [ICE-PREWARM] Warming up TURN allocation and STUN binding...');
+      pc = new RTCPeerConnection(cfg);
+      // Add a data channel so the offer includes ICE gathering
+      pc.createDataChannel('prewarm');
+      // Create offer and set local description to trigger ICE candidate gathering
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      // Wait for ICE gathering to complete or timeout (5 seconds max)
+      await new Promise((resolve) => {
+        const timeout = setTimeout(resolve, 5000);
+        const check = () => {
+          if (pc.iceGatheringState === 'complete') {
+            clearTimeout(timeout);
+            resolve();
+          }
+        };
+        pc.onicegatheringstatechange = check;
+        check(); // already complete if candidates pre-cached
+      });
+      console.log('✅ [ICE-PREWARM] ICE gathering complete — TURN/STUN warmed up');
+    } catch (err) {
+      console.warn('⚠️ [ICE-PREWARM] Prewarm failed (non-fatal):', err.message);
+    } finally {
+      // Always close the throwaway peer — NO candidates are sent anywhere
+      if (pc) {
+        try { pc.close(); } catch (e) {}
+      }
+    }
+  }, []);
 
   // Save call log to backend
   const saveCallLogToBackend = async (callData) => {
@@ -21,6 +123,9 @@ export const useInitializeCalls = (socket, user, selectedUser, dbFriends, setCal
 
       if (response.ok) {
         console.log('Call log saved to backend');
+        if (callData?.id) {
+          markCallLogSynced(callData.id);
+        }
       } else {
         console.error('Failed to save call log to backend');
       }
@@ -29,62 +134,19 @@ export const useInitializeCalls = (socket, user, selectedUser, dbFriends, setCal
     }
   };
 
-  // Add call log locally to the state
+  // Add call log locally to the state and SQLite cache
   const addCallLog = useCallback((log) => {
+    const logEntry = {
+      ...log,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }),
+      id: log?.id || generateUniqueNumericId()
+    };
     setCallLogs(prev => [
-      {
-        ...log,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }),
-        id: generateUniqueNumericId()
-      },
+      logEntry,
       ...prev
     ]);
+    saveCallLogLocally(logEntry);
   }, [setCallLogs]);
-
-  // ICE servers for NAT traversal and fallback relay (optimized for fast mobile P2P & candidate gathering)
-  const iceServers = [
-    // Fast STUN servers for direct NAT traversal (4 Google STUN for better candidate diversity)
-    {
-      urls: [
-        'stun:stun.l.google.com:19302',
-        'stun:stun1.l.google.com:19302',
-        'stun:stun2.l.google.com:19302',
-        'stun:stun3.l.google.com:19302'
-      ]
-    },
-    // Fast TURN servers for relay fallback (UDP port 443 & 80)
-    {
-      urls: [
-        'turn:openrelay.metered.ca:443',
-        'turn:openrelay.metered.ca:80'
-      ],
-      username: 'openrelayproject',
-      credential: 'openrelayproject'
-    },
-    {
-      urls: [
-        'turn:global.relay.metered.ca:443',
-        'turn:global.relay.metered.ca:80'
-      ],
-      username: 'cfb9d79f53f4d7f0ca10c84f',
-      credential: 'r3k0rWoUV9pYx/k+'
-    }
-  ];
-
-  /**
-   * RTCPeerConnection configuration for both initiator and answerer peers.
-   * - bundlePolicy: 'max-bundle'  → All media on one transport (lower latency, fewer TURN relay ports)
-   * - sdpSemantics: 'unified-plan' → Modern SDP format required for reliable track events on all browsers
-   * - iceTransportPolicy: 'all'   → Try STUN (direct) AND TURN (relay) candidates simultaneously
-   * - iceCandidatePoolSize: 10    → Pre-gather candidates before offer/answer (speeds up ICE)
-   */
-  const rtcConfig = {
-    iceServers,
-    bundlePolicy: 'max-bundle',
-    sdpSemantics: 'unified-plan',
-    iceTransportPolicy: 'all',
-    iceCandidatePoolSize: 10,
-  };
 
   // Initialize video call hook (must be after `iceServers` and `rtcConfig` are defined)
   const videoCall = useVideoCall(socket, user, selectedUser, dbFriends, iceServers, rtcConfig);
@@ -158,6 +220,64 @@ export const useInitializeCalls = (socket, user, selectedUser, dbFriends, setCal
     };
   }, [videoCall?.callStarted, videoCall?.callType, videoCall?.isSpeakerOn]);
 
+  // ✅ [WhatsApp-style Background Calling]
+  // Start the foreground service at ALL active call phases so the notification
+  // appears BEFORE the user can swipe the app away:
+  //   Phase 1 — calling (outgoing, waiting for receiver to pick up)
+  //   Phase 2 — callAccepted (receiver accepted, RTC connecting)
+  //   Phase 3 — callStarted (both sides, RTC connected, media flowing)
+  // The FGS keeps the WebView process alive with WakeLock + WifiLock even when
+  // the user backgrounds or swipes away the app from recents.
+  useEffect(() => {
+    if (!window.Capacitor) return; // Only on native Android
+
+    const { AudioRoute } = window.Capacitor.Plugins || {};
+    if (!AudioRoute || typeof AudioRoute.startForegroundService !== 'function') return;
+
+    const isCalling      = Boolean(videoCall?.calling);      // Outgoing call — ringing phase
+    const isAccepted     = Boolean(videoCall?.callAccepted); // Receiver accepted, connecting
+    const isStarted      = Boolean(videoCall?.callStarted);  // RTC fully connected
+    const isAnyCallPhase = isCalling || isAccepted || isStarted;
+
+    if (isAnyCallPhase) {
+      const callerName = videoCall.call?.callerName || selectedUser?.username || selectedUser?.name || 'Juicy Call';
+      const callTypeLabel = videoCall.callType === 'video' ? '📹 Video Call' : '📞 Audio Call';
+
+      let title, content;
+      if (isStarted) {
+        title   = `${callTypeLabel} in Progress`;
+        content = `${callerName} • Tap to return to call`;
+      } else if (isAccepted) {
+        title   = `${callTypeLabel} Connecting...`;
+        content = `${callerName} • Tap to return`;
+      } else {
+        // isCalling — outgoing ring phase
+        title   = `${callTypeLabel} in Progress`;
+        content = `Calling ${callerName}... • Tap to return`;
+      }
+
+      console.log('📱 [FGS] Starting foreground service —', title);
+      AudioRoute.startForegroundService({ type: 'call', title, content })
+        .catch(err => console.warn('📱 [FGS] startForegroundService error:', err));
+    } else {
+      // No active call phase — stop foreground service
+      if (typeof AudioRoute.stopForegroundService === 'function') {
+        console.log('📱 [FGS] Stopping foreground service — call ended or no active call');
+        AudioRoute.stopForegroundService({})
+          .catch(err => console.warn('📱 [FGS] stopForegroundService error:', err));
+      }
+    }
+  }, [
+    videoCall?.calling,
+    videoCall?.callAccepted,
+    videoCall?.callStarted,
+    videoCall?.callType,
+    videoCall?.call?.callerName,
+    selectedUser
+  ]);
+
+
+
   // Wrapper to initiate call and log it
   const initiateCallHandler = useCallback(async (friendId, type = 'audio') => {
     loggingLockRef.current = false; // Reset log lock for new call
@@ -172,7 +292,17 @@ export const useInitializeCalls = (socket, user, selectedUser, dbFriends, setCal
 
   // Comprehensive call end handler that saves to backend
   const handleCallEnd = useCallback(async (skipEmit = false) => {
-    // 1. Guard Clause - If we've already logged this call, or there's no active call, skip
+    // ✅ [GhostRingFix] Always stop ringtone / cleanup call UI FIRST, unconditionally.
+    // Must never be gated by the logging guards below — those only protect against
+    // duplicate backend log writes, not against a stuck ringtone. videoCall.endCall()
+    // is internally idempotent (isEndingRef guard), so calling it here even when a
+    // duplicate handleCallEnd fires later is always safe.
+    if (typeof videoCall.dismissCallNotification === 'function') {
+      videoCall.dismissCallNotification();
+    }
+    videoCall.endCall(skipEmit);
+
+    // 1. Guard Clause - If we've already logged this call, or there's no active call, skip logging
     if (loggingLockRef.current) {
       console.log('🛑 Duplicate log prevented via Ref Lock');
       return;
@@ -229,34 +359,37 @@ export const useInitializeCalls = (socket, user, selectedUser, dbFriends, setCal
 
     // Save call log to backend - ONLY FOR THE CALLER
     if (currentUserId && otherUserId && isCaller) {
+      const callLogId = generateUniqueNumericId();
       const callLogData = isCaller ? {
+        id: callLogId,
         callerId: currentUserId,
         receiverId: otherUserId,
         callType: videoCall.callType || 'audio',
         status: callStatus,
         duration: callDurationSeconds,
         startTime: videoCall.callStartTime ? new Date(videoCall.callStartTime) : new Date(),
-        endTime: new Date()
+        endTime: new Date(),
+        name: selectedUser?.username || selectedUser?.name || 'Unknown',
+        image: selectedUser?.profilePic || selectedUser?.image || '',
+        direction: 'outgoing'
       } : {
+        id: callLogId,
         callerId: otherUserId,
         receiverId: currentUserId,
         callType: videoCall.callType || 'audio',
         status: callStatus,
         duration: callDurationSeconds,
         startTime: videoCall.callStartTime ? new Date(videoCall.callStartTime) : new Date(),
-        endTime: new Date()
+        endTime: new Date(),
+        name: selectedUser?.username || selectedUser?.name || 'Unknown',
+        image: selectedUser?.profilePic || selectedUser?.image || '',
+        direction: 'incoming'
       };
 
       saveCallLogToBackend(callLogData);
+      addCallLog(callLogData);
     }
-
-    // Dismiss call notification immediately when call ends
-    if (typeof videoCall.dismissCallNotification === 'function') {
-      videoCall.dismissCallNotification();
-    }
-    // End the video call in the hook (pass skipEmit to avoid double-emit loop)
-    videoCall.endCall(skipEmit);
-  }, [videoCall, selectedUser]);
+  }, [videoCall, selectedUser, addCallLog]);
 
   // Wrapper to answer call and log it
   const answerCallHandler = useCallback(async () => {
@@ -299,25 +432,42 @@ export const useInitializeCalls = (socket, user, selectedUser, dbFriends, setCal
 
   useEffect(() => {
     let timer;
-    if (videoCall.callStarted && videoCall.callStartTime) {
-      timer = setInterval(() => {
-        const diff = Math.floor((Date.now() - videoCall.callStartTime) / 1000);
+    if (videoCall.callStarted) {
+      const startTime = videoCall.callStartTime || Date.now();
+      if (!videoCall.callStartTime && typeof videoCall.setCallStartTime === 'function') {
+        videoCall.setCallStartTime(startTime);
+      }
+
+      const updateDuration = () => {
+        const currentStart = videoCall.callStartTime || startTime;
+        const diff = Math.max(0, Math.floor((Date.now() - currentStart) / 1000));
         const min = String(Math.floor(diff / 60)).padStart(2, '0');
         const sec = String(diff % 60).padStart(2, '0');
         videoCall.setCallDuration(`${min}:${sec}`);
-      }, 1000);
+      };
+
+      updateDuration();
+      timer = setInterval(updateDuration, 1000);
     } else {
       videoCall.setCallDuration('00:00');
     }
     return () => clearInterval(timer);
-  }, [videoCall.callStarted, videoCall.callStartTime, videoCall.setCallDuration]);
+  }, [videoCall.callStarted, videoCall.callStartTime, videoCall.setCallDuration, videoCall.setCallStartTime]);
+
+  // Keep ref always pointing to the latest handleCallEnd so the socket listener never goes stale
+  useEffect(() => {
+    handleCallEndRef.current = handleCallEnd;
+  }, [handleCallEnd]);
 
   useEffect(() => {
     if (!socket) return;
 
     const handleEndCallFromPeer = () => {
       console.log('📴 [Socket] Received callEnded event from peer - closing UI');
-      handleCallEnd(true);
+      // Use ref so we always call the latest version regardless of closure age
+      if (handleCallEndRef.current) {
+        handleCallEndRef.current(true);
+      }
     };
 
     console.log('🔔 Setting up callEnded listener');
@@ -327,7 +477,7 @@ export const useInitializeCalls = (socket, user, selectedUser, dbFriends, setCal
       console.log('🔔 Removing callEnded listener');
       socket.off('callEnded', handleEndCallFromPeer);
     };
-  }, [socket, handleCallEnd]);
+  }, [socket]); // ✅ Depends only on socket — ref keeps handleCallEnd fresh without re-registering
 
   // Listen for busy signal (simultaneous calls detected)
   useEffect(() => {
@@ -376,6 +526,14 @@ export const useInitializeCalls = (socket, user, selectedUser, dbFriends, setCal
       handleCallEnd();
     }
   }, [videoCall.callRejected, videoCall.callingTimeout, videoCall.callAccepted, handleCallEnd]);
+
+  // Standalone SQLite DB initialization on mount
+  useEffect(() => {
+    initCallLogsDb();
+    // ⚡ FIX 3: Trigger ICE/TURN pre-warm on first mount so the first real call is never a cold start.
+    // Non-blocking — runs silently in the background, closes the throwaway PC when done.
+    prewarmIceAndTurn(rtcConfig);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     videoCall,

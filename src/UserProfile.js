@@ -25,34 +25,41 @@ import {
   Fade,
   Zoom,
   Divider,
+  Slider,
 } from '@mui/material';
 import {
   PersonAdd as PersonAddIcon,
   Check as CheckIcon,
   Close as CloseIcon,
-  Edit as EditIcon,
   CameraAlt as CameraAltIcon,
   DeleteForever as DeleteForeverIcon,
   Block as BlockIcon,
   PersonRemove as PersonRemoveIcon,
   CloudUpload as CloudUploadIcon,
+  Person as PersonIcon,
+  ArrowBack as ArrowBackIcon,
+  Email as EmailIcon,
+  Phone as PhoneIcon,
+  Transgender as TransgenderIcon,
 } from '@mui/icons-material';
+import PeopleAltIcon from '@mui/icons-material/PeopleAlt';
+import PersonAddAlt1Icon from '@mui/icons-material/PersonAddAlt1';
+import { useTheme } from '@mui/material/styles';
 import Cropper from 'react-easy-crop';
-import Slider from '@mui/material/Slider';
 import getCroppedImg from './utils/cropImage';
 import useSwipeBack from './hooks/useSwipeBack';
 import { useNavigate } from 'react-router-dom';
-import PeopleAltIcon from '@mui/icons-material/PeopleAlt';
-import PersonAddAlt1Icon from '@mui/icons-material/PersonAddAlt1';
 import API_BASE_URL from './config/apiConfig';
 import { useSocket } from './context/socketContext';
+import { getProfileImageSrc } from './utils/imageUtils';
 
 const UserProfile = ({
   friendRequestsList = [],
   onAcceptFriend,
   onBlockChange,
   hideProfileCard = false,
-  initialTab = 0
+  initialTab = 0,
+  onBack
 }) => {
   useSwipeBack();
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -63,7 +70,29 @@ const UserProfile = ({
     }
   }, [initialTab]);
 
+  const theme = useTheme();
   const isMobile = useMediaQuery('(max-width: 1024px)');
+
+  // Theme & Dark mode detection matching Settings.js
+  const [currentIsDark] = useState(() => {
+    try {
+      const saved = localStorage.getItem('appTheme');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const bgCol = parsed?.colors?.background;
+        if (bgCol && bgCol.startsWith('#')) {
+          const hex = bgCol.replace('#', '').trim();
+          const r = parseInt(hex.substring(0, 2), 16);
+          const g = parseInt(hex.substring(2, 4), 16);
+          const b = parseInt(hex.substring(4, 6), 16);
+          return (r * 299 + g * 587 + b * 114) / 1000 < 128;
+        }
+      }
+    } catch (e) {}
+    return theme.palette.mode === 'dark';
+  });
+  const isDark = currentIsDark;
+
   const [friends, setFriends] = useState([]);
   const [user, setUser] = useState(null);
   const socket = useSocket();
@@ -86,7 +115,6 @@ const UserProfile = ({
     friend: null,
   });
   const navigate = useNavigate();
-  const [imageLoaded, setImageLoaded] = useState(false);
 
   const populateRequests = async (requestsList) => {
     if (!requestsList || requestsList.length === 0) return [];
@@ -126,7 +154,7 @@ const UserProfile = ({
     const userId = localStorage.getItem('userId');
     if (userId) {
       // --- Local cache: pre-fill profile image instantly from localStorage ---
-      const cachedImage = localStorage.getItem('profileImageCache');
+      const cachedImage = localStorage.getItem('profileImageCache') || localStorage.getItem('profileImage');
       if (cachedImage) {
         setUser(prev => prev ? { ...prev, profileImage: cachedImage } : { profileImage: cachedImage });
       }
@@ -138,8 +166,10 @@ const UserProfile = ({
           // Keep cache in sync with latest server value
           if (data.profileImage) {
             localStorage.setItem('profileImageCache', data.profileImage);
+            localStorage.setItem('profileImage', data.profileImage);
           } else {
             localStorage.removeItem('profileImageCache');
+            localStorage.removeItem('profileImage');
           }
         });
       fetch(`${API_BASE_URL}/api/user/${userId}/friends`)
@@ -185,22 +215,6 @@ const UserProfile = ({
     }, 5000);
     return () => clearInterval(pollInterval);
   }, [activeTab]);
-
-  const currentIdStr = user && user._id ? String(user._id) : localStorage.getItem('userId');
-  const filteredPendingRequests = (friendRequestsList || [])
-    .filter(req => {
-      if (!req) return false;
-      if (req.receiverId && currentIdStr && String(req.receiverId) !== currentIdStr) return false;
-      return true;
-    })
-    .map(req => ({
-      name: req.senderUsername || req.username || 'User',
-      avatar: req.profileImage || req.senderProfilePic || null,
-      status: 'pending',
-      online: false,
-      _id: req.senderId || req._id,
-      requestId: req.requestId || req._id
-    }));
 
   // Filter out requests from users who are already friends
   const friendIds = new Set(friends.map(f => String(f._id || f.friendId || f)));
@@ -338,25 +352,54 @@ const UserProfile = ({
 
   const visibleFriends = friends.filter(f => !blockedUsers.includes(f._id));
 
-  const getProfileImageSrc = (profileImage) => {
-    if (!profileImage) return undefined;
-    return profileImage.startsWith('data:') ? profileImage : `data:image/jpeg;base64,${profileImage}`;
-  };
+  // Profile image resolution supporting Google URLs and Base64 format
+  // (Delegated to shared getProfileImageSrc utility)
 
+  // Skeleton Loading State matching Settings glassmorphic theme
   if (!user) {
     return (
-      <Box sx={{
-        width: '100%',
-        height: '100dvh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        bgcolor: 'var(--background-color, #fff6f8)',
-      }}>
-        <Box sx={{ textAlign: 'center' }}>
-          <Skeleton variant="circular" width={80} height={80} sx={{ mx: 'auto', mb: 2 }} />
-          <Skeleton variant="text" width={120} height={30} sx={{ mx: 'auto' }} />
-          <Skeleton variant="text" width={80} height={20} sx={{ mx: 'auto', mt: 1 }} />
+      <Box
+        sx={{
+          width: '100%',
+          height: '100dvh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          bgcolor: 'var(--background-color, #fff7f9)',
+          backgroundImage: isDark
+            ? 'radial-gradient(circle at 85% 10%, rgba(255, 255, 255, 0.05) 0%, transparent 40%), radial-gradient(circle at 15% 70%, rgba(255, 255, 255, 0.03) 0%, transparent 45%)'
+            : 'radial-gradient(circle at 90% 8%, rgba(0, 0, 0, 0.03) 0%, transparent 40%), radial-gradient(circle at 10% 65%, rgba(0, 0, 0, 0.02) 0%, transparent 45%)',
+        }}
+      >
+        <Box
+          sx={{
+            textAlign: 'center',
+            p: 4,
+            borderRadius: '24px',
+            bgcolor: isDark ? 'rgba(28, 22, 38, 0.75)' : 'var(--surface-color, rgba(255, 255, 255, 0.88))',
+            backdropFilter: 'blur(14px)',
+            border: isDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(180, 180, 180, 0.2)',
+            boxShadow: isDark ? '0 8px 24px rgba(0, 0, 0, 0.35)' : '0 8px 24px rgba(0, 0, 0, 0.05)',
+          }}
+        >
+          <Skeleton
+            variant="circular"
+            width={88}
+            height={88}
+            sx={{ mx: 'auto', mb: 2, bgcolor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)' }}
+          />
+          <Skeleton
+            variant="text"
+            width={140}
+            height={32}
+            sx={{ mx: 'auto', bgcolor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)' }}
+          />
+          <Skeleton
+            variant="text"
+            width={90}
+            height={22}
+            sx={{ mx: 'auto', mt: 1, bgcolor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)' }}
+          />
         </Box>
       </Box>
     );
@@ -365,100 +408,163 @@ const UserProfile = ({
   return (
     <Box
       sx={{
+        height: '100%',
         width: '100%',
-        minHeight: '100dvh',
-        bgcolor: 'var(--background-color, #fff6f8)',
+        bgcolor: 'var(--background-color, #fff7f9)',
+        backgroundImage: isDark
+          ? 'radial-gradient(circle at 85% 10%, rgba(255, 255, 255, 0.05) 0%, transparent 40%), radial-gradient(circle at 15% 70%, rgba(255, 255, 255, 0.03) 0%, transparent 45%)'
+          : 'radial-gradient(circle at 90% 8%, rgba(0, 0, 0, 0.03) 0%, transparent 40%), radial-gradient(circle at 10% 65%, rgba(0, 0, 0, 0.02) 0%, transparent 45%)',
+        color: 'var(--text-color, #000000)',
+        fontFamily: 'Poppins, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
         display: 'flex',
-        flexDirection: 'column',
-        fontFamily: "'Poppins', 'Inter', sans-serif",
+        justifyContent: 'center',
+        alignItems: 'stretch',
         position: 'relative',
         overflow: 'hidden',
-        '&::before': {
-          content: '""',
-          position: 'absolute',
-          top: '-10%',
-          right: '-5%',
-          width: '400px',
-          height: '400px',
-          borderRadius: '50%',
-          background: 'radial-gradient(circle, var(--primary-color, #ec407a)15, transparent 70%)',
-          opacity: 0.08,
-          pointerEvents: 'none',
-        },
-        '&::after': {
-          content: '""',
-          position: 'absolute',
-          bottom: '-10%',
-          left: '-5%',
-          width: '300px',
-          height: '300px',
-          borderRadius: '50%',
-          background: 'radial-gradient(circle, var(--primary-color, #ff6f91)20, transparent 70%)',
-          opacity: 0.06,
-          pointerEvents: 'none',
-        },
       }}
     >
-      {/* Main scrollable container */}
+      {/* Main scrollable container matching Settings.js */}
       <Box
         sx={{
           flex: 1,
+          width: '100%',
+          maxWidth: isMobile ? '100%' : (hideProfileCard ? 760 : 1180),
+          mx: 'auto',
+          height: '100%',
+          bgcolor: 'transparent',
           overflowY: 'auto',
-          px: isMobile ? 1.5 : 4,
-          pt: isMobile ? 2 : 4,
-          pb: isMobile ? { xs: 20, sm: 12, md: 6 } : 8,
+          pt: { xs: 2, sm: 3.5 },
+          pb: isMobile ? { xs: 14, sm: 10 } : 8,
+          px: { xs: 2, sm: 3.5 },
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: 0,
           position: 'relative',
           zIndex: 1,
+          /* Custom sleek scrollbar matching Settings.js */
           '&::-webkit-scrollbar': {
-            width: '0px',
-            display: 'none',
+            width: '6px'
           },
           '&::-webkit-scrollbar-track': {
-            background: 'transparent',
+            bgcolor: 'transparent'
           },
           '&::-webkit-scrollbar-thumb': {
-            background: 'transparent',
-          },
-          scrollbarWidth: 'none',
-          msOverflowStyle: 'none',
+            bgcolor: isDark ? 'rgba(255,255,255,0.12)' : 'var(--primary-color, rgba(255, 45, 108, 0.25))',
+            borderRadius: '10px'
+          }
         }}
       >
+        {/* Header Bar matching Settings.js */}
         <Box
           sx={{
-            maxWidth: '1200px',
-            mx: 'auto',
             display: 'flex',
-            flexDirection: isMobile ? 'column' : 'row',
-            gap: isMobile ? 2 : 4,
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            mb: 3,
+            px: 0.5
           }}
         >
-          {/* Profile Card - Full width on mobile */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            {onBack && (
+              <IconButton
+                onClick={onBack}
+                sx={{
+                  color: isDark ? '#ffffff' : 'var(--text-color, #1e1b2e)',
+                  bgcolor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                  borderRadius: '14px',
+                  p: 1.1,
+                  mr: 0.5,
+                  transition: 'all 0.2s ease',
+                  '&:hover': {
+                    bgcolor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+                    transform: 'translateX(-2px)'
+                  }
+                }}
+              >
+                <ArrowBackIcon fontSize="small" />
+              </IconButton>
+            )}
+
+            <Box
+              sx={{
+                width: 44,
+                height: 44,
+                borderRadius: '16px',
+                background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
+                color: '#ffffff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 6px 18px rgba(0, 0, 0, 0.15)',
+                border: '1px solid rgba(255, 255, 255, 0.25)'
+              }}
+            >
+              {hideProfileCard ? <PersonAddAlt1Icon fontSize="medium" /> : <PersonIcon fontSize="medium" />}
+            </Box>
+
+            <Box>
+              <Typography
+                variant="h6"
+                sx={{
+                  fontWeight: 800,
+                  background: isDark
+                    ? 'linear-gradient(135deg, #ffffff 0%, var(--primary-color, #fda4af) 100%)'
+                    : 'linear-gradient(135deg, var(--text-color, #1e1b2e) 0%, var(--primary-color, #ff2d6c) 100%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  lineHeight: 1.2,
+                  letterSpacing: '-0.3px',
+                  fontSize: isMobile ? '1.35rem' : '1.55rem'
+                }}
+              >
+                {hideProfileCard ? 'Friend Requests' : 'Profile & Connections'}
+              </Typography>
+              <Typography variant="caption" sx={{ color: isDark ? '#94a3b8' : '#64748b', fontWeight: 500 }}>
+                {hideProfileCard ? 'Respond to incoming requests & invites' : 'Manage your profile, friendships & interactions'}
+              </Typography>
+            </Box>
+          </Box>
+        </Box>
+
+        {/* Content Layout: 2 Columns on Desktop, Stacked on Mobile */}
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: isMobile ? 'column' : 'row',
+            gap: { xs: 2.5, sm: 3 },
+            alignItems: 'stretch',
+          }}
+        >
+          {/* Left Column: Profile Card */}
           {!hideProfileCard && (
             <Box
               sx={{
-                flex: isMobile ? '1 1 100%' : '0 0 380px',
+                flex: isMobile ? '1 1 100%' : '0 0 370px',
+                width: isMobile ? '100%' : 370,
                 position: 'relative',
-                width: isMobile ? '100%' : 'auto',
               }}
             >
               <Paper
                 elevation={0}
                 sx={{
-                  bgcolor: 'var(--surface-color, rgba(255, 255, 255, 0.85))',
-                  backdropFilter: 'blur(20px)',
                   borderRadius: '24px',
-                  border: '1px solid rgba(255, 255, 255, 0.6)',
-                  boxShadow: '0 8px 32px rgba(var(--primary-color, 236,64,122), 0.08), 0 2px 8px rgba(0, 0, 0, 0.04)',
+                  bgcolor: isDark ? 'rgba(28, 22, 38, 0.75)' : 'var(--surface-color, rgba(255, 255, 255, 0.88))',
+                  backdropFilter: 'blur(14px)',
+                  WebkitBackdropFilter: 'blur(14px)',
+                  border: isDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(180, 180, 180, 0.2)',
+                  boxShadow: isDark
+                    ? '0 8px 24px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255,255,255,0.06)'
+                    : '0 8px 24px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.9)',
                   overflow: 'hidden',
                   position: 'relative',
-                  width: '100%',
+                  transition: 'all 0.25s ease',
                 }}
               >
-                {/* Decorative header gradient */}
+                {/* Decorative header banner */}
                 <Box
                   sx={{
-                    height: isMobile ? '100px' : '120px',
-                    background: 'linear-gradient(135deg, var(--primary-color, #ff6f91) 0%, var(--primary-color, #ec407a) 50%, var(--primary-color, #d81b60) 100%)',
+                    height: isMobile ? '105px' : '120px',
+                    background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
                     position: 'relative',
                     '&::after': {
                       content: '""',
@@ -466,14 +572,16 @@ const UserProfile = ({
                       bottom: 0,
                       left: 0,
                       right: 0,
-                      height: '60px',
-                      background: 'linear-gradient(to top, var(--surface-color, rgba(255,255,255,0.85)), transparent)',
+                      height: '55px',
+                      background: isDark
+                        ? 'linear-gradient(to top, rgba(28, 22, 38, 0.95), transparent)'
+                        : 'linear-gradient(to top, var(--surface-color, rgba(255,255,255,0.95)), transparent)',
                     },
                   }}
                 />
 
-                <Box sx={{ px: isMobile ? 2 : 3, pb: 3, position: 'relative', mt: '-50px' }}>
-                  {/* Avatar with glass effect */}
+                <Box sx={{ px: { xs: 2.5, sm: 3 }, pb: 3, position: 'relative', mt: '-52px' }}>
+                  {/* Avatar with sleek ring and camera trigger */}
                   <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
                     <Badge
                       overlap="circular"
@@ -484,54 +592,58 @@ const UserProfile = ({
                             size="small"
                             onClick={() => setEditingImg(prev => !prev)}
                             sx={{
-                              bgcolor: 'var(--surface-color, #fff)',
-                              border: '2px solid var(--primary-color, #ec407a)',
-                              color: 'var(--primary-color, #ec407a)',
-                              width: 36,
-                              height: 36,
-                              boxShadow: '0 2px 12px rgba(0,0,0,0.1)',
-                              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                              bgcolor: 'var(--primary-color, #ff2d6c)',
+                              color: '#ffffff',
+                              width: 38,
+                              height: 38,
+                              borderRadius: '50%',
+                              border: isDark ? '3px solid #1c1626' : '3px solid #ffffff',
+                              boxShadow: '0 4px 14px rgba(0, 0, 0, 0.25)',
+                              transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
                               '&:hover': {
-                                bgcolor: 'var(--primary-color, #ec407a)',
-                                color: 'var(--surface-color, #fff)',
-                                transform: 'scale(1.1)',
+                                bgcolor: 'var(--primary-color, #ff2d6c)',
+                                transform: 'scale(1.12)',
+                                filter: 'brightness(1.1)',
                               },
                             }}
                           >
-                            <CameraAltIcon fontSize="small" />
+                            <CameraAltIcon sx={{ fontSize: 18 }} />
                           </IconButton>
                         </Tooltip>
                       }
                     >
                       <Avatar
                         sx={{
-                          width: isMobile ? 90 : 110,
-                          height: isMobile ? 90 : 110,
-                          bgcolor: 'var(--background-color, #fce4ec)',
-                          fontSize: isMobile ? 36 : 44,
-                          fontWeight: 600,
-                          border: '4px solid var(--surface-color, #fff)',
-                          boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+                          width: isMobile ? 96 : 108,
+                          height: isMobile ? 96 : 108,
+                          bgcolor: isDark ? 'rgba(255, 45, 108, 0.2)' : 'var(--background-color, #ffe4ec)',
+                          color: 'var(--primary-color, #ff2d6c)',
+                          fontSize: isMobile ? 38 : 44,
+                          fontWeight: 700,
+                          border: isDark ? '4px solid #1c1626' : '4px solid #ffffff',
+                          boxShadow: isDark
+                            ? '0 8px 24px rgba(0, 0, 0, 0.5)'
+                            : '0 8px 24px rgba(255, 45, 108, 0.18)',
                           cursor: 'pointer',
-                          transition: 'transform 0.3s ease',
-                          '&:hover': { transform: 'scale(1.05)' },
+                          transition: 'transform 0.25s ease',
+                          '&:hover': { transform: 'scale(1.04)' },
                         }}
                         src={getProfileImageSrc(user.profileImage)}
                         onClick={() => setPreviewOpen(true)}
                       >
-                        {!user.profileImage && user.name?.[0]}
+                        {(user.name?.[0] || user.username?.[0] || 'U').toUpperCase()}
                       </Avatar>
                     </Badge>
                   </Box>
 
-                  {/* Image edit actions */}
+                  {/* Image Edit Actions */}
                   <Fade in={editingImg}>
                     <Box
                       sx={{
                         display: editingImg ? 'flex' : 'none',
                         flexDirection: 'row',
                         gap: 1.5,
-                        mb: 2,
+                        mb: 2.5,
                         justifyContent: 'center',
                         flexWrap: 'wrap',
                       }}
@@ -542,16 +654,20 @@ const UserProfile = ({
                         startIcon={<DeleteForeverIcon fontSize="small" />}
                         onClick={handleRemoveProfileImage}
                         sx={{
-                          borderColor: '#ffcdd2',
-                          color: 'var(--primary-color, #e53935)',
-                          borderRadius: '12px',
+                          borderColor: 'rgba(239, 68, 68, 0.4)',
+                          bgcolor: 'rgba(239, 68, 68, 0.06)',
+                          color: '#ef4444',
+                          borderRadius: '16px',
                           textTransform: 'none',
-                          fontWeight: 600,
-                          fontSize: '0.75rem',
+                          fontWeight: 650,
+                          fontSize: '0.8rem',
                           px: 2,
+                          py: 0.7,
+                          transition: 'all 0.2s ease',
                           '&:hover': {
-                            borderColor: 'var(--primary-color, #ef5350)',
-                            bgcolor: 'rgba(229,57,53,0.04)',
+                            borderColor: '#ef4444',
+                            bgcolor: 'rgba(239, 68, 68, 0.12)',
+                            color: '#dc2626',
                           },
                         }}
                       >
@@ -563,17 +679,19 @@ const UserProfile = ({
                         component="label"
                         startIcon={<CloudUploadIcon fontSize="small" />}
                         sx={{
-                          bgcolor: 'var(--primary-color, #ec407a)',
-                          color: 'var(--surface-color, #fff)',
-                          borderRadius: '12px',
+                          background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
+                          color: '#ffffff',
+                          borderRadius: '16px',
                           textTransform: 'none',
-                          fontWeight: 600,
-                          fontSize: '0.75rem',
-                          px: 2,
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                          fontWeight: 700,
+                          fontSize: '0.8rem',
+                          px: 2.2,
+                          py: 0.7,
+                          boxShadow: '0 4px 14px rgba(0, 0, 0, 0.18)',
+                          transition: 'all 0.2s ease',
                           '&:hover': {
-                            bgcolor: 'var(--primary-color, #d81b60)',
-                            boxShadow: '0 6px 16px rgba(0,0,0,0.15)',
+                            filter: 'brightness(1.08)',
+                            boxShadow: '0 6px 18px rgba(0, 0, 0, 0.25)',
                           },
                         }}
                       >
@@ -593,15 +711,17 @@ const UserProfile = ({
                     </Box>
                   </Fade>
 
-                  {/* User Info */}
-                  <Box textAlign="center" mb={3}>
+                  {/* User Identity */}
+                  <Box textAlign="center" mb={2.5}>
                     <Typography
-                      variant={isMobile ? "h6" : "h5"}
-                      fontWeight={700}
+                      variant="h6"
                       sx={{
-                        color: 'var(--text-color, #1a1a2e)',
-                        letterSpacing: '-0.02em',
-                        mb: 0.5,
+                        fontWeight: 800,
+                        color: isDark ? '#f8fafc' : '#0f172a',
+                        letterSpacing: '-0.3px',
+                        fontSize: isMobile ? '1.15rem' : '1.3rem',
+                        lineHeight: 1.3,
+                        mb: 0.3,
                       }}
                     >
                       {user.name}
@@ -609,65 +729,116 @@ const UserProfile = ({
                     <Typography
                       variant="body2"
                       sx={{
-                        color: 'var(--primary-color, #ec407a)',
-                        fontWeight: 500,
-                        fontSize: '0.9rem',
+                        color: 'var(--primary-color, #ff2d6c)',
+                        fontWeight: 650,
+                        fontSize: '0.92rem',
                       }}
                     >
                       @{user.username}
                     </Typography>
-                    <Chip
-                      label="Online"
-                      size="small"
-                      sx={{
-                        mt: 1,
-                        bgcolor: 'rgba(76, 175, 80, 0.1)',
-                        color: '#2e7d32',
-                        fontWeight: 600,
-                        fontSize: '0.7rem',
-                        height: 24,
-                        '& .MuiChip-label': { px: 1.5 },
-                      }}
-                    />
-                  </Box>
 
-                  {/* Details */}
-                  <Box mb={3}>
-                    <Typography
-                      variant="subtitle2"
-                      fontWeight={700}
-                      sx={{ color: 'var(--text-color, #1a1a2e)', fontSize: '0.85rem', mb: 1.5, letterSpacing: '0.02em' }}
-                    >
-                      Details
-                    </Typography>
+                    {/* Online status indicator badge */}
                     <Box
                       sx={{
-                        bgcolor: 'rgba(var(--primary-color, 236,64,122), 0.08)',
-                        borderRadius: '16px',
-                        p: '1rem',
-                        border: '1px solid rgba(var(--primary-color, 236,64,122), 0.12)',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 0.8,
+                        px: 1.6,
+                        py: 0.45,
+                        borderRadius: '20px',
+                        bgcolor: isDark ? 'rgba(34, 197, 94, 0.15)' : 'rgba(34, 197, 94, 0.1)',
+                        border: '1px solid rgba(34, 197, 94, 0.3)',
+                        mt: 1.2
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          width: 7,
+                          height: 7,
+                          borderRadius: '50%',
+                          bgcolor: '#22c55e',
+                          boxShadow: '0 0 8px #22c55e'
+                        }}
+                      />
+                      <Typography sx={{ color: '#22c55e', fontSize: '0.75rem', fontWeight: 650 }}>
+                        Online
+                      </Typography>
+                    </Box>
+                  </Box>
+
+                  {/* Account Details Box */}
+                  <Box mb={2.5}>
+                    <Typography
+                      variant="subtitle2"
+                      sx={{
+                        fontWeight: 750,
+                        mb: 1.2,
+                        fontSize: '0.92rem',
+                        letterSpacing: '-0.2px',
+                        color: 'var(--primary-color, #ff2d6c)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1
+                      }}
+                    >
+                      Account Details
+                    </Typography>
+
+                    <Box
+                      sx={{
+                        bgcolor: isDark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.02)',
+                        border: isDark ? '1px solid rgba(255, 255, 255, 0.06)' : '1px solid rgba(0, 0, 0, 0.06)',
+                        borderRadius: '20px',
+                        p: 1.8,
                         display: 'flex',
                         flexDirection: 'column',
-                        gap: 1.5,
+                        gap: 1.6,
                       }}
                     >
                       {[
-                        { label: 'Email', value: user.email, icon: '✉️' },
-                        { label: 'Phone', value: user.phone, icon: '📱' },
-                        { label: 'Gender', value: user.gender, icon: '👤' },
+                        { label: 'Email', value: user.email, icon: <EmailIcon sx={{ fontSize: 18 }} /> },
+                        { label: 'Phone', value: user.phone, icon: <PhoneIcon sx={{ fontSize: 18 }} /> },
+                        { label: 'Gender', value: user.gender, icon: <TransgenderIcon sx={{ fontSize: 18 }} /> },
                       ].map((item, idx) => (
                         <Box key={idx} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                          <Typography sx={{ fontSize: '1rem' }}>{item.icon}</Typography>
-                          <Box>
+                          <Box
+                            sx={{
+                              width: 36,
+                              height: 36,
+                              borderRadius: '12px',
+                              bgcolor: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(255, 45, 108, 0.08)',
+                              color: 'var(--primary-color, #ff2d6c)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flexShrink: 0,
+                            }}
+                          >
+                            {item.icon}
+                          </Box>
+                          <Box sx={{ minWidth: 0, flex: 1 }}>
                             <Typography
                               variant="caption"
-                              sx={{ color: '#888', fontWeight: 600, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}
+                              sx={{
+                                color: isDark ? '#94a3b8' : '#64748b',
+                                fontWeight: 650,
+                                fontSize: '0.7rem',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.04em',
+                                display: 'block'
+                              }}
                             >
                               {item.label}
                             </Typography>
                             <Typography
-                              fontSize="0.85rem"
-                              sx={{ color: '#4a4a6a', fontWeight: 500 }}
+                              sx={{
+                                color: isDark ? '#f8fafc' : '#0f172a',
+                                fontWeight: 550,
+                                fontSize: '0.86rem',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis'
+                              }}
                             >
                               {item.value || 'Not set'}
                             </Typography>
@@ -677,27 +848,28 @@ const UserProfile = ({
                     </Box>
                   </Box>
 
-                  {/* Delete Account */}
+                  {/* Delete Account Pill matching Settings.js */}
                   <Button
                     fullWidth
                     variant="outlined"
-                    startIcon={<DeleteForeverIcon />}
+                    startIcon={<DeleteForeverIcon sx={{ fontSize: 20 }} />}
                     onClick={() => setDeleteDialogOpen(true)}
                     sx={{
-                      borderColor: 'rgba(229, 57, 53, 0.3)',
-                      color: '#e53935',
-                      borderRadius: '14px',
+                      borderColor: 'rgba(239, 68, 68, 0.4)',
+                      bgcolor: 'rgba(239, 68, 68, 0.06)',
+                      color: '#ef4444',
+                      fontWeight: 650,
+                      borderRadius: '20px',
+                      py: 1.2,
                       textTransform: 'none',
-                      fontWeight: 600,
-                      py: 1,
-                      fontSize: '0.85rem',
-                      transition: 'all 0.3s ease',
+                      fontSize: '0.9rem',
+                      transition: 'all 0.22s ease',
                       '&:hover': {
-                        bgcolor: 'rgba(229, 57, 53, 0.04)',
-                        borderColor: '#e53935',
-                        transform: 'translateY(-1px)',
-                        boxShadow: '0 4px 12px rgba(229,57,53,0.1)',
-                      },
+                        backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                        borderColor: '#ef4444',
+                        color: '#dc2626',
+                        transform: 'translateY(-1px)'
+                      }
                     }}
                   >
                     Delete Account
@@ -707,123 +879,128 @@ const UserProfile = ({
             </Box>
           )}
 
-          {/* Friends / Requests Panel - With 5 default users and scroll */}
+          {/* Right Column: Friends / Requests Panel */}
           <Box sx={{ flex: 1, width: '100%' }}>
             <Paper
               elevation={0}
               sx={{
-                bgcolor: 'var(--surface-color, rgba(255, 255, 255, 0.85))',
-                backdropFilter: 'blur(20px)',
                 borderRadius: '24px',
-                border: '1px solid rgba(255, 255, 255, 0.6)',
-                boxShadow: '0 8px 32px rgba(var(--primary-color, 236,64,122), 0.08), 0 2px 8px rgba(0, 0, 0, 0.04)',
+                bgcolor: isDark ? 'rgba(28, 22, 38, 0.75)' : 'var(--surface-color, rgba(255, 255, 255, 0.88))',
+                backdropFilter: 'blur(14px)',
+                WebkitBackdropFilter: 'blur(14px)',
+                border: isDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(180, 180, 180, 0.2)',
+                boxShadow: isDark
+                  ? '0 8px 24px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255,255,255,0.06)'
+                  : '0 8px 24px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.9)',
                 overflow: 'hidden',
-                height: isMobile ? 'auto' : (hideProfileCard ? 'calc(100vh - 120px)' : '580px'),
-                minHeight: isMobile ? '500px' : (hideProfileCard ? 'calc(100vh - 120px)' : '580px'),
-                maxHeight: isMobile ? '80vh' : (hideProfileCard ? 'calc(100vh - 120px)' : '580px'),
+                height: isMobile ? 'auto' : (hideProfileCard ? 'calc(100vh - 150px)' : '620px'),
+                minHeight: isMobile ? '480px' : (hideProfileCard ? 'calc(100vh - 150px)' : '620px'),
+                maxHeight: isMobile ? '80vh' : (hideProfileCard ? 'calc(100vh - 150px)' : '620px'),
                 display: 'flex',
                 flexDirection: 'column',
               }}
             >
-              {/* MUI Tabs */}
-              <Box sx={{ px: isMobile ? 1 : 2, pt: 1.5 }}>
-                <Tabs
-                  value={activeTab}
-                  onChange={(_, newVal) => setActiveTab(newVal)}
-                  variant="fullWidth"
-                  TabIndicatorProps={{
-                    style: {
-                      height: 3,
-                      borderRadius: '3px 3px 0 0',
-                      background: 'var(--primary-color, #ec407a)',
-                    },
-                  }}
+              {/* Segmented Pill Tabs matching Settings design */}
+              <Box sx={{ px: { xs: 1.5, sm: 2.5 }, pt: 2, pb: 1 }}>
+                <Box
                   sx={{
-                    bgcolor: 'rgba(236,64,122, 0.05)',
-                    borderRadius: '16px 16px 0 0',
-                    minHeight: 52,
-                    '& .MuiTabs-root': { minHeight: 52 },
-                    '& .MuiTab-root': {
-                      minHeight: 52,
-                      textTransform: 'none',
-                      fontWeight: 600,
-                      fontSize: isMobile ? '0.82rem' : '0.9rem',
-                      fontFamily: "'Poppins', 'Inter', sans-serif",
-                      color: '#999',
-                      letterSpacing: '0.01em',
-                      transition: 'color 0.25s ease',
-                      gap: 0.8,
-                      '&.Mui-selected': {
-                        color: 'var(--primary-color, #ec407a)',
-                        fontWeight: 700,
-                      },
-                    },
+                    bgcolor: isDark ? 'rgba(0, 0, 0, 0.35)' : 'rgba(0, 0, 0, 0.035)',
+                    border: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(0,0,0,0.05)',
+                    borderRadius: '18px',
+                    p: 0.6,
                   }}
                 >
-                  <Tab
-                    icon={<PeopleAltIcon sx={{ fontSize: isMobile ? '1.1rem' : '1.2rem' }} />}
-                    iconPosition="start"
-                    label="Friends"
-                  />
-                  <Tab
-                    icon={<PersonAddAlt1Icon sx={{ fontSize: isMobile ? '1.1rem' : '1.2rem' }} />}
-                    iconPosition="start"
-                    label={
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
-                        Requests
-                        {activePendingRequests.length > 0 && (
-                          <Box
-                            component="span"
-                            sx={{
-                              bgcolor: 'var(--primary-color, #ec407a)',
-                              color: '#fff',
-                              borderRadius: '20px',
-                              minWidth: 20,
-                              height: 20,
-                              px: 0.6,
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontSize: '0.65rem',
-                              fontWeight: 800,
-                              lineHeight: 1,
-                              boxShadow: '0 2px 6px rgba(236,64,122,0.4)',
-                            }}
-                          >
-                            {activePendingRequests.length}
-                          </Box>
-                        )}
-                      </Box>
-                    }
-                  />
-                </Tabs>
-                <Box sx={{ height: '1px', bgcolor: 'rgba(236,64,122,0.12)', mx: -2 }} />
+                  <Tabs
+                    value={activeTab}
+                    onChange={(_, newVal) => setActiveTab(newVal)}
+                    variant="fullWidth"
+                    TabIndicatorProps={{ style: { display: 'none' } }}
+                    sx={{
+                      minHeight: 46,
+                      '& .MuiTabs-root': { minHeight: 46 },
+                      '& .MuiTab-root': {
+                        minHeight: 44,
+                        textTransform: 'none',
+                        fontWeight: 650,
+                        fontSize: isMobile ? '0.84rem' : '0.92rem',
+                        fontFamily: 'Poppins, sans-serif',
+                        color: isDark ? '#94a3b8' : '#64748b',
+                        borderRadius: '14px',
+                        transition: 'all 0.22s ease',
+                        gap: 1,
+                        py: 0.8,
+                        '&.Mui-selected': {
+                          color: '#ffffff',
+                          background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
+                          fontWeight: 750,
+                          boxShadow: '0 4px 14px rgba(255, 45, 108, 0.3)',
+                        },
+                      },
+                    }}
+                  >
+                    <Tab
+                      icon={<PeopleAltIcon sx={{ fontSize: isMobile ? '1.15rem' : '1.25rem' }} />}
+                      iconPosition="start"
+                      label={`Friends (${visibleFriends.filter(f => f.username && f.username !== 'Unknown').length})`}
+                    />
+                    <Tab
+                      icon={<PersonAddAlt1Icon sx={{ fontSize: isMobile ? '1.15rem' : '1.25rem' }} />}
+                      iconPosition="start"
+                      label={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
+                          <span>Requests</span>
+                          {activePendingRequests.length > 0 && (
+                            <Box
+                              component="span"
+                              sx={{
+                                bgcolor: activeTab === 1 ? '#ffffff' : 'var(--primary-color, #ff2d6c)',
+                                color: activeTab === 1 ? 'var(--primary-color, #ff2d6c)' : '#ffffff',
+                                borderRadius: '20px',
+                                minWidth: 20,
+                                height: 20,
+                                px: 0.6,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '0.68rem',
+                                fontWeight: 800,
+                                lineHeight: 1,
+                                boxShadow: activeTab === 1 ? '0 2px 6px rgba(0,0,0,0.15)' : '0 2px 6px rgba(255,45,108,0.4)',
+                              }}
+                            >
+                              {activePendingRequests.length}
+                            </Box>
+                          )}
+                        </Box>
+                      }
+                    />
+                  </Tabs>
+                </Box>
               </Box>
 
-              {/* Scrollable List Container - 5 users default, scroll for others */}
+              {/* Scrollable List Container */}
               <Box
                 sx={{
                   flex: 1,
                   overflowY: 'auto',
                   overflowX: 'hidden',
-                  px: isMobile ? 2 : 2,
-                  py: 0.5,
+                  px: { xs: 1.5, sm: 2.5 },
+                  py: 1,
+                  /* Custom sleek scrollbar */
                   '&::-webkit-scrollbar': {
-                    width: '0px',
-                    display: 'none',
+                    width: '6px'
                   },
                   '&::-webkit-scrollbar-track': {
-                    background: 'transparent',
+                    bgcolor: 'transparent'
                   },
                   '&::-webkit-scrollbar-thumb': {
-                    background: 'transparent',
-                  },
-                  scrollbarWidth: 'none', /* Firefox */
-                  msOverflowStyle: 'none', /* IE/Edge */
+                    bgcolor: isDark ? 'rgba(255,255,255,0.12)' : 'var(--primary-color, rgba(255, 45, 108, 0.25))',
+                    borderRadius: '10px'
+                  }
                 }}
               >
-                <List sx={{ p: 0, pb: isMobile ? 13 : 10 }}>
-                  {/* Friends List - Show 5 users by default, rest scrollable */}
+                <List sx={{ p: 0, pb: isMobile ? 12 : 6 }}>
+                  {/* Friends List - 5 default + scroll */}
                   {activeTab === 0 && (
                     <>
                       {visibleFriends
@@ -833,23 +1010,23 @@ const UserProfile = ({
                           <Zoom in key={friend._id || index} style={{ transitionDelay: `${index * 30}ms` }}>
                             <ListItem
                               sx={{
-                                px: isMobile ? 1.5 : 2,
-                                py: isMobile ? 1 : 1.5,
+                                px: { xs: 1.5, sm: 2 },
+                                py: { xs: 1.2, sm: 1.4 },
                                 mb: 1.5,
-                                borderRadius: '16px',
-                                bgcolor: '#fff',
-                                boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
-                                border: '1px solid rgba(0,0,0,0.03)',
-                                transition: 'all 0.2s ease',
-                                flexWrap: 'wrap',
+                                borderRadius: '18px',
+                                bgcolor: isDark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(255, 255, 255, 0.95)',
+                                border: isDark ? '1px solid rgba(255, 255, 255, 0.06)' : '1px solid rgba(0, 0, 0, 0.05)',
+                                boxShadow: isDark ? '0 4px 14px rgba(0,0,0,0.25)' : '0 4px 14px rgba(0,0,0,0.03)',
+                                transition: 'all 0.22s cubic-bezier(0.4, 0, 0.2, 1)',
+                                flexWrap: 'nowrap',
                                 '&:hover': {
                                   transform: 'translateY(-2px)',
-                                  boxShadow: '0 8px 24px rgba(0,0,0,0.08)',
-                                  borderColor: 'rgba(236, 64, 122, 0.15)',
+                                  boxShadow: isDark ? '0 8px 22px rgba(0,0,0,0.35)' : '0 8px 22px rgba(0,0,0,0.06)',
+                                  borderColor: 'var(--primary-color, rgba(255, 45, 108, 0.3))',
                                 },
                               }}
                             >
-                              <ListItemAvatar sx={{ minWidth: isMobile ? 44 : 52, mr: 1 }}>
+                              <ListItemAvatar sx={{ minWidth: isMobile ? 44 : 52, mr: 1.2 }}>
                                 <Badge
                                   overlap="circular"
                                   anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
@@ -860,26 +1037,27 @@ const UserProfile = ({
                                       width: isMobile ? 10 : 12,
                                       height: isMobile ? 10 : 12,
                                       borderRadius: '50%',
-                                      border: '2px solid white',
-                                      boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                                      border: isDark ? '2px solid #1c1626' : '2px solid white',
+                                      boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
+                                      bgcolor: '#22c55e',
                                     },
                                   }}
                                 >
                                   <Avatar
                                     sx={{
-                                      width: isMobile ? 44 : 52,
-                                      height: isMobile ? 44 : 52,
-                                      boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                                      width: isMobile ? 44 : 50,
+                                      height: isMobile ? 44 : 50,
+                                      boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
                                       flexShrink: 0,
-                                      ...(!friend.profilePic && {
-                                        bgcolor: 'var(--primary-color, #f06292)',
+                                      ...(!getProfileImageSrc(friend.profilePic || friend.profileImage) && {
+                                        background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
                                         color: '#fff',
-                                        fontWeight: 600
+                                        fontWeight: 700
                                       })
                                     }}
-                                    src={friend.profilePic || undefined}
+                                    src={getProfileImageSrc(friend.profilePic || friend.profileImage)}
                                   >
-                                    {friend.username?.[0]?.toUpperCase()}
+                                    {(friend.username?.[0] || friend.name?.[0] || '?').toUpperCase()}
                                   </Avatar>
                                 </Badge>
                               </ListItemAvatar>
@@ -890,8 +1068,8 @@ const UserProfile = ({
                                     component="span"
                                     sx={{
                                       fontWeight: 700,
-                                      fontSize: isMobile ? '0.85rem' : '0.95rem',
-                                      color: '#1a1a2e',
+                                      fontSize: isMobile ? '0.9rem' : '0.98rem',
+                                      color: isDark ? '#f8fafc' : '#0f172a',
                                       display: 'block',
                                       whiteSpace: 'nowrap',
                                       overflow: 'hidden',
@@ -905,8 +1083,8 @@ const UserProfile = ({
                                   <Typography
                                     component="span"
                                     sx={{
-                                      fontSize: isMobile ? '0.7rem' : '0.75rem',
-                                      color: '#888',
+                                      fontSize: isMobile ? '0.74rem' : '0.8rem',
+                                      color: isDark ? '#94a3b8' : '#64748b',
                                       fontWeight: 500,
                                       display: 'block',
                                       whiteSpace: 'nowrap',
@@ -920,24 +1098,25 @@ const UserProfile = ({
                                 sx={{ flex: '1 1 auto', minWidth: 0, mr: 1 }}
                               />
 
-                              <Box sx={{ display: 'flex', gap: 0.5, ml: 'auto', flexShrink: 0 }}>
+                              <Box sx={{ display: 'flex', gap: 0.8, ml: 'auto', flexShrink: 0 }}>
                                 <Tooltip title="Remove friend" arrow disableTouchListener={isMobile}>
                                   <IconButton
                                     size="small"
                                     onClick={() => setConfirmDialog({ open: true, action: 'remove', friend })}
                                     sx={{
-                                      color: '#e53935',
-                                      bgcolor: 'rgba(229, 57, 53, 0.08)',
-                                      width: isMobile ? 28 : 32,
-                                      height: isMobile ? 28 : 32,
+                                      color: '#ef4444',
+                                      bgcolor: isDark ? 'rgba(239, 68, 68, 0.12)' : 'rgba(239, 68, 68, 0.08)',
+                                      width: isMobile ? 32 : 36,
+                                      height: isMobile ? 32 : 36,
+                                      borderRadius: '12px',
                                       transition: 'all 0.2s ease',
                                       '&:hover': {
-                                        bgcolor: 'rgba(229, 57, 53, 0.15)',
-                                        transform: 'scale(1.05)',
+                                        bgcolor: 'rgba(239, 68, 68, 0.2)',
+                                        transform: 'scale(1.08)',
                                       },
                                     }}
                                   >
-                                    <PersonRemoveIcon fontSize={isMobile ? "small" : "small"} />
+                                    <PersonRemoveIcon fontSize="small" />
                                   </IconButton>
                                 </Tooltip>
                                 <Tooltip title="Block" arrow disableTouchListener={isMobile}>
@@ -945,18 +1124,19 @@ const UserProfile = ({
                                     size="small"
                                     onClick={() => setConfirmDialog({ open: true, action: 'block', friend })}
                                     sx={{
-                                      color: '#ff9100',
-                                      bgcolor: 'rgba(255, 145, 0, 0.08)',
-                                      width: isMobile ? 28 : 32,
-                                      height: isMobile ? 28 : 32,
+                                      color: '#f97316',
+                                      bgcolor: isDark ? 'rgba(249, 115, 22, 0.12)' : 'rgba(249, 115, 22, 0.08)',
+                                      width: isMobile ? 32 : 36,
+                                      height: isMobile ? 32 : 36,
+                                      borderRadius: '12px',
                                       transition: 'all 0.2s ease',
                                       '&:hover': {
-                                        bgcolor: 'rgba(255, 145, 0, 0.15)',
-                                        transform: 'scale(1.05)',
+                                        bgcolor: 'rgba(249, 115, 22, 0.2)',
+                                        transform: 'scale(1.08)',
                                       },
                                     }}
                                   >
-                                    <BlockIcon fontSize={isMobile ? "small" : "small"} />
+                                    <BlockIcon fontSize="small" />
                                   </IconButton>
                                 </Tooltip>
                               </Box>
@@ -967,15 +1147,17 @@ const UserProfile = ({
                       {/* Show remaining friends (beyond 5) with scroll */}
                       {visibleFriends.filter(f => f.username && f.username !== 'Unknown').length > 5 && (
                         <>
-                          <Divider sx={{ my: 2 }}>
+                          <Divider sx={{ my: 2, borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }}>
                             <Chip
                               label={`${visibleFriends.filter(f => f.username && f.username !== 'Unknown').length - 5} more friends`}
                               size="small"
                               sx={{
-                                bgcolor: 'rgba(236, 64, 122, 0.1)',
-                                color: '#ec407a',
-                                fontWeight: 600,
-                                fontSize: '0.7rem'
+                                bgcolor: isDark ? 'rgba(255, 45, 108, 0.15)' : 'rgba(255, 45, 108, 0.08)',
+                                color: 'var(--primary-color, #ff2d6c)',
+                                fontWeight: 700,
+                                fontSize: '0.72rem',
+                                borderRadius: '12px',
+                                border: '1px solid rgba(255, 45, 108, 0.2)'
                               }}
                             />
                           </Divider>
@@ -987,23 +1169,23 @@ const UserProfile = ({
                               <Zoom in key={friend._id || `remaining-${index}`} style={{ transitionDelay: `${index * 30}ms` }}>
                                 <ListItem
                                   sx={{
-                                    px: isMobile ? 1.5 : 2,
-                                    py: isMobile ? 1 : 1.5,
+                                    px: { xs: 1.5, sm: 2 },
+                                    py: { xs: 1.2, sm: 1.4 },
                                     mb: 1.5,
-                                    borderRadius: '16px',
-                                    bgcolor: '#fff',
-                                    boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
-                                    border: '1px solid rgba(0,0,0,0.03)',
-                                    transition: 'all 0.2s ease',
-                                    flexWrap: 'wrap',
+                                    borderRadius: '18px',
+                                    bgcolor: isDark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(255, 255, 255, 0.95)',
+                                    border: isDark ? '1px solid rgba(255, 255, 255, 0.06)' : '1px solid rgba(0, 0, 0, 0.05)',
+                                    boxShadow: isDark ? '0 4px 14px rgba(0,0,0,0.25)' : '0 4px 14px rgba(0,0,0,0.03)',
+                                    transition: 'all 0.22s cubic-bezier(0.4, 0, 0.2, 1)',
+                                    flexWrap: 'nowrap',
                                     '&:hover': {
                                       transform: 'translateY(-2px)',
-                                      boxShadow: '0 8px 24px rgba(0,0,0,0.08)',
-                                      borderColor: 'rgba(236, 64, 122, 0.15)',
+                                      boxShadow: isDark ? '0 8px 22px rgba(0,0,0,0.35)' : '0 8px 22px rgba(0,0,0,0.06)',
+                                      borderColor: 'var(--primary-color, rgba(255, 45, 108, 0.3))',
                                     },
                                   }}
                                 >
-                                  <ListItemAvatar sx={{ minWidth: isMobile ? 44 : 52, mr: 1 }}>
+                                  <ListItemAvatar sx={{ minWidth: isMobile ? 44 : 52, mr: 1.2 }}>
                                     <Badge
                                       overlap="circular"
                                       anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
@@ -1014,26 +1196,27 @@ const UserProfile = ({
                                           width: isMobile ? 10 : 12,
                                           height: isMobile ? 10 : 12,
                                           borderRadius: '50%',
-                                          border: '2px solid white',
-                                          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                                          border: isDark ? '2px solid #1c1626' : '2px solid white',
+                                          boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
+                                          bgcolor: '#22c55e',
                                         },
                                       }}
                                     >
                                       <Avatar
                                         sx={{
-                                          width: isMobile ? 44 : 52,
-                                          height: isMobile ? 44 : 52,
-                                          boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                                          width: isMobile ? 44 : 50,
+                                          height: isMobile ? 44 : 50,
+                                          boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
                                           flexShrink: 0,
-                                          ...(!friend.profilePic && {
-                                            bgcolor: 'var(--primary-color, #f06292)',
+                                          ...(!getProfileImageSrc(friend.profilePic || friend.profileImage) && {
+                                            background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
                                             color: '#fff',
-                                            fontWeight: 600
+                                            fontWeight: 700
                                           })
                                         }}
-                                        src={friend.profilePic || undefined}
+                                        src={getProfileImageSrc(friend.profilePic || friend.profileImage)}
                                       >
-                                        {friend.username?.[0]?.toUpperCase()}
+                                        {(friend.username?.[0] || friend.name?.[0] || '?').toUpperCase()}
                                       </Avatar>
                                     </Badge>
                                   </ListItemAvatar>
@@ -1044,8 +1227,8 @@ const UserProfile = ({
                                         component="span"
                                         sx={{
                                           fontWeight: 700,
-                                          fontSize: isMobile ? '0.85rem' : '0.95rem',
-                                          color: '#1a1a2e',
+                                          fontSize: isMobile ? '0.9rem' : '0.98rem',
+                                          color: isDark ? '#f8fafc' : '#0f172a',
                                           display: 'block',
                                           whiteSpace: 'nowrap',
                                           overflow: 'hidden',
@@ -1059,8 +1242,8 @@ const UserProfile = ({
                                       <Typography
                                         component="span"
                                         sx={{
-                                          fontSize: isMobile ? '0.7rem' : '0.75rem',
-                                          color: '#888',
+                                          fontSize: isMobile ? '0.74rem' : '0.8rem',
+                                          color: isDark ? '#94a3b8' : '#64748b',
                                           fontWeight: 500,
                                           display: 'block',
                                           whiteSpace: 'nowrap',
@@ -1074,24 +1257,25 @@ const UserProfile = ({
                                     sx={{ flex: '1 1 auto', minWidth: 0, mr: 1 }}
                                   />
 
-                                  <Box sx={{ display: 'flex', gap: 0.5, ml: 'auto', flexShrink: 0 }}>
+                                  <Box sx={{ display: 'flex', gap: 0.8, ml: 'auto', flexShrink: 0 }}>
                                     <Tooltip title="Remove friend" arrow disableTouchListener={isMobile}>
                                       <IconButton
                                         size="small"
                                         onClick={() => setConfirmDialog({ open: true, action: 'remove', friend })}
                                         sx={{
-                                          color: '#e53935',
-                                          bgcolor: 'rgba(229, 57, 53, 0.08)',
-                                          width: isMobile ? 28 : 32,
-                                          height: isMobile ? 28 : 32,
+                                          color: '#ef4444',
+                                          bgcolor: isDark ? 'rgba(239, 68, 68, 0.12)' : 'rgba(239, 68, 68, 0.08)',
+                                          width: isMobile ? 32 : 36,
+                                          height: isMobile ? 32 : 36,
+                                          borderRadius: '12px',
                                           transition: 'all 0.2s ease',
                                           '&:hover': {
-                                            bgcolor: 'rgba(229, 57, 53, 0.15)',
-                                            transform: 'scale(1.05)',
+                                            bgcolor: 'rgba(239, 68, 68, 0.2)',
+                                            transform: 'scale(1.08)',
                                           },
                                         }}
                                       >
-                                        <PersonRemoveIcon fontSize={isMobile ? "small" : "small"} />
+                                        <PersonRemoveIcon fontSize="small" />
                                       </IconButton>
                                     </Tooltip>
                                     <Tooltip title="Block" arrow disableTouchListener={isMobile}>
@@ -1099,18 +1283,19 @@ const UserProfile = ({
                                         size="small"
                                         onClick={() => setConfirmDialog({ open: true, action: 'block', friend })}
                                         sx={{
-                                          color: '#ff9100',
-                                          bgcolor: 'rgba(255, 145, 0, 0.08)',
-                                          width: isMobile ? 28 : 32,
-                                          height: isMobile ? 28 : 32,
+                                          color: '#f97316',
+                                          bgcolor: isDark ? 'rgba(249, 115, 22, 0.12)' : 'rgba(249, 115, 22, 0.08)',
+                                          width: isMobile ? 32 : 36,
+                                          height: isMobile ? 32 : 36,
+                                          borderRadius: '12px',
                                           transition: 'all 0.2s ease',
                                           '&:hover': {
-                                            bgcolor: 'rgba(255, 145, 0, 0.15)',
-                                            transform: 'scale(1.05)',
+                                            bgcolor: 'rgba(249, 115, 22, 0.2)',
+                                            transform: 'scale(1.08)',
                                           },
                                         }}
                                       >
-                                        <BlockIcon fontSize={isMobile ? "small" : "small"} />
+                                        <BlockIcon fontSize="small" />
                                       </IconButton>
                                     </Tooltip>
                                   </Box>
@@ -1125,40 +1310,45 @@ const UserProfile = ({
                         <Box sx={{ textAlign: 'center', py: 8, px: 2 }}>
                           <Box
                             sx={{
-                              width: 80,
-                              height: 80,
-                              borderRadius: '50%',
-                              bgcolor: 'rgba(236, 64, 122, 0.06)',
+                              width: 72,
+                              height: 72,
+                              borderRadius: '22px',
+                              background: isDark ? 'rgba(255, 45, 108, 0.12)' : 'rgba(255, 45, 108, 0.06)',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
                               mx: 'auto',
                               mb: 2,
+                              border: isDark ? '1px solid rgba(255, 45, 108, 0.2)' : '1px solid rgba(255, 45, 108, 0.12)',
                             }}
                           >
-                            <PeopleAltIcon sx={{ fontSize: 40, color: 'rgba(236, 64, 122, 0.3)' }} />
+                            <PeopleAltIcon sx={{ fontSize: 36, color: 'var(--primary-color, #ff2d6c)' }} />
                           </Box>
-                          <Typography variant="body1" sx={{ color: '#888', fontWeight: 600, mb: 1 }}>
+                          <Typography variant="h6" sx={{ color: isDark ? '#f8fafc' : '#0f172a', fontWeight: 750, fontSize: '1.05rem', mb: 0.5 }}>
                             No friends yet
                           </Typography>
-                          <Typography variant="body2" sx={{ color: '#aaa', mb: 3, fontSize: '0.85rem' }}>
-                            Start building your network today
+                          <Typography variant="body2" sx={{ color: isDark ? '#94a3b8' : '#64748b', mb: 3, fontSize: '0.85rem' }}>
+                            Start connecting and building your circle today
                           </Typography>
                           <Button
                             variant="contained"
                             startIcon={<PersonAddIcon />}
                             onClick={() => navigate('/chat?tab=search')}
                             sx={{
-                              bgcolor: '#ec407a',
-                              color: '#fff',
-                              borderRadius: '12px',
+                              background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
+                              color: '#ffffff',
+                              borderRadius: '20px',
                               textTransform: 'none',
-                              fontWeight: 600,
-                              px: 3,
-                              boxShadow: '0 4px 16px rgba(236,64,122,0.3)',
+                              fontWeight: 700,
+                              px: 3.5,
+                              py: 1.2,
+                              fontSize: '0.9rem',
+                              boxShadow: '0 6px 20px rgba(0, 0, 0, 0.2)',
+                              transition: 'all 0.22s ease',
                               '&:hover': {
-                                bgcolor: '#d81b60',
-                                boxShadow: '0 6px 20px rgba(236,64,122,0.4)',
+                                filter: 'brightness(1.08)',
+                                boxShadow: '0 8px 24px rgba(0, 0, 0, 0.3)',
+                                transform: 'translateY(-2px)'
                               },
                             }}
                           >
@@ -1169,11 +1359,10 @@ const UserProfile = ({
                     </>
                   )}
 
-                  {/* Requests List - Show 5 by default, rest scrollable */}
+                  {/* Requests List - 5 default + scroll */}
                   {activeTab === 1 && (
                     <>
                       {activePendingRequests.slice(0, 5).map((friend, index) => {
-                        const sId = (typeof friend.senderId === 'object' ? friend.senderId?._id : friend.senderId) || friend._id;
                         const displayName = friend.name || friend.senderUsername || friend.username || 'Unknown';
                         const displayUsername = friend.username || friend.senderUsername || '';
                         const displayAvatar = friend.avatar || friend.senderProfilePic || null;
@@ -1182,38 +1371,38 @@ const UserProfile = ({
                           <Zoom in key={friend.requestId || friend._id || index} style={{ transitionDelay: `${index * 30}ms` }}>
                             <ListItem
                               sx={{
-                                px: isMobile ? 1.5 : 2,
-                                py: isMobile ? 1 : 1.5,
+                                px: { xs: 1.5, sm: 2 },
+                                py: { xs: 1.2, sm: 1.4 },
                                 mb: 1.5,
-                                borderRadius: '16px',
-                                bgcolor: '#fff',
-                                boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
-                                border: '1px solid rgba(0,0,0,0.03)',
-                                transition: 'all 0.2s ease',
-                                flexWrap: 'wrap',
+                                borderRadius: '18px',
+                                bgcolor: isDark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(255, 255, 255, 0.95)',
+                                border: isDark ? '1px solid rgba(255, 255, 255, 0.06)' : '1px solid rgba(0, 0, 0, 0.05)',
+                                boxShadow: isDark ? '0 4px 14px rgba(0,0,0,0.25)' : '0 4px 14px rgba(0,0,0,0.03)',
+                                transition: 'all 0.22s cubic-bezier(0.4, 0, 0.2, 1)',
+                                flexWrap: 'nowrap',
                                 '&:hover': {
                                   transform: 'translateY(-2px)',
-                                  boxShadow: '0 8px 24px rgba(0,0,0,0.08)',
-                                  borderColor: 'rgba(236, 64, 122, 0.15)',
+                                  boxShadow: isDark ? '0 8px 22px rgba(0,0,0,0.35)' : '0 8px 22px rgba(0,0,0,0.06)',
+                                  borderColor: 'var(--primary-color, rgba(255, 45, 108, 0.3))',
                                 },
                               }}
                             >
-                              <ListItemAvatar sx={{ minWidth: isMobile ? 44 : 52, mr: 1 }}>
+                              <ListItemAvatar sx={{ minWidth: isMobile ? 44 : 52, mr: 1.2 }}>
                                 <Avatar
                                   sx={{
-                                    width: isMobile ? 44 : 52,
-                                    height: isMobile ? 44 : 52,
-                                    boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                                    width: isMobile ? 44 : 50,
+                                    height: isMobile ? 44 : 50,
+                                    boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
                                     flexShrink: 0,
-                                    ...(!displayAvatar && {
-                                      bgcolor: 'var(--primary-color, #f06292)',
+                                    ...(!getProfileImageSrc(displayAvatar) && {
+                                      background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
                                       color: '#fff',
-                                      fontWeight: 600
+                                      fontWeight: 700
                                     })
                                   }}
-                                  src={displayAvatar || undefined}
+                                  src={getProfileImageSrc(displayAvatar)}
                                 >
-                                  {displayName?.[0]?.toUpperCase()}
+                                  {(displayName?.[0] || displayUsername?.[0] || '?').toUpperCase()}
                                 </Avatar>
                               </ListItemAvatar>
 
@@ -1223,8 +1412,8 @@ const UserProfile = ({
                                     component="span"
                                     sx={{
                                       fontWeight: 700,
-                                      fontSize: isMobile ? '0.85rem' : '0.95rem',
-                                      color: '#1a1a2e',
+                                      fontSize: isMobile ? '0.9rem' : '0.98rem',
+                                      color: isDark ? '#f8fafc' : '#0f172a',
                                       display: 'block',
                                       whiteSpace: 'nowrap',
                                       overflow: 'hidden',
@@ -1238,8 +1427,8 @@ const UserProfile = ({
                                   <Typography
                                     component="span"
                                     sx={{
-                                      fontSize: isMobile ? '0.7rem' : '0.75rem',
-                                      color: '#888',
+                                      fontSize: isMobile ? '0.74rem' : '0.8rem',
+                                      color: isDark ? '#94a3b8' : '#64748b',
                                       fontWeight: 500,
                                       display: 'block',
                                       whiteSpace: 'nowrap',
@@ -1253,19 +1442,21 @@ const UserProfile = ({
                                 sx={{ flex: '1 1 auto', minWidth: 0, mr: 1 }}
                               />
 
-                              <Box sx={{ display: 'flex', gap: 0.5, ml: 'auto', flexShrink: 0 }}>
+                              <Box sx={{ display: 'flex', gap: 0.8, ml: 'auto', flexShrink: 0 }}>
                                 <Tooltip title="Accept" arrow disableTouchListener={isMobile}>
                                   <IconButton
                                     onClick={() => handleRequestAction(friend, 'accept')}
                                     sx={{
-                                      bgcolor: 'rgba(76, 175, 80, 0.1)',
-                                      color: '#2e7d32',
+                                      background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                                      color: '#ffffff',
                                       width: isMobile ? 32 : 36,
                                       height: isMobile ? 32 : 36,
+                                      borderRadius: '12px',
+                                      boxShadow: '0 3px 10px rgba(16, 185, 129, 0.3)',
                                       transition: 'all 0.2s ease',
                                       '&:hover': {
-                                        bgcolor: 'rgba(76, 175, 80, 0.2)',
-                                        transform: 'scale(1.05)',
+                                        transform: 'scale(1.08)',
+                                        boxShadow: '0 5px 14px rgba(16, 185, 129, 0.4)',
                                       },
                                     }}
                                   >
@@ -1276,14 +1467,15 @@ const UserProfile = ({
                                   <IconButton
                                     onClick={() => handleRequestAction(friend, 'reject')}
                                     sx={{
-                                      bgcolor: 'rgba(244, 67, 54, 0.1)',
-                                      color: '#c62828',
+                                      bgcolor: isDark ? 'rgba(239, 68, 68, 0.12)' : 'rgba(239, 68, 68, 0.08)',
+                                      color: '#ef4444',
                                       width: isMobile ? 32 : 36,
                                       height: isMobile ? 32 : 36,
+                                      borderRadius: '12px',
                                       transition: 'all 0.2s ease',
                                       '&:hover': {
-                                        bgcolor: 'rgba(244, 67, 54, 0.2)',
-                                        transform: 'scale(1.05)',
+                                        bgcolor: 'rgba(239, 68, 68, 0.2)',
+                                        transform: 'scale(1.08)',
                                       },
                                     }}
                                   >
@@ -1293,27 +1485,28 @@ const UserProfile = ({
                               </Box>
                             </ListItem>
                           </Zoom>
-                        )
+                        );
                       })}
 
                       {/* Show remaining requests (beyond 5) with scroll */}
                       {activePendingRequests.length > 5 && (
                         <>
-                          <Divider sx={{ my: 2 }}>
+                          <Divider sx={{ my: 2, borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }}>
                             <Chip
                               label={`${activePendingRequests.length - 5} more requests`}
                               size="small"
                               sx={{
-                                bgcolor: 'rgba(236, 64, 122, 0.1)',
-                                color: '#ec407a',
-                                fontWeight: 600,
-                                fontSize: '0.7rem'
+                                bgcolor: isDark ? 'rgba(255, 45, 108, 0.15)' : 'rgba(255, 45, 108, 0.08)',
+                                color: 'var(--primary-color, #ff2d6c)',
+                                fontWeight: 700,
+                                fontSize: '0.72rem',
+                                borderRadius: '12px',
+                                border: '1px solid rgba(255, 45, 108, 0.2)'
                               }}
                             />
                           </Divider>
 
                           {activePendingRequests.slice(5).map((friend, index) => {
-                            const sId = (typeof friend.senderId === 'object' ? friend.senderId?._id : friend.senderId) || friend._id;
                             const displayName = friend.name || friend.senderUsername || friend.username || 'Unknown';
                             const displayUsername = friend.username || friend.senderUsername || '';
                             const displayAvatar = friend.avatar || friend.senderProfilePic || null;
@@ -1322,38 +1515,38 @@ const UserProfile = ({
                               <Zoom in key={friend.requestId || friend._id || `remaining-${index}`} style={{ transitionDelay: `${index * 30}ms` }}>
                                 <ListItem
                                   sx={{
-                                    px: isMobile ? 1.5 : 2,
-                                    py: isMobile ? 1 : 1.5,
+                                    px: { xs: 1.5, sm: 2 },
+                                    py: { xs: 1.2, sm: 1.4 },
                                     mb: 1.5,
-                                    borderRadius: '16px',
-                                    bgcolor: '#fff',
-                                    boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
-                                    border: '1px solid rgba(0,0,0,0.03)',
-                                    transition: 'all 0.2s ease',
-                                    flexWrap: 'wrap',
+                                    borderRadius: '18px',
+                                    bgcolor: isDark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(255, 255, 255, 0.95)',
+                                    border: isDark ? '1px solid rgba(255, 255, 255, 0.06)' : '1px solid rgba(0, 0, 0, 0.05)',
+                                    boxShadow: isDark ? '0 4px 14px rgba(0,0,0,0.25)' : '0 4px 14px rgba(0,0,0,0.03)',
+                                    transition: 'all 0.22s cubic-bezier(0.4, 0, 0.2, 1)',
+                                    flexWrap: 'nowrap',
                                     '&:hover': {
                                       transform: 'translateY(-2px)',
-                                      boxShadow: '0 8px 24px rgba(0,0,0,0.08)',
-                                      borderColor: 'rgba(236, 64, 122, 0.15)',
+                                      boxShadow: isDark ? '0 8px 22px rgba(0,0,0,0.35)' : '0 8px 22px rgba(0,0,0,0.06)',
+                                      borderColor: 'var(--primary-color, rgba(255, 45, 108, 0.3))',
                                     },
                                   }}
                                 >
-                                  <ListItemAvatar sx={{ minWidth: isMobile ? 44 : 52, mr: 1 }}>
+                                  <ListItemAvatar sx={{ minWidth: isMobile ? 44 : 52, mr: 1.2 }}>
                                     <Avatar
                                       sx={{
-                                        width: isMobile ? 44 : 52,
-                                        height: isMobile ? 44 : 52,
-                                        boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                                        width: isMobile ? 44 : 50,
+                                        height: isMobile ? 44 : 50,
+                                        boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
                                         flexShrink: 0,
-                                        ...(!displayAvatar && {
-                                          bgcolor: 'var(--primary-color, #f06292)',
+                                        ...(!getProfileImageSrc(displayAvatar) && {
+                                          background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
                                           color: '#fff',
-                                          fontWeight: 600
+                                          fontWeight: 700
                                         })
                                       }}
-                                      src={displayAvatar || undefined}
+                                      src={getProfileImageSrc(displayAvatar)}
                                     >
-                                      {displayName?.[0]?.toUpperCase()}
+                                      {(displayName?.[0] || displayUsername?.[0] || '?').toUpperCase()}
                                     </Avatar>
                                   </ListItemAvatar>
 
@@ -1363,8 +1556,8 @@ const UserProfile = ({
                                         component="span"
                                         sx={{
                                           fontWeight: 700,
-                                          fontSize: isMobile ? '0.85rem' : '0.95rem',
-                                          color: '#1a1a2e',
+                                          fontSize: isMobile ? '0.9rem' : '0.98rem',
+                                          color: isDark ? '#f8fafc' : '#0f172a',
                                           display: 'block',
                                           whiteSpace: 'nowrap',
                                           overflow: 'hidden',
@@ -1378,8 +1571,8 @@ const UserProfile = ({
                                       <Typography
                                         component="span"
                                         sx={{
-                                          fontSize: isMobile ? '0.7rem' : '0.75rem',
-                                          color: '#888',
+                                          fontSize: isMobile ? '0.74rem' : '0.8rem',
+                                          color: isDark ? '#94a3b8' : '#64748b',
                                           fontWeight: 500,
                                           display: 'block',
                                           whiteSpace: 'nowrap',
@@ -1393,19 +1586,21 @@ const UserProfile = ({
                                     sx={{ flex: '1 1 auto', minWidth: 0, mr: 1 }}
                                   />
 
-                                  <Box sx={{ display: 'flex', gap: 0.5, ml: 'auto', flexShrink: 0 }}>
+                                  <Box sx={{ display: 'flex', gap: 0.8, ml: 'auto', flexShrink: 0 }}>
                                     <Tooltip title="Accept" arrow disableTouchListener={isMobile}>
                                       <IconButton
                                         onClick={() => handleRequestAction(friend, 'accept')}
                                         sx={{
-                                          bgcolor: 'rgba(76, 175, 80, 0.1)',
-                                          color: '#2e7d32',
+                                          background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                                          color: '#ffffff',
                                           width: isMobile ? 32 : 36,
                                           height: isMobile ? 32 : 36,
+                                          borderRadius: '12px',
+                                          boxShadow: '0 3px 10px rgba(16, 185, 129, 0.3)',
                                           transition: 'all 0.2s ease',
                                           '&:hover': {
-                                            bgcolor: 'rgba(76, 175, 80, 0.2)',
-                                            transform: 'scale(1.05)',
+                                            transform: 'scale(1.08)',
+                                            boxShadow: '0 5px 14px rgba(16, 185, 129, 0.4)',
                                           },
                                         }}
                                       >
@@ -1416,14 +1611,15 @@ const UserProfile = ({
                                       <IconButton
                                         onClick={() => handleRequestAction(friend, 'reject')}
                                         sx={{
-                                          bgcolor: 'rgba(244, 67, 54, 0.1)',
-                                          color: '#c62828',
+                                          bgcolor: isDark ? 'rgba(239, 68, 68, 0.12)' : 'rgba(239, 68, 68, 0.08)',
+                                          color: '#ef4444',
                                           width: isMobile ? 32 : 36,
                                           height: isMobile ? 32 : 36,
+                                          borderRadius: '12px',
                                           transition: 'all 0.2s ease',
                                           '&:hover': {
-                                            bgcolor: 'rgba(244, 67, 54, 0.2)',
-                                            transform: 'scale(1.05)',
+                                            bgcolor: 'rgba(239, 68, 68, 0.2)',
+                                            transform: 'scale(1.08)',
                                           },
                                         }}
                                       >
@@ -1433,7 +1629,7 @@ const UserProfile = ({
                                   </Box>
                                 </ListItem>
                               </Zoom>
-                            )
+                            );
                           })}
                         </>
                       )}
@@ -1443,24 +1639,25 @@ const UserProfile = ({
                         <Box sx={{ textAlign: 'center', py: 8, px: 2 }}>
                           <Box
                             sx={{
-                              width: 80,
-                              height: 80,
-                              borderRadius: '50%',
-                              bgcolor: 'rgba(236, 64, 122, 0.06)',
+                              width: 72,
+                              height: 72,
+                              borderRadius: '22px',
+                              background: isDark ? 'rgba(255, 45, 108, 0.12)' : 'rgba(255, 45, 108, 0.06)',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
                               mx: 'auto',
                               mb: 2,
+                              border: isDark ? '1px solid rgba(255, 45, 108, 0.2)' : '1px solid rgba(255, 45, 108, 0.12)',
                             }}
                           >
-                            <PersonAddAlt1Icon sx={{ fontSize: 40, color: 'rgba(236, 64, 122, 0.3)' }} />
+                            <PersonAddAlt1Icon sx={{ fontSize: 36, color: 'var(--primary-color, #ff2d6c)' }} />
                           </Box>
-                          <Typography variant="body1" sx={{ color: '#888', fontWeight: 600 }}>
+                          <Typography variant="h6" sx={{ color: isDark ? '#f8fafc' : '#0f172a', fontWeight: 750, fontSize: '1.05rem', mb: 0.5 }}>
                             No pending requests
                           </Typography>
-                          <Typography variant="body2" sx={{ color: '#aaa', mt: 0.5, fontSize: '0.85rem' }}>
-                            Check back later for new friend requests
+                          <Typography variant="body2" sx={{ color: isDark ? '#94a3b8' : '#64748b', fontSize: '0.85rem' }}>
+                            Incoming friend requests will appear here
                           </Typography>
                         </Box>
                       )}
@@ -1473,7 +1670,7 @@ const UserProfile = ({
         </Box>
       </Box>
 
-      {/* Delete Account Dialog - Same as original */}
+      {/* Delete Account Dialog matching Settings.js Modal Style */}
       <Dialog
         open={deleteDialogOpen}
         onClose={() => setDeleteDialogOpen(false)}
@@ -1481,39 +1678,46 @@ const UserProfile = ({
         maxWidth="xs"
         PaperProps={{
           sx: {
-            borderRadius: '24px',
-            bgcolor: 'var(--surface-color, rgba(255, 255, 255, 0.95))',
-            backdropFilter: 'blur(20px)',
-            boxShadow: '0 24px 48px rgba(0,0,0,0.15)',
+            borderRadius: '28px',
+            bgcolor: isDark ? '#1a1424' : '#ffffff',
+            color: isDark ? '#f8fafc' : '#0f172a',
+            border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(239, 68, 68, 0.2)',
+            boxShadow: '0 24px 60px rgba(0, 0, 0, 0.35)',
+            p: 1
           },
         }}
       >
-        <DialogTitle sx={{ pt: 3, px: 3 }}>
+        <DialogTitle sx={{ pt: 2.5, px: 3 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
             <Box
               sx={{
-                width: 40,
-                height: 40,
-                borderRadius: '12px',
-                bgcolor: 'var(--surface-color, rgba(255, 255, 255, 0.95))',
+                width: 44,
+                height: 44,
+                borderRadius: '14px',
+                bgcolor: 'rgba(239, 68, 68, 0.1)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <DeleteForeverIcon sx={{ color: 'var(--primary-color, #e53935)' }} />
+              <DeleteForeverIcon sx={{ color: '#ef4444', fontSize: 24 }} />
             </Box>
-            <Typography fontWeight={700} sx={{ color: 'var(--text-color, #ff5f5f)', fontSize: '1.1rem' }}>
-              Delete Account
-            </Typography>
+            <Box>
+              <Typography fontWeight={800} sx={{ color: '#ef4444', fontSize: '1.15rem' }}>
+                Delete Account
+              </Typography>
+              <Typography variant="caption" sx={{ color: isDark ? '#94a3b8' : '#64748b', fontWeight: 500 }}>
+                Permanent action
+              </Typography>
+            </Box>
           </Box>
         </DialogTitle>
         <DialogContent sx={{ px: 3 }}>
-          <Typography sx={{ color: '#666', fontSize: '0.9rem', mb: 2, lineHeight: 1.6 }}>
-            This action is permanent and cannot be undone. All your data will be permanently removed.
+          <Typography sx={{ color: isDark ? '#cbd5e1' : '#64748b', fontSize: '0.9rem', mb: 2, lineHeight: 1.6 }}>
+            This action is permanent and cannot be undone. All your chat history, contacts, and personal data will be erased.
           </Typography>
-          <Typography sx={{ color: '#1a1a2e', fontSize: '0.85rem', mb: 1, fontWeight: 600 }}>
-            Type <Box component="span" sx={{ color: '#e53935', fontWeight: 700 }}>"Delete My Account"</Box> to confirm:
+          <Typography sx={{ color: isDark ? '#f8fafc' : '#0f172a', fontSize: '0.85rem', mb: 1, fontWeight: 650 }}>
+            Type <Box component="span" sx={{ color: '#ef4444', fontWeight: 750 }}>"Delete My Account"</Box> to confirm:
           </Typography>
           <TextField
             autoFocus
@@ -1524,32 +1728,34 @@ const UserProfile = ({
             placeholder="Delete My Account"
             sx={{
               '& .MuiOutlinedInput-root': {
-                borderRadius: '12px',
-                bgcolor: 'rgba(229, 57, 53, 0.03)',
-                fontFamily: 'Poppins',
+                borderRadius: '16px',
+                bgcolor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(239, 68, 68, 0.03)',
+                color: isDark ? '#f8fafc' : '#0f172a',
+                fontFamily: 'Poppins, sans-serif',
                 fontSize: '0.9rem',
                 '& fieldset': {
-                  borderColor: 'rgba(229, 57, 53, 0.2)',
+                  borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(239, 68, 68, 0.25)',
                 },
                 '&:hover fieldset': {
-                  borderColor: 'rgba(229, 57, 53, 0.4)',
+                  borderColor: '#ef4444',
                 },
-                '&.Mui-focused fieldSet': {
-                  borderColor: '#e53935',
+                '&.Mui-focused fieldset': {
+                  borderColor: '#ef4444',
                 },
               },
             }}
           />
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 3, gap: 1 }}>
+        <DialogActions sx={{ px: 3, pb: 2.5, gap: 1.5 }}>
           <Button
             onClick={() => setDeleteDialogOpen(false)}
             sx={{
-              color: '#888',
-              borderRadius: '12px',
+              color: isDark ? '#94a3b8' : '#64748b',
+              borderRadius: '18px',
               textTransform: 'none',
-              fontWeight: 600,
+              fontWeight: 650,
               px: 3,
+              py: 1,
             }}
             disabled={deleting}
           >
@@ -1560,16 +1766,19 @@ const UserProfile = ({
             variant="contained"
             disabled={deleteInput !== 'Delete My Account' || deleting}
             sx={{
-              bgcolor: '#e53935',
-              borderRadius: '12px',
+              background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+              borderRadius: '18px',
               textTransform: 'none',
-              fontWeight: 600,
+              fontWeight: 700,
               px: 3,
-              boxShadow: '0 4px 16px rgba(229,57,53,0.3)',
-              '&:hover': { bgcolor: '#c62828' },
+              py: 1,
+              boxShadow: '0 4px 16px rgba(239, 68, 68, 0.35)',
+              '&:hover': {
+                background: 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)',
+              },
               '&.Mui-disabled': {
-                bgcolor: 'rgba(229, 57, 53, 0.3)',
-                color: 'rgba(255,255,255,0.6)',
+                bgcolor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(239, 68, 68, 0.25)',
+                color: isDark ? 'rgba(255, 255, 255, 0.3)' : 'rgba(255, 255, 255, 0.8)',
               },
             }}
           >
@@ -1578,7 +1787,7 @@ const UserProfile = ({
         </DialogActions>
       </Dialog>
 
-      {/* Cropper Dialog - Same as original */}
+      {/* Cropper Dialog matching Settings.js Modal Style */}
       <Dialog
         open={cropModalOpen}
         onClose={() => setCropModalOpen(false)}
@@ -1586,23 +1795,25 @@ const UserProfile = ({
         fullWidth
         PaperProps={{
           sx: {
-            borderRadius: '24px',
+            borderRadius: '28px',
             overflow: 'hidden',
-            boxShadow: '0 24px 48px rgba(0,0,0,0.2)',
+            bgcolor: isDark ? '#1a1424' : '#ffffff',
+            boxShadow: '0 24px 60px rgba(0, 0, 0, 0.4)',
+            border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.1)',
           },
         }}
       >
         <DialogTitle sx={{
-          bgcolor: '#1a1a2e',
+          bgcolor: isDark ? '#140f1d' : '#1e1b2e',
           color: '#fff',
-          py: 2,
+          py: 2.2,
           px: 3,
           fontWeight: 700,
-          fontSize: '1.1rem',
+          fontSize: '1.05rem',
         }}>
           Crop Profile Photo
         </DialogTitle>
-        <DialogContent sx={{ position: 'relative', height: 320, bgcolor: '#1a1a2e', p: 0 }}>
+        <DialogContent sx={{ position: 'relative', height: 320, bgcolor: '#000000', p: 0 }}>
           {selectedImage && (
             <Cropper
               image={selectedImage}
@@ -1615,9 +1826,9 @@ const UserProfile = ({
             />
           )}
         </DialogContent>
-        <Box sx={{ px: 3, py: 2, bgcolor: '#fff' }}>
-          <Typography variant="caption" sx={{ color: '#888', mb: 1, display: 'block', fontWeight: 500 }}>
-            Zoom
+        <Box sx={{ px: 3, py: 2, bgcolor: isDark ? '#1a1424' : '#ffffff' }}>
+          <Typography variant="caption" sx={{ color: isDark ? '#94a3b8' : '#64748b', mb: 1, display: 'block', fontWeight: 650 }}>
+            Zoom Level
           </Typography>
           <Slider
             value={zoom}
@@ -1626,22 +1837,23 @@ const UserProfile = ({
             step={0.1}
             onChange={(_, value) => setZoom(value)}
             sx={{
-              color: '#ec407a',
+              color: 'var(--primary-color, #ff2d6c)',
               '& .MuiSlider-thumb': {
-                boxShadow: '0 2px 8px rgba(236,64,122,0.4)',
+                boxShadow: '0 2px 10px rgba(255, 45, 108, 0.4)',
               },
             }}
           />
         </Box>
-        <DialogActions sx={{ px: 3, pb: 3, bgcolor: '#fff', gap: 1 }}>
+        <DialogActions sx={{ px: 3, pb: 2.5, bgcolor: isDark ? '#1a1424' : '#ffffff', gap: 1.5 }}>
           <Button
             onClick={() => setCropModalOpen(false)}
             sx={{
-              color: '#888',
-              borderRadius: '12px',
+              color: isDark ? '#94a3b8' : '#64748b',
+              borderRadius: '18px',
               textTransform: 'none',
-              fontWeight: 600,
+              fontWeight: 650,
               px: 3,
+              py: 1,
             }}
           >
             Cancel
@@ -1660,6 +1872,7 @@ const UserProfile = ({
               // 3. Write to local cache immediately so next load is instant
               try {
                 localStorage.setItem('profileImageCache', croppedImage);
+                localStorage.setItem('profileImage', croppedImage);
               } catch (cacheErr) {
                 console.warn('Profile image cache write failed (storage full?):', cacheErr);
               }
@@ -1673,14 +1886,17 @@ const UserProfile = ({
               }).catch(err => console.error('Failed to save profile image to backend:', err));
             }}
             sx={{
-              bgcolor: '#ec407a',
+              background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
               color: '#fff',
-              borderRadius: '12px',
+              borderRadius: '18px',
               textTransform: 'none',
-              fontWeight: 600,
-              px: 3,
-              boxShadow: '0 4px 16px rgba(236,64,122,0.3)',
-              '&:hover': { bgcolor: '#d81b60' },
+              fontWeight: 700,
+              px: 3.5,
+              py: 1,
+              boxShadow: '0 4px 16px rgba(255, 45, 108, 0.35)',
+              '&:hover': {
+                filter: 'brightness(1.08)',
+              },
             }}
           >
             Save Photo
@@ -1688,7 +1904,7 @@ const UserProfile = ({
         </DialogActions>
       </Dialog>
 
-      {/* Image Preview Dialog - Same as original */}
+      {/* Image Full Preview Dialog */}
       <Dialog
         open={previewOpen}
         onClose={() => setPreviewOpen(false)}
@@ -1716,32 +1932,34 @@ const UserProfile = ({
           <Avatar
             src={getProfileImageSrc(user.profileImage)}
             sx={{
-              width: isMobile ? 240 : 280,
-              height: isMobile ? 240 : 280,
-              bgcolor: '#fce4ec',
-              border: '4px solid #fff',
-              boxShadow: '0 16px 48px rgba(0,0,0,0.2)',
+              width: isMobile ? 250 : 300,
+              height: isMobile ? 250 : 300,
+              bgcolor: isDark ? '#2a1a2e' : '#ffe4ec',
+              border: '4px solid #ffffff',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
               fontSize: isMobile ? 80 : 100,
               fontWeight: 700,
+              color: 'var(--primary-color, #ff2d6c)',
             }}
           >
-            {!user.profileImage && user.name?.[0]}
+            {(user.name?.[0] || user.username?.[0] || 'U').toUpperCase()}
           </Avatar>
           <Button
             onClick={() => setPreviewOpen(false)}
             sx={{
               mt: 3,
               color: '#fff',
-              bgcolor: 'rgba(255,255,255,0.2)',
-              backdropFilter: 'blur(10px)',
-              borderRadius: '12px',
-              fontWeight: 600,
+              bgcolor: 'rgba(255,255,255,0.18)',
+              backdropFilter: 'blur(16px)',
+              borderRadius: '20px',
+              fontWeight: 650,
               textTransform: 'none',
               px: 4,
-              py: 1,
+              py: 1.1,
               border: '1px solid rgba(255,255,255,0.3)',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
               '&:hover': {
-                bgcolor: 'rgba(255,255,255,0.3)',
+                bgcolor: 'rgba(255,255,255,0.28)',
               },
             }}
           >
@@ -1750,7 +1968,7 @@ const UserProfile = ({
         </Box>
       </Dialog>
 
-      {/* Confirmation Dialog - Same as original */}
+      {/* Confirmation Dialog (Remove / Block Friend) matching Settings style */}
       <Dialog
         open={confirmDialog.open}
         onClose={() => setConfirmDialog({ ...confirmDialog, open: false })}
@@ -1758,56 +1976,63 @@ const UserProfile = ({
         maxWidth="xs"
         PaperProps={{
           sx: {
-            borderRadius: '24px',
-            bgcolor: 'rgba(255, 255, 255, 0.95)',
-            backdropFilter: 'blur(20px)',
-            boxShadow: '0 24px 48px rgba(0,0,0,0.15)',
+            borderRadius: '28px',
+            bgcolor: isDark ? '#1a1424' : '#ffffff',
+            border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.08)',
+            boxShadow: '0 24px 60px rgba(0,0,0,0.35)',
+            p: 1
           },
         }}
       >
-        <DialogTitle sx={{ pt: 3, px: 3 }}>
+        <DialogTitle sx={{ pt: 2.5, px: 3 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
             <Box
               sx={{
-                width: 40,
-                height: 40,
-                borderRadius: '12px',
-                bgcolor: confirmDialog.action === 'remove' ? 'rgba(229, 57, 53, 0.1)' : 'rgba(255, 145, 0, 0.1)',
+                width: 44,
+                height: 44,
+                borderRadius: '14px',
+                bgcolor: confirmDialog.action === 'remove' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(249, 115, 22, 0.1)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
               {confirmDialog.action === 'remove' ? (
-                <PersonRemoveIcon sx={{ color: '#e53935' }} />
+                <PersonRemoveIcon sx={{ color: '#ef4444', fontSize: 24 }} />
               ) : (
-                <BlockIcon sx={{ color: '#ff9100' }} />
+                <BlockIcon sx={{ color: '#f97316', fontSize: 24 }} />
               )}
             </Box>
-            <Typography fontWeight={700} sx={{ color: '#1a1a2e', fontSize: '1.1rem' }}>
-              {confirmDialog.action === 'remove' ? 'Remove Friend' : 'Block User'}
-            </Typography>
+            <Box>
+              <Typography fontWeight={800} sx={{ color: isDark ? '#f8fafc' : '#0f172a', fontSize: '1.15rem' }}>
+                {confirmDialog.action === 'remove' ? 'Remove Friend' : 'Block User'}
+              </Typography>
+              <Typography variant="caption" sx={{ color: isDark ? '#94a3b8' : '#64748b', fontWeight: 500 }}>
+                Please confirm action
+              </Typography>
+            </Box>
           </Box>
         </DialogTitle>
         <DialogContent sx={{ px: 3 }}>
-          <Typography sx={{ color: '#666', fontSize: '0.9rem', lineHeight: 1.6 }}>
-            Are you sure you want to <Box component="span" sx={{ fontWeight: 700, color: '#1a1a2e' }}>{confirmDialog.action}</Box>{' '}
-            <Box component="span" sx={{ fontWeight: 700, color: '#ec407a' }}>
+          <Typography sx={{ color: isDark ? '#cbd5e1' : '#64748b', fontSize: '0.92rem', lineHeight: 1.6 }}>
+            Are you sure you want to <Box component="span" sx={{ fontWeight: 700, color: isDark ? '#fff' : '#0f172a' }}>{confirmDialog.action}</Box>{' '}
+            <Box component="span" sx={{ fontWeight: 750, color: 'var(--primary-color, #ff2d6c)' }}>
               {confirmDialog.friend?.username}
             </Box>?
             {confirmDialog.action === 'remove' && ' They will be removed from your friends list.'}
-            {confirmDialog.action === 'block' && ' They will no longer be able to interact with you.'}
+            {confirmDialog.action === 'block' && ' They will no longer be able to message or interact with you.'}
           </Typography>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 3, gap: 1 }}>
+        <DialogActions sx={{ px: 3, pb: 2.5, gap: 1.5 }}>
           <Button
             onClick={() => setConfirmDialog({ ...confirmDialog, open: false })}
             sx={{
-              color: '#888',
-              borderRadius: '12px',
+              color: isDark ? '#94a3b8' : '#64748b',
+              borderRadius: '18px',
               textTransform: 'none',
-              fontWeight: 600,
+              fontWeight: 650,
               px: 3,
+              py: 1,
             }}
           >
             Cancel
@@ -1832,17 +2057,18 @@ const UserProfile = ({
             }}
             variant="contained"
             sx={{
-              borderRadius: '12px',
+              borderRadius: '18px',
               textTransform: 'none',
-              fontWeight: 600,
+              fontWeight: 700,
               px: 3,
-              bgcolor: confirmDialog.action === 'remove' ? '#e53935' : '#ff9100',
+              py: 1,
+              bgcolor: confirmDialog.action === 'remove' ? '#ef4444' : '#f97316',
               color: '#fff',
               boxShadow: confirmDialog.action === 'remove'
-                ? '0 4px 16px rgba(229,57,53,0.3)'
-                : '0 4px 16px rgba(255,145,0,0.3)',
+                ? '0 4px 16px rgba(239, 68, 68, 0.35)'
+                : '0 4px 16px rgba(249, 115, 22, 0.35)',
               '&:hover': {
-                bgcolor: confirmDialog.action === 'remove' ? '#c62828' : '#f57c00',
+                bgcolor: confirmDialog.action === 'remove' ? '#dc2626' : '#ea580c',
               },
             }}
           >

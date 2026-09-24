@@ -267,6 +267,7 @@ const StickerDialog = forwardRef(({ open, setOpen, selectedUser, user, socket, s
     }
 
     stickerLayers.forEach(layer => {
+      if (!layer) return;
       ctx.save();
       ctx.globalAlpha = (layer.opacity || layerOpacity) / 100;
 
@@ -439,6 +440,7 @@ const StickerDialog = forwardRef(({ open, setOpen, selectedUser, user, socket, s
 
     for (let i = stickerLayers.length - 1; i >= 0; i--) {
       const layer = stickerLayers[i];
+      if (!layer) continue;
       const layerX = layer.x;
       const layerY = layer.y;
 
@@ -465,12 +467,17 @@ const StickerDialog = forwardRef(({ open, setOpen, selectedUser, user, socket, s
     const y = ((e.clientY - rect.top) / rect.height) * 100;
 
     if (isDraggingRef.current && selectedLayerRef.current) {
-      const deltaX = x - dragStartRef.current.x;
-      const deltaY = y - dragStartRef.current.y;
+      const targetLayerId = selectedLayerRef.current.id;
+      const startLayerX = dragStartRef.current?.layerX ?? 0;
+      const startLayerY = dragStartRef.current?.layerY ?? 0;
+      const startX = dragStartRef.current?.x ?? 0;
+      const startY = dragStartRef.current?.y ?? 0;
+      const deltaX = x - startX;
+      const deltaY = y - startY;
 
-      setStickerLayers(prev => prev.map(layer =>
-        layer.id === selectedLayerRef.current.id
-          ? { ...layer, x: dragStartRef.current.layerX + deltaX, y: dragStartRef.current.layerY + deltaY }
+      setStickerLayers(prev => (prev || []).map(layer =>
+        layer && layer.id === targetLayerId
+          ? { ...layer, x: startLayerX + deltaX, y: startLayerY + deltaY }
           : layer
       ));
     }
@@ -478,16 +485,19 @@ const StickerDialog = forwardRef(({ open, setOpen, selectedUser, user, socket, s
 
   const handleCanvasMouseUp = () => {
     isDraggingRef.current = false;
-    selectedLayerRef.current = null;
     setTimeout(updateStickerCanvas, 0);
   };
 
   const handleCanvasTouchStart = (e) => {
-    handleCanvasMouseDown(e.touches[0]);
+    if (e.touches && e.touches[0]) {
+      handleCanvasMouseDown(e.touches[0]);
+    }
   };
 
   const handleCanvasTouchMove = (e) => {
-    handleCanvasMouseMove(e.touches[0]);
+    if (e.touches && e.touches[0]) {
+      handleCanvasMouseMove(e.touches[0]);
+    }
   };
 
   const handleCanvasTouchEnd = () => {
@@ -1124,7 +1134,7 @@ const StickerDialog = forwardRef(({ open, setOpen, selectedUser, user, socket, s
                       setEditingText(newText);
                       setStickerLayers(prev =>
                         prev.map(l =>
-                          l.id === selectedLayerId ? { ...l, text: newText } : l
+                          l?.id === selectedLayerId ? { ...l, text: newText } : l
                         )
                       );
                       updateStickerCanvas();
@@ -1201,7 +1211,7 @@ const StickerDialog = forwardRef(({ open, setOpen, selectedUser, user, socket, s
                               setTextStyles((prev) => ({ ...prev, [format.style]: newValue }));
                               setStickerLayers((prev) =>
                                 prev.map((l) =>
-                                  l.id === selectedLayerId ? { ...l, [format.style]: newValue } : l
+                                  l?.id === selectedLayerId ? { ...l, [format.style]: newValue } : l
                                 )
                               );
                               updateStickerCanvas();
@@ -1288,7 +1298,7 @@ const StickerDialog = forwardRef(({ open, setOpen, selectedUser, user, socket, s
                             setTextSize(newValue);
                             setStickerLayers(prev =>
                               prev.map(l =>
-                                l.id === selectedLayerId ? { ...l, size: newValue } : l
+                                l?.id === selectedLayerId ? { ...l, size: newValue } : l
                               )
                             );
                             updateStickerCanvas();
@@ -1368,7 +1378,7 @@ const StickerDialog = forwardRef(({ open, setOpen, selectedUser, user, socket, s
                                 setTextColor(newColor);
                                 setStickerLayers(prev =>
                                   prev.map(l =>
-                                    l.id === selectedLayerId ? { ...l, color: newColor } : l
+                                    l?.id === selectedLayerId ? { ...l, color: newColor } : l
                                   )
                                 );
                                 updateStickerCanvas();
@@ -1451,7 +1461,7 @@ const StickerDialog = forwardRef(({ open, setOpen, selectedUser, user, socket, s
                             setTextStyles(prev => ({ ...prev, fontFamily: newFont }));
                             setStickerLayers(prev =>
                               prev.map(l =>
-                                l.id === selectedLayerId ? { ...l, fontFamily: newFont } : l
+                                l?.id === selectedLayerId ? { ...l, fontFamily: newFont } : l
                               )
                             );
                             updateStickerCanvas();
@@ -1552,7 +1562,7 @@ const StickerDialog = forwardRef(({ open, setOpen, selectedUser, user, socket, s
                     background: 'rgba(255, 255, 255, 0.8)',
                     backdropFilter: 'blur(10px)'
                   }}>
-                    {stickerLayers.map((layer, index) => (
+                    {stickerLayers.filter(Boolean).map((layer, index) => (
                       <Box
                         key={layer.id}
                         sx={{
@@ -1622,7 +1632,7 @@ const StickerDialog = forwardRef(({ open, setOpen, selectedUser, user, socket, s
                           size="small"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setStickerLayers(prev => prev.filter(l => l.id !== layer.id));
+                            setStickerLayers(prev => (prev || []).filter(l => l && l.id !== layer.id));
                             if (selectedLayerId === layer.id) {
                               setSelectedLayerId(null);
                             }

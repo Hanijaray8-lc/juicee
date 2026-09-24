@@ -12,6 +12,7 @@ import { SocketProvider } from './context/socketContext';
 import BlockedUsersPage from './BlockedUserPage';
 import FinderPage from './finder';
 import Help from './Help';
+import HelpQuery from './Help&Query';
 import { AppBar, Toolbar, Box } from '@mui/material';
 
 const AppContent = () => {
@@ -19,6 +20,13 @@ const AppContent = () => {
   const location = useLocation();
   const [checkingIntent, setCheckingIntent] = useState(() => {
     return typeof window !== 'undefined' && !!window.Capacitor;
+  });
+  const [hasSession] = useState(() => {
+    try {
+      return Boolean(localStorage.getItem('token') && localStorage.getItem('userId'));
+    } catch (e) {
+      return false;
+    }
   });
 
   const locationRef = useRef(location);
@@ -32,6 +40,101 @@ const AppContent = () => {
 
   // Show AppBar on these routes
   const showAppBar = isMobile && ['/', '/signin', '/signup'].includes(location.pathname);
+
+  // Apply saved theme variables to documentElement on initial load
+  useEffect(() => {
+    try {
+      const savedTheme = localStorage.getItem('appTheme');
+      if (savedTheme) {
+        const themeData = JSON.parse(savedTheme);
+        if (themeData && themeData.colors) {
+          const root = document.documentElement;
+          let primaryVal = themeData.colors.primary || '#ff2d6c';
+          let primaryGradient = themeData.colors.primaryGradient;
+          if (!primaryGradient) {
+            if (primaryVal.includes('gradient')) {
+              primaryGradient = primaryVal;
+              const match = primaryVal.match(/#(?:[0-9a-fA-F]{3,8})/);
+              primaryVal = match ? match[0] : '#f06292';
+            } else {
+              primaryGradient = `linear-gradient(135deg, ${primaryVal} 0%, ${primaryVal}dd 100%)`;
+            }
+          } else if (primaryVal.includes('gradient')) {
+            const match = primaryVal.match(/#(?:[0-9a-fA-F]{3,8})/);
+            primaryVal = match ? match[0] : '#f06292';
+          }
+
+          const hexToRgb = (hex) => {
+            try {
+              const h = (hex || '#f06292').replace('#', '').trim();
+              const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+              const bigint = parseInt(full, 16);
+              const r = (bigint >> 16) & 255;
+              const g = (bigint >> 8) & 255;
+              const b = bigint & 255;
+              return `${r}, ${g}, ${b}`;
+            } catch (e) {
+              return '240, 98, 146';
+            }
+          };
+
+          const primaryRgb = hexToRgb(primaryVal);
+
+          root.style.setProperty('--primary-color', primaryVal);
+          root.style.setProperty('--primary-gradient', primaryGradient);
+          root.style.setProperty('--primary-rgb', primaryRgb);
+          root.style.setProperty('--primary-color-alpha', `rgba(${primaryRgb}, 0.08)`);
+          root.style.setProperty('--primary-color-glow', `rgba(${primaryRgb}, 0.35)`);
+          root.style.setProperty('--app-primary', primaryVal);
+          root.style.setProperty('--app-primary-rgb', primaryRgb);
+          root.style.setProperty('--background-color', themeData.colors.background);
+          root.style.setProperty('--surface-color', themeData.colors.surface);
+          root.style.setProperty('--text-color', themeData.colors.text);
+        }
+      }
+    } catch (e) {}
+  }, []);
+
+  const processCallIntent = React.useCallback(async () => {
+    if (typeof window !== 'undefined' && window.Capacitor) {
+      try {
+        const { AudioRoute } = window.Capacitor.Plugins || {};
+
+        if (AudioRoute && typeof AudioRoute.getCallLaunchIntent === 'function') {
+          const intent = await AudioRoute.getCallLaunchIntent();
+          console.log('📱 App checked intent:', intent);
+          if (intent) {
+            if (intent.isCall) {
+              if (intent.action === 'accept') {
+                const stored = JSON.stringify({ ...intent, ts: Date.now() });
+                localStorage.setItem('pendingCallAccept', stored);
+                sessionStorage.setItem('pendingCallAccept', stored);
+                window.dispatchEvent(new CustomEvent('pendingCallAcceptSet'));
+              } else {
+                localStorage.setItem('pendingCallIncoming', JSON.stringify(intent));
+                sessionStorage.setItem('pendingCallIncoming', JSON.stringify(intent));
+              }
+              const token = localStorage.getItem('token');
+              const userId = localStorage.getItem('userId');
+              if (token && userId) {
+                navigate('/chat', { replace: true });
+              }
+            } else if (intent.conversationId) {
+              sessionStorage.setItem('pendingNotification', JSON.stringify(intent));
+              const token = localStorage.getItem('token');
+              const userId = localStorage.getItem('userId');
+              if (token && userId) {
+                console.log('📱 Redirecting immediately to chat page due to pending notification intent');
+                navigate('/chat', { replace: true });
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error checking call launch intent:', err);
+      }
+    }
+  }, [navigate]);
 
   // Check launch intent on startup (cold boot)
   useEffect(() => {
@@ -55,30 +158,19 @@ const AppContent = () => {
             }
           }
 
-          if (AudioRoute && typeof AudioRoute.getCallLaunchIntent === 'function') {
-            const intent = await AudioRoute.getCallLaunchIntent();
-            console.log('📱 App startup checked intent:', intent);
-            if (intent) {
-              if (intent.isCall) {
-                if (intent.action === 'accept') {
-                  sessionStorage.setItem('pendingCallAccept', JSON.stringify(intent));
-                } else {
-                  sessionStorage.setItem('pendingCallIncoming', JSON.stringify(intent));
-                }
-                const token = localStorage.getItem('token');
-                const userId = localStorage.getItem('userId');
-                if (token && userId) {
-                  navigate('/chat', { replace: true });
-                }
-              } else if (intent.conversationId) {
-                sessionStorage.setItem('pendingNotification', JSON.stringify(intent));
-                const token = localStorage.getItem('token');
-                const userId = localStorage.getItem('userId');
-                if (token && userId) {
-                  console.log('📱 Redirecting immediately to chat page due to pending notification intent');
-                  navigate('/chat', { replace: true });
-                }
+          await processCallIntent();
+
+          // ⚡ FIX 4: Proactively request CAMERA + RECORD_AUDIO on startup when user is
+          // already logged in, so the OS permission dialog never blocks getUserMedia()
+          // during an actual call (especially on the very first cold-start call).
+          if (hasSession) {
+            try {
+              if (window.PermissionsBridge && typeof window.PermissionsBridge.requestPermissions === 'function') {
+                console.log('📱 [PERMISSIONS] Proactively requesting camera/mic permissions on startup (session exists)');
+                window.PermissionsBridge.requestPermissions();
               }
+            } catch (permErr) {
+              console.warn('📱 [PERMISSIONS] Startup permission request error:', permErr);
             }
           }
         } catch (err) {
@@ -91,7 +183,35 @@ const AppContent = () => {
       }
     };
     checkInitialIntent();
-  }, [navigate]);
+  }, [navigate]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Listen for warm-boot call intents (notification Accept tap while app process is alive)
+  useEffect(() => {
+    const handleJuicyCallIntent = () => {
+      processCallIntent();
+    };
+    window.addEventListener('juicyCallIntent', handleJuicyCallIntent);
+
+    let appStateListener;
+    if (window.Capacitor?.Plugins?.App) {
+      window.Capacitor.Plugins.App.addListener('appStateChange', ({ isActive }) => {
+        if (isActive) {
+          processCallIntent();
+        }
+      }).then(l => { appStateListener = l; }).catch(() => {});
+    }
+
+    return () => {
+      window.removeEventListener('juicyCallIntent', handleJuicyCallIntent);
+      if (appStateListener) {
+        Promise.resolve(appStateListener).then(h => {
+          if (h && typeof h.remove === 'function') {
+            h.remove();
+          }
+        }).catch(() => {});
+      }
+    };
+  }, [processCallIntent]);
 
   useEffect(() => {
     // ✅ Handle Android back button (only if native)
@@ -104,6 +224,19 @@ const AppContent = () => {
       window.dispatchEvent(event);
 
       if (!eventDetail.handled) {
+        // ✅ If a call is currently active, NEVER exitApp() and terminate the call!
+        if (window.__juicyCallActive) {
+          console.log('[App] Active call in progress on back button — keeping call alive');
+          if (window.__juicyVideoCallActive && window.Capacitor?.Plugins?.AudioRoute?.enterPipMode) {
+            window.Capacitor.Plugins.AudioRoute.enterPipMode().catch(() => {
+              window.Capacitor?.Plugins?.AudioRoute?.moveToBackground?.();
+            });
+          } else if (window.Capacitor?.Plugins?.AudioRoute?.moveToBackground) {
+            window.Capacitor.Plugins.AudioRoute.moveToBackground().catch(() => {});
+          }
+          return;
+        }
+
         const path = locationRef.current.pathname;
         if (path === '/chat' || path === '/' || path === '/signin' || path === '/signup') {
           import('@capacitor/app').then(({ App: CapacitorApp }) => {
@@ -190,7 +323,7 @@ const AppContent = () => {
   
         {/* ✅ ROUTES */}
         <Routes>
-          <Route path="/" element={<StartPage />} />
+          <Route path="/" element={hasSession ? <ChatPage /> : <StartPage />} />
           <Route path="/signin" element={isMobile ? <SignInPage /> : <WebScanner />} />
           <Route path="/chat" element={<ChatPage />} />
           <Route path="/signup" element={<SignUpPage />} />
@@ -198,6 +331,9 @@ const AppContent = () => {
           <Route path="/blocked-users" element={<BlockedUsersPage />} />
           <Route path="/finder" element={<FinderPage />} />
           <Route path="/help" element={<Help />} />
+          <Route path="/help&query" element={<HelpQuery />} />
+          <Route path="/help-query" element={<HelpQuery />} />
+          <Route path="/help%26query" element={<HelpQuery />} />
         </Routes>
       </div>
     </SocketProvider>

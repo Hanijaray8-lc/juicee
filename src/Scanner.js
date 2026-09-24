@@ -19,7 +19,10 @@ import {
   Tab,
   Card,
   CardContent,
-  useMediaQuery
+  useMediaQuery,
+  Tooltip,
+  Fade,
+  Zoom
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -35,8 +38,10 @@ import {
   Share as ShareIcon,
   Download as DownloadIcon,
   ContentCopy as CopyIcon,
-  Logout as LogoutIcon
+  Logout as LogoutIcon,
+  Check as CheckIcon
 } from '@mui/icons-material';
+import { useTheme } from '@mui/material/styles';
 import toast from 'react-hot-toast';
 import jsQR from 'jsqr';
 import { useSocket } from './context/socketContext';
@@ -45,7 +50,8 @@ import API_BASE_URL from './config/apiConfig';
 export default function Scanner({ open, onClose, user, onUserScanned }) {
   const isMobile = useMediaQuery('(max-width:600px)');
   const socket = useSocket();
-  
+  const theme = useTheme();
+
   const [themeKey, setThemeKey] = useState(0);
   const [activeTab, setActiveTab] = useState(0); 
   const [isScanning, setIsScanning] = useState(false);
@@ -54,10 +60,43 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
   const [fetchingDevices, setFetchingDevices] = useState(false);
   const [logOutTarget, setLogOutTarget] = useState(null);
 
+  // Theme & Dark mode detection matching Settings.js
+  const [isDark, setIsDark] = useState(() => {
+    try {
+      const saved = localStorage.getItem('appTheme');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const bgCol = parsed?.colors?.background;
+        if (bgCol && bgCol.startsWith('#')) {
+          const hex = bgCol.replace('#', '').trim();
+          const r = parseInt(hex.substring(0, 2), 16);
+          const g = parseInt(hex.substring(2, 4), 16);
+          const b = parseInt(hex.substring(4, 6), 16);
+          return (r * 299 + g * 587 + b * 114) / 1000 < 128;
+        }
+      }
+    } catch (e) {}
+    return theme.palette.mode === 'dark';
+  });
+
   // Listen for theme changes dynamically
   useEffect(() => {
     const handleThemeChange = () => {
       setThemeKey(prev => prev + 1);
+      try {
+        const saved = localStorage.getItem('appTheme');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          const bgCol = parsed?.colors?.background;
+          if (bgCol && bgCol.startsWith('#')) {
+            const hex = bgCol.replace('#', '').trim();
+            const r = parseInt(hex.substring(0, 2), 16);
+            const g = parseInt(hex.substring(2, 4), 16);
+            const b = parseInt(hex.substring(4, 6), 16);
+            setIsDark((r * 299 + g * 587 + b * 114) / 1000 < 128);
+          }
+        }
+      } catch (e) {}
     };
     window.addEventListener('themeChanged', handleThemeChange);
     window.addEventListener('storage', handleThemeChange);
@@ -111,12 +150,10 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
   // Join user socket room and listen to code submissions
   useEffect(() => {
     if (socket && user && open) {
-      // Ensure we are in the user room to receive notifications
       socket.emit('join_room', user._id, user.username);
       
       const handleCodeSubmitted = (data) => {
-        // Web client submitted the code! Pop up confirmation on phone
-        setGeneratedCodeOpen(false); // Close code display if open
+        setGeneratedCodeOpen(false);
         setConfirmSessionId(data.sessionId);
         setConfirmBrowser(data.browserInfo || { browserName: 'Web Browser', osName: 'Desktop' });
         setConfirmOpen(true);
@@ -149,9 +186,8 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
         });
 
         if (code && code.data) {
-          // Detected QR Code! Show Confirmation Dialog instead of auto linking
           handleScannedQR(code.data);
-          return; // Stop scan loop
+          return;
         }
       }
       
@@ -193,10 +229,9 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
   const handleScannedQR = async (scannedData) => {
     if (!scannedData) return;
 
-    if (String(scannedData).startsWith('juicy-web-') || String(scannedData).startsWith('juicy-web-')) {
-      setIsScanning(false); // Stop camera
+    if (String(scannedData).startsWith('juicy-web-')) {
+      setIsScanning(false);
       
-      // Set confirm targets and open Confirmation Dialog
       setConfirmSessionId(scannedData);
       setConfirmBrowser({
         browserName: 'Web Browser (QR Scan)',
@@ -209,7 +244,7 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
     }
 
     // Otherwise, assume it is a user's QR code (username)
-    setIsScanning(false); // Stop camera
+    setIsScanning(false);
     
     const toastId = toast.loading('Processing QR code...');
     
@@ -221,7 +256,6 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
         throw new Error('User not logged in');
       }
 
-      // Search/fetch this user by their username (scannedData)
       const searchRes = await fetch(`${API_BASE_URL}/api/users/search?q=${encodeURIComponent(scannedData)}&userId=${loggedInUserId}`);
       
       if (!searchRes.ok) {
@@ -229,24 +263,20 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
       }
       
       const users = await searchRes.json();
-      // Find the exact matching username
       const matchedUser = Array.isArray(users) ? users.find(u => u.username.toLowerCase() === scannedData.toLowerCase()) : null;
       
       if (!matchedUser) {
         toast.error('No matching user found for this QR code.', { id: toastId });
-        // Resume scan
         setIsScanning(true);
         return;
       }
       
       if (matchedUser._id.toString() === loggedInUserId) {
         toast.error('You cannot add yourself.', { id: toastId });
-        // Resume scan
         setIsScanning(true);
         return;
       }
       
-      // We found the user! Let's auto add them as a friend
       const addRes = await fetch(`${API_BASE_URL}/api/user/${loggedInUserId}/add-friend`, {
         method: 'POST',
         headers: {
@@ -259,11 +289,10 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
       if (addRes.ok) {
         toast.success(`Started chat with ${matchedUser.username}`, { id: toastId });
         
-        // Open the chat page with this user automatically!
         if (onUserScanned) {
           onUserScanned(matchedUser);
         }
-        onClose(); // Close the scanner dialog
+        onClose();
       } else {
         const errorData = await addRes.json();
         toast.error(errorData.message || 'Failed to add friend', { id: toastId });
@@ -274,25 +303,6 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
       toast.error('Failed to process user QR code.', { id: toastId });
       setIsScanning(true);
     }
-  };
-
-  // Fallback scanner initiator for retry helper
-  const scanFrameFallback = () => {
-    if (!isScanning) return;
-    if (videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
-      const canvas = document.createElement('canvas');
-      canvas.width = videoRef.current.videoWidth;
-      canvas.height = videoRef.current.videoHeight;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const code = jsQR(imageData.data, imageData.width, imageData.height);
-      if (code && code.data) {
-        handleScannedQR(code.data);
-        return;
-      }
-    }
-    requestAnimationFrame(scanFrameFallback);
   };
 
   // Mobile generates the 5-digit number
@@ -313,7 +323,6 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
       if (response.ok) {
         setGeneratedCode(data.code);
         setGeneratedCodeOpen(true);
-        // Make mobile join the temporary session room to get confirmation alerts
         if (socket) {
           socket.emit('join_qr_room', { sessionId: data.sessionId });
         }
@@ -410,7 +419,6 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
       canvas.height = 1080;
       const ctx = canvas.getContext('2d');
 
-      // 1. Draw beautiful Instagram-style gradient background
       const grad = ctx.createLinearGradient(0, 0, 720, 1080);
       grad.addColorStop(0, '#f06292');
       grad.addColorStop(0.3, '#ff4d86');
@@ -419,13 +427,11 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, 720, 1080);
 
-      // 2. Draw white card shadow
       ctx.shadowColor = 'rgba(0, 0, 0, 0.15)';
       ctx.shadowBlur = 40;
       ctx.shadowOffsetX = 0;
       ctx.shadowOffsetY = 20;
 
-      // 3. Draw rounded white card in center
       const cardX = 100;
       const cardY = 200;
       const cardW = 520;
@@ -446,23 +452,19 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
       ctx.closePath();
       ctx.fill();
 
-      // Reset shadow for next drawings
       ctx.shadowColor = 'transparent';
       ctx.shadowBlur = 0;
       ctx.shadowOffsetX = 0;
       ctx.shadowOffsetY = 0;
 
-      // 4. Draw card header "Juicy"
       ctx.textAlign = 'center';
       ctx.fillStyle = '#f06292';
       ctx.font = 'bold 50px "Poppins", "Roboto", "Helvetica Neue", sans-serif';
       ctx.fillText('Juicy', 360, 290);
 
-      // 5. Load and draw QR code
       const qrImg = new Image();
-      qrImg.crossOrigin = 'anonymous'; // CRITICAL: Avoid tainting canvas
+      qrImg.crossOrigin = 'anonymous';
       qrImg.onload = () => {
-        // Draw white background border for QR code
         ctx.fillStyle = 'rgba(0,0,0,0.02)';
         ctx.beginPath();
         const qrBorderRadius = 16;
@@ -479,20 +481,16 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
         ctx.closePath();
         ctx.fill();
 
-        // Draw actual QR code image inside the border
         ctx.drawImage(qrImg, 210, 340, 300, 300);
 
-        // 6. Draw username
         ctx.fillStyle = '#121212';
         ctx.font = 'bold 36px "Poppins", "Roboto", "Helvetica Neue", sans-serif';
         ctx.fillText(`@${username}`, 360, 725);
 
-        // 7. Draw tagline
         ctx.fillStyle = '#777777';
         ctx.font = '500 20px "Poppins", "Roboto", "Helvetica Neue", sans-serif';
         ctx.fillText('Scan to make a good conversation', 360, 775);
 
-        // 8. Draw bottom brand mark on the gradient
         ctx.fillStyle = '#ffffff';
         ctx.font = 'bold 24px "Poppins", "Roboto", "Helvetica Neue", sans-serif';
         ctx.fillText('Juicy Messenger', 360, 960);
@@ -512,7 +510,6 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
         reject(err);
       };
 
-      // Set the source of the QR code image (pink color, matching card)
       qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&color=f06292&data=${encodeURIComponent(username)}`;
     });
   };
@@ -608,13 +605,18 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
       fullWidth
       PaperProps={{
         sx: {
-          borderRadius: isMobile ? 0 : '24px',
-          bgcolor: 'var(--surface-color, #ffffff)',
-          color: 'var(--text-color, #000000)',
+          borderRadius: isMobile ? 0 : '28px',
+          bgcolor: isDark ? 'rgba(24, 18, 34, 0.96)' : 'var(--surface-color, rgba(255, 255, 255, 0.96))',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          color: isDark ? '#f8fafc' : '#0f172a',
           overflow: 'hidden',
-          backgroundImage: 'none',
-          boxShadow: '0 20px 50px rgba(0,0,0,0.12)',
-          fontFamily: '"Poppins", "Roboto", sans-serif',
+          backgroundImage: isDark
+            ? 'radial-gradient(circle at 90% 10%, rgba(255, 255, 255, 0.04) 0%, transparent 50%)'
+            : 'radial-gradient(circle at 90% 10%, rgba(0, 0, 0, 0.02) 0%, transparent 50%)',
+          border: isDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(180, 180, 180, 0.2)',
+          boxShadow: isDark ? '0 24px 60px rgba(0, 0, 0, 0.5)' : '0 24px 60px rgba(255, 45, 108, 0.16)',
+          fontFamily: 'Poppins, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
           display: 'flex',
           flexDirection: 'column',
           height: isMobile ? '100%' : 'auto',
@@ -625,88 +627,141 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
       {!isScanning ? (
         // Main view (Linked Devices + QR tabs)
         <>
-          {/* Header */}
+          {/* Header matching Settings.js */}
           <Box sx={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            px: 3,
-            py: 2.5,
-            bgcolor: 'var(--surface-color, #ffffff)',
-            borderBottom: '1px solid rgba(240, 98, 146, 0.15)',
+            px: { xs: 2.5, sm: 3 },
+            py: 2.2,
+            bgcolor: isDark ? 'rgba(24, 18, 34, 0.98)' : 'rgba(255, 255, 255, 0.98)',
+            borderBottom: isDark ? '1px solid rgba(255, 255, 255, 0.06)' : '1px solid rgba(0, 0, 0, 0.06)',
             position: 'sticky',
             top: 0,
             zIndex: 10,
-            borderBottomLeftRadius: isMobile ? 0 : '20px',
-            borderBottomRightRadius: isMobile ? 0 : '20px',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.03)'
           }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-              <IconButton
-                onClick={() => { setIsScanning(false); onClose(); }}
+              <Box
                 sx={{
-                  color: 'var(--text-color, #121212)',
-                  opacity: 0.8,
-                  bgcolor: 'rgba(150,150,150,0.1)',
-                  transition: 'all 0.2s',
-                  '&:hover': {
-                    bgcolor: 'rgba(240, 98, 146, 0.15)',
-                    color: 'var(--primary-color, #f06292)',
-                    opacity: 1,
-                    transform: 'scale(1.05)'
-                  },
-                  '&:active': { transform: 'scale(0.95)' }
+                  width: 42,
+                  height: 42,
+                  borderRadius: '14px',
+                  background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
+                  color: '#ffffff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 4px 14px rgba(0, 0, 0, 0.15)',
+                  border: '1px solid rgba(255, 255, 255, 0.25)'
                 }}
-                size="small"
               >
-                <CloseIcon sx={{ fontSize: 20 }} />
-              </IconButton>
+                <DevicesIcon sx={{ fontSize: 22 }} />
+              </Box>
               <Box>
-                <Typography variant="h6" sx={{ fontWeight: 800, fontSize: '1.2rem', fontFamily: '"Poppins", sans-serif', color: 'var(--text-color, #121212)' }}>
+                <Typography
+                  variant="h6"
+                  sx={{
+                    fontWeight: 800,
+                    fontSize: '1.22rem',
+                    background: isDark
+                      ? 'linear-gradient(135deg, #ffffff 0%, var(--primary-color, #fda4af) 100%)'
+                      : 'linear-gradient(135deg, var(--text-color, #1e1b2e) 0%, var(--primary-color, #ff2d6c) 100%)',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    lineHeight: 1.2,
+                    letterSpacing: '-0.3px',
+                  }}
+                >
                   Linked Devices
                 </Typography>
-                <Typography variant="caption" sx={{ color: 'var(--text-color, #121212)', opacity: 0.7, display: 'block', mt: -0.25 }}>
+                <Typography variant="caption" sx={{ color: isDark ? '#94a3b8' : '#64748b', fontWeight: 500, display: 'block' }}>
                   Manage session logins & web access
                 </Typography>
               </Box>
             </Box>
-            <HelpIcon sx={{ color: 'var(--primary-color, #f06292)', opacity: 0.8, fontSize: 22 }} />
+
+            <IconButton
+              onClick={() => { setIsScanning(false); onClose(); }}
+              sx={{
+                color: isDark ? '#94a3b8' : '#64748b',
+                bgcolor: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)',
+                borderRadius: '12px',
+                p: 1,
+                transition: 'all 0.2s ease',
+                '&:hover': {
+                  bgcolor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)',
+                  color: isDark ? '#ffffff' : '#0f172a',
+                  transform: 'scale(1.06)'
+                }
+              }}
+              size="small"
+            >
+              <CloseIcon sx={{ fontSize: 18 }} />
+            </IconButton>
           </Box>
 
-          {/* Navigation Tabs */}
-          <Tabs
-            value={activeTab}
-            onChange={(e, v) => setActiveTab(v)}
-            variant="fullWidth"
+          {/* Segmented Pill Tabs matching UserProfile.js */}
+          <Box sx={{ px: { xs: 2, sm: 3 }, pt: 2, pb: 0.5 }}>
+            <Box
+              sx={{
+                bgcolor: isDark ? 'rgba(0, 0, 0, 0.35)' : 'rgba(0, 0, 0, 0.035)',
+                border: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(0,0,0,0.05)',
+                borderRadius: '18px',
+                p: 0.6,
+              }}
+            >
+              <Tabs
+                value={activeTab}
+                onChange={(e, v) => setActiveTab(v)}
+                variant="fullWidth"
+                TabIndicatorProps={{ style: { display: 'none' } }}
+                sx={{
+                  minHeight: 44,
+                  '& .MuiTabs-root': { minHeight: 44 },
+                  '& .MuiTab-root': {
+                    minHeight: 42,
+                    textTransform: 'none',
+                    fontWeight: 650,
+                    fontSize: isMobile ? '0.84rem' : '0.9rem',
+                    fontFamily: 'Poppins, sans-serif',
+                    color: isDark ? '#94a3b8' : '#64748b',
+                    borderRadius: '14px',
+                    transition: 'all 0.22s ease',
+                    gap: 1,
+                    py: 0.8,
+                    '&.Mui-selected': {
+                      color: '#ffffff',
+                      background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
+                      fontWeight: 750,
+                      boxShadow: '0 4px 14px rgba(255, 45, 108, 0.3)',
+                    },
+                  }
+                }}
+              >
+                <Tab label="Linked Devices" icon={<DevicesIcon sx={{ fontSize: 18 }} />} iconPosition="start" />
+                <Tab label="My QR Code" icon={<QrCodeIcon sx={{ fontSize: 18 }} />} iconPosition="start" />
+              </Tabs>
+            </Box>
+          </Box>
+
+          <DialogContent
             sx={{
-              borderBottom: '1px solid rgba(150,150,150,0.12)',
-              bgcolor: 'var(--surface-color, #ffffff)',
-              '& .MuiTab-root': {
-                py: 2,
-                fontWeight: 700,
-                fontSize: '0.9rem',
-                textTransform: 'none',
-                fontFamily: '"Poppins", sans-serif',
-                color: 'var(--text-color, #121212)',
-                opacity: 0.7,
-                transition: 'all 0.2s',
-                '&.Mui-selected': {
-                  color: 'var(--primary-color, #f06292)',
-                  opacity: 1
-                }
+              p: { xs: 2.5, sm: 3 },
+              bgcolor: isDark ? 'transparent' : 'var(--background-color, #fff7fa)',
+              overflowY: 'auto',
+              /* Sleek scrollbar matching Settings.js */
+              '&::-webkit-scrollbar': {
+                width: '6px'
               },
-              '& .MuiTabs-indicator': {
-                bgcolor: 'var(--primary-color, #f06292)',
-                height: 3,
-                borderRadius: '3px 3px 0 0'
+              '&::-webkit-scrollbar-track': {
+                bgcolor: 'transparent'
+              },
+              '&::-webkit-scrollbar-thumb': {
+                bgcolor: isDark ? 'rgba(255,255,255,0.12)' : 'var(--primary-color, rgba(255, 45, 108, 0.25))',
+                borderRadius: '10px'
               }
             }}
           >
-            <Tab label="Linked Devices" icon={<DevicesIcon sx={{ fontSize: 18 }} />} iconPosition="start" />
-            <Tab label="My QR Code" icon={<QrCodeIcon sx={{ fontSize: 18 }} />} iconPosition="start" />
-          </Tabs>
-
-          <DialogContent sx={{ p: 3, bgcolor: 'var(--background-color, #fff7fa)', overflowY: 'auto' }}>
             {activeTab === 0 ? (
               <Box>
                 {/* CSS Animation illustration */}
@@ -714,11 +769,11 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: 4,
-                  mb: 4,
+                  gap: { xs: 3, sm: 4 },
+                  mb: 3.5,
                   mt: 1,
                   position: 'relative',
-                  height: 120
+                  height: 110
                 }}>
                   {/* Laptop */}
                   <Box sx={{
@@ -732,27 +787,27 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
                     }
                   }}>
                     <Box sx={{
-                      width: 68,
-                      height: 68,
+                      width: 66,
+                      height: 66,
                       borderRadius: '20px',
-                      background: 'rgba(240, 98, 146, 0.1)',
-                      border: '1.5px solid rgba(240, 98, 146, 0.2)',
+                      background: isDark ? 'rgba(255, 45, 108, 0.12)' : 'rgba(255, 45, 108, 0.08)',
+                      border: isDark ? '1.5px solid rgba(255, 45, 108, 0.25)' : '1.5px solid rgba(255, 45, 108, 0.2)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      boxShadow: '0 8px 24px rgba(0,0,0,0.05)'
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.06)'
                     }}>
-                      <LaptopIcon sx={{ fontSize: 36, color: 'var(--primary-color, #f06292)' }} />
+                      <LaptopIcon sx={{ fontSize: 34, color: 'var(--primary-color, #ff2d6c)' }} />
                     </Box>
                   </Box>
 
                   {/* Flow animation line */}
                   <Box sx={{
-                    width: 70,
+                    width: { xs: 50, sm: 70 },
                     height: 4,
                     borderRadius: 2,
                     position: 'relative',
-                    background: 'rgba(240, 98, 146, 0.15)',
+                    background: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 45, 108, 0.15)',
                     overflow: 'hidden'
                   }}>
                     <Box sx={{
@@ -760,12 +815,12 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
                       top: 0,
                       left: 0,
                       height: '100%',
-                      width: '30%',
-                      background: 'var(--primary-color, #f06292)',
+                      width: '35%',
+                      background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
                       borderRadius: 2,
                       animation: 'linkFlow 2s infinite linear',
                       '@keyframes linkFlow': {
-                        '0%': { left: '-30%' },
+                        '0%': { left: '-35%' },
                         '100%': { left: '110%' }
                       }
                     }} />
@@ -783,54 +838,53 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
                     }
                   }}>
                     <Box sx={{
-                      width: 68,
-                      height: 68,
+                      width: 66,
+                      height: 66,
                       borderRadius: '20px',
-                      background: 'rgba(240, 98, 146, 0.1)',
-                      border: '1.5px solid rgba(240, 98, 146, 0.2)',
+                      background: isDark ? 'rgba(255, 45, 108, 0.12)' : 'rgba(255, 45, 108, 0.08)',
+                      border: isDark ? '1.5px solid rgba(255, 45, 108, 0.25)' : '1.5px solid rgba(255, 45, 108, 0.2)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      boxShadow: '0 8px 24px rgba(0,0,0,0.05)'
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.06)'
                     }}>
-                      <PhoneIcon sx={{ fontSize: 36, color: 'var(--primary-color, #f06292)' }} />
+                      <PhoneIcon sx={{ fontSize: 34, color: 'var(--primary-color, #ff2d6c)' }} />
                     </Box>
                   </Box>
                 </Box>
 
                 {/* Info Text */}
-                <Box sx={{ textAlign: 'center', mb: 4, px: 1 }}>
-                  <Typography variant="body1" sx={{ fontWeight: 800, mb: 1, color: 'var(--text-color, #121212)', fontFamily: '"Poppins", sans-serif' }}>
+                <Box sx={{ textAlign: 'center', mb: 3.5, px: 1 }}>
+                  <Typography variant="body1" sx={{ fontWeight: 800, mb: 0.8, color: isDark ? '#f8fafc' : '#0f172a', fontFamily: 'Poppins, sans-serif', fontSize: '1.05rem' }}>
                     Use Juicy on other devices
                   </Typography>
-                  <Typography variant="body2" sx={{ color: 'var(--text-color, #121212)', opacity: 0.7, maxWidth: 360, mx: 'auto', lineHeight: 1.5, fontSize: '0.85rem' }}>
-                    Link devices to scan QR codes and keep chatting on your browser, laptop, or desktop.
+                  <Typography variant="body2" sx={{ color: isDark ? '#94a3b8' : '#64748b', maxWidth: 380, mx: 'auto', lineHeight: 1.55, fontSize: '0.86rem' }}>
+                    Link devices to scan QR codes and keep chatting on your browser, laptop, or desktop smoothly.
                   </Typography>
                 </Box>
 
-                {/* Primary Action Buttons */}
-                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'center', mb: 4 }}>
+                {/* Primary Action Buttons matching Settings.js pill buttons */}
+                <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', justifyContent: 'center', mb: 4 }}>
                   <Button
                     variant="contained"
                     onClick={() => setIsScanning(true)}
                     startIcon={<QrCodeScannerIcon />}
                     sx={{
-                      height: 52,
-                      borderRadius: '26px',
+                      height: 48,
+                      borderRadius: '24px',
                       textTransform: 'none',
                       fontWeight: 700,
                       fontSize: '0.9rem',
-                      fontFamily: '"Poppins", sans-serif',
-                      px: 4,
-                      bgcolor: 'var(--primary-color, #f06292)',
+                      fontFamily: 'Poppins, sans-serif',
+                      px: 3.5,
+                      background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
                       color: '#fff',
-                      boxShadow: '0 8px 20px rgba(240, 98, 146, 0.25)',
-                      transition: 'all 0.2s',
+                      boxShadow: '0 6px 20px rgba(0, 0, 0, 0.2)',
+                      transition: 'all 0.22s ease',
                       '&:hover': {
-                        bgcolor: 'var(--primary-color, #f06292)',
-                        filter: 'brightness(0.95)',
-                        boxShadow: '0 12px 28px rgba(240, 98, 146, 0.35)',
-                        transform: 'scale(1.02)'
+                        filter: 'brightness(1.08)',
+                        boxShadow: '0 8px 24px rgba(0, 0, 0, 0.3)',
+                        transform: 'translateY(-2px)'
                       },
                       '&:active': { transform: 'scale(0.97)' }
                     }}
@@ -843,20 +897,21 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
                     disabled={generatingCode}
                     startIcon={generatingCode ? <CircularProgress size={16} color="inherit" /> : <KeyIcon />}
                     sx={{
-                      height: 52,
-                      borderRadius: '26px',
+                      height: 48,
+                      borderRadius: '24px',
                       textTransform: 'none',
                       fontWeight: 700,
                       fontSize: '0.9rem',
-                      fontFamily: '"Poppins", sans-serif',
-                      px: 4,
-                      color: 'var(--primary-color, #f06292)',
-                      borderColor: 'rgba(240, 98, 146, 0.4)',
-                      transition: 'all 0.2s',
+                      fontFamily: 'Poppins, sans-serif',
+                      px: 3.5,
+                      color: 'var(--primary-color, #ff2d6c)',
+                      borderColor: 'var(--primary-color, rgba(255, 45, 108, 0.4))',
+                      bgcolor: isDark ? 'rgba(255, 45, 108, 0.06)' : 'rgba(255, 45, 108, 0.04)',
+                      transition: 'all 0.22s ease',
                       '&:hover': {
-                        borderColor: 'var(--primary-color, #f06292)',
-                        bgcolor: 'rgba(240, 98, 146, 0.08)',
-                        transform: 'scale(1.02)'
+                        borderColor: 'var(--primary-color, #ff2d6c)',
+                        bgcolor: isDark ? 'rgba(255, 45, 108, 0.12)' : 'rgba(255, 45, 108, 0.08)',
+                        transform: 'translateY(-2px)'
                       },
                       '&:active': { transform: 'scale(0.97)' }
                     }}
@@ -867,113 +922,122 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
 
                 {/* Device Status Section */}
                 <Box>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 800, color: 'var(--primary-color, #f06292)', mb: 2, px: 0.5, letterSpacing: '0.05em', fontSize: '0.78rem' }}>
-                    CONNECTED DEVICES
+                  <Typography
+                    variant="subtitle2"
+                    sx={{
+                      fontWeight: 750,
+                      color: 'var(--primary-color, #ff2d6c)',
+                      mb: 1.5,
+                      px: 0.5,
+                      letterSpacing: '0.04em',
+                      fontSize: '0.8rem',
+                      textTransform: 'uppercase'
+                    }}
+                  >
+                    Connected Devices
                   </Typography>
 
                   {fetchingDevices ? (
-                    <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-                      <CircularProgress size={28} color="primary" />
+                    <Box sx={{ display: 'flex', justifyContent: 'center', py: 5 }}>
+                      <CircularProgress size={28} sx={{ color: 'var(--primary-color, #ff2d6c)' }} />
                     </Box>
                   ) : linkedDevices.length === 0 ? (
                     <Card sx={{
                       borderRadius: '20px',
                       boxShadow: 'none',
-                      border: '1.5px dashed rgba(240, 98, 146, 0.25)',
-                      bgcolor: 'var(--surface-color, #ffffff)',
-                      transition: 'all 0.2s',
-                      '&:hover': {
-                        bgcolor: 'var(--surface-color, #ffffff)'
-                      }
+                      border: isDark ? '1.5px dashed rgba(255, 255, 255, 0.12)' : '1.5px dashed rgba(255, 45, 108, 0.25)',
+                      bgcolor: isDark ? 'rgba(255, 255, 255, 0.02)' : 'var(--surface-color, #ffffff)',
                     }}>
-                      <CardContent sx={{ py: 4.5, textAlign: 'center', color: 'var(--text-color, #121212)', opacity: 0.7, fontSize: '0.85rem' }}>
+                      <CardContent sx={{ py: 4, textAlign: 'center', color: isDark ? '#94a3b8' : '#64748b', fontSize: '0.88rem' }}>
                         No devices linked yet. Scan a QR code or generate a linking code to get started.
                       </CardContent>
                     </Card>
                   ) : (
-                    <Box component="div" sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <Box component="div" sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                       {linkedDevices.map((dev, idx) => (
                         <Card
                           key={dev._id}
                           sx={{
                             borderRadius: '20px',
-                            boxShadow: '0 4px 15px rgba(0,0,0,0.04)',
-                            border: '1px solid rgba(240, 98, 146, 0.15)',
-                            bgcolor: 'var(--surface-color, #ffffff)',
+                            boxShadow: isDark ? '0 4px 16px rgba(0,0,0,0.25)' : '0 4px 16px rgba(0,0,0,0.04)',
+                            border: isDark ? '1px solid rgba(255, 255, 255, 0.07)' : '1px solid rgba(0, 0, 0, 0.06)',
+                            bgcolor: isDark ? 'rgba(255, 255, 255, 0.03)' : 'var(--surface-color, #ffffff)',
                             overflow: 'hidden',
-                            transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                            transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
                             animation: 'slideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both',
-                            animationDelay: `${idx * 0.1}s`,
+                            animationDelay: `${idx * 0.08}s`,
                             '@keyframes slideIn': {
-                              '0%': { transform: 'translateY(15px)', opacity: 0 },
+                              '0%': { transform: 'translateY(12px)', opacity: 0 },
                               '100%': { transform: 'translateY(0)', opacity: 1 }
                             },
                             '&:hover': {
                               transform: 'translateY(-2px)',
-                              boxShadow: '0 8px 24px rgba(240, 98, 146, 0.1)',
-                              borderColor: 'var(--primary-color, #f06292)'
+                              boxShadow: isDark ? '0 8px 24px rgba(0,0,0,0.35)' : '0 8px 24px rgba(255, 45, 108, 0.08)',
+                              borderColor: 'var(--primary-color, rgba(255, 45, 108, 0.3))'
                             }
                           }}
                         >
                           <ListItem
                             secondaryAction={
-                              <IconButton
-                                edge="end"
-                                onClick={() => setLogOutTarget(dev)}
-                                sx={{
-                                  color: '#ff3b30',
-                                  bgcolor: 'rgba(255, 59, 48, 0.08)',
-                                  width: 40,
-                                  height: 40,
-                                  borderRadius: '12px',
-                                  transition: 'all 0.2s',
-                                  '&:hover': {
-                                    bgcolor: 'rgba(255, 59, 48, 0.16)',
-                                    transform: 'scale(1.05)'
-                                  },
-                                  '&:active': {
-                                    transform: 'scale(0.95)'
-                                  }
-                                }}
-                              >
-                                <LogoutIcon sx={{ fontSize: 20 }} />
-                              </IconButton>
+                              <Tooltip title="Unlink device" arrow>
+                                <IconButton
+                                  edge="end"
+                                  onClick={() => setLogOutTarget(dev)}
+                                  sx={{
+                                    color: '#ef4444',
+                                    bgcolor: isDark ? 'rgba(239, 68, 68, 0.12)' : 'rgba(239, 68, 68, 0.08)',
+                                    width: 38,
+                                    height: 38,
+                                    borderRadius: '12px',
+                                    transition: 'all 0.2s ease',
+                                    '&:hover': {
+                                      bgcolor: 'rgba(239, 68, 68, 0.2)',
+                                      transform: 'scale(1.08)'
+                                    },
+                                    '&:active': {
+                                      transform: 'scale(0.95)'
+                                    }
+                                  }}
+                                >
+                                  <LogoutIcon sx={{ fontSize: 18 }} />
+                                </IconButton>
+                              </Tooltip>
                             }
-                            sx={{ py: 2, px: 2.5 }}
+                            sx={{ py: 1.8, px: { xs: 2, sm: 2.5 } }}
                           >
-                            <ListItemAvatar sx={{ minWidth: 60 }}>
+                            <ListItemAvatar sx={{ minWidth: 56 }}>
                               <Avatar sx={{
                                 width: 44,
                                 height: 44,
-                                bgcolor: 'rgba(240, 98, 146, 0.1)',
-                                color: 'var(--primary-color, #f06292)',
-                                border: '1px solid rgba(240, 98, 146, 0.2)'
+                                borderRadius: '14px',
+                                bgcolor: isDark ? 'rgba(255, 45, 108, 0.12)' : 'rgba(255, 45, 108, 0.08)',
+                                color: 'var(--primary-color, #ff2d6c)',
+                                border: isDark ? '1px solid rgba(255, 45, 108, 0.25)' : '1px solid rgba(255, 45, 108, 0.2)'
                               }}>
-                                <LaptopIcon />
+                                <LaptopIcon sx={{ fontSize: 22 }} />
                               </Avatar>
                             </ListItemAvatar>
                             <ListItemText
                               primary={
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                  <Typography variant="body1" sx={{ fontWeight: 700, color: 'var(--text-color, #121212)', fontFamily: '"Poppins", sans-serif' }}>
+                                  <Typography variant="body1" sx={{ fontWeight: 700, color: isDark ? '#f8fafc' : '#0f172a', fontFamily: 'Poppins, sans-serif', fontSize: '0.94rem' }}>
                                     {dev.browserName} ({dev.osName})
                                   </Typography>
-                                  {/* Online status indicator dot */}
                                   <Box sx={{
                                     width: 8,
                                     height: 8,
                                     borderRadius: '50%',
-                                    bgcolor: '#34c759',
-                                    boxShadow: '0 0 6px #34c759'
+                                    bgcolor: '#22c55e',
+                                    boxShadow: '0 0 6px #22c55e'
                                   }} />
                                 </Box>
                               }
                               secondary={
-                                <Box component="span" sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, mt: 0.5 }}>
-                                  <Typography component="span" variant="caption" sx={{ color: 'var(--text-color, #121212)', opacity: 0.7, display: 'block', fontSize: '0.78rem' }}>
+                                <Box component="span" sx={{ display: 'flex', flexDirection: 'column', gap: 0.4, mt: 0.4 }}>
+                                  <Typography component="span" variant="caption" sx={{ color: isDark ? '#94a3b8' : '#64748b', display: 'block', fontSize: '0.78rem' }}>
                                     {dev.deviceName} • IP: {dev.ipAddress}
                                   </Typography>
-                                  <Typography component="span" variant="caption" sx={{ color: 'var(--text-color, #121212)', opacity: 0.5, display: 'block', fontSize: '0.75rem' }}>
+                                  <Typography component="span" variant="caption" sx={{ color: isDark ? '#64748b' : '#94a3b8', display: 'block', fontSize: '0.73rem' }}>
                                     Linked on {new Date(dev.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                                   </Typography>
                                 </Box>
@@ -998,55 +1062,55 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
               }}>
                 <Card sx={{
                   borderRadius: '24px',
-                  boxShadow: '0 20px 40px rgba(0,0,0,0.1)',
-                  border: '1px solid rgba(240, 98, 146, 0.2)',
-                  bgcolor: 'var(--surface-color, #ffffff)',
-                  p: 3.5,
+                  boxShadow: isDark ? '0 16px 40px rgba(0,0,0,0.4)' : '0 16px 40px rgba(255, 45, 108, 0.1)',
+                  border: isDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(255, 45, 108, 0.2)',
+                  bgcolor: isDark ? 'rgba(255, 255, 255, 0.03)' : 'var(--surface-color, #ffffff)',
+                  p: { xs: 2.5, sm: 3.5 },
                   width: '100%',
-                  maxWidth: 320,
+                  maxWidth: 330,
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
                   position: 'relative',
                   backgroundImage: 'none',
-                  animation: 'scaleIn 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
+                  animation: 'scaleIn 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
                   '@keyframes scaleIn': {
-                    '0%': { transform: 'scale(0.95)', opacity: 0 },
+                    '0%': { transform: 'scale(0.96)', opacity: 0 },
                     '100%': { transform: 'scale(1)', opacity: 1 }
                   }
                 }}>
                   {/* Outer border decoration */}
                   <Box sx={{
                     position: 'absolute',
-                    top: 16,
-                    left: 16,
-                    right: 16,
-                    bottom: 16,
-                    border: '1.5px dashed var(--primary-color, #f06292)',
-                    opacity: 0.3,
+                    top: 14,
+                    left: 14,
+                    right: 14,
+                    bottom: 14,
+                    border: '1.5px dashed var(--primary-color, #ff2d6c)',
+                    opacity: isDark ? 0.2 : 0.25,
                     borderRadius: '20px',
                     pointerEvents: 'none'
                   }} />
 
-                  {/* QR Image */}
+                  {/* QR Image Frame */}
                   <Box sx={{
                     p: 2,
-                    borderRadius: '16px',
+                    borderRadius: '18px',
                     bgcolor: '#ffffff',
                     border: '1px solid rgba(0,0,0,0.08)',
-                    boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.02)',
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
                     display: 'flex',
                     justifyContent: 'center',
                     alignItems: 'center',
-                    mb: 3,
+                    mb: 2.5,
                     zIndex: 2
                   }}>
                     <img
                       src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&color=f06292&data=${encodeURIComponent(user?.username || 'JuicyUser')}`}
                       alt="My QR Code"
                       style={{
-                        width: 200,
-                        height: 200,
+                        width: 190,
+                        height: 190,
                         display: 'block',
                         borderRadius: '8px'
                       }}
@@ -1054,15 +1118,15 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
                   </Box>
 
                   {/* Username */}
-                  <Typography variant="h6" sx={{ fontWeight: 700, color: 'var(--text-color, #121212)', mb: 0.5, fontFamily: '"Poppins", sans-serif' }}>
+                  <Typography variant="h6" sx={{ fontWeight: 800, color: isDark ? '#f8fafc' : '#0f172a', mb: 0.4, fontFamily: 'Poppins, sans-serif', fontSize: '1.15rem' }}>
                     @{user?.username || 'JuicyUser'}
                   </Typography>
-                  <Typography variant="body2" sx={{ color: 'var(--text-color, #121212)', opacity: 0.7, textAlign: 'center', mb: 3.5, px: 1, fontSize: '0.85rem' }}>
-                    Scan to make a good conversation
+                  <Typography variant="body2" sx={{ color: isDark ? '#94a3b8' : '#64748b', textAlign: 'center', mb: 3, px: 1, fontSize: '0.85rem' }}>
+                    Scan to connect and chat on Juicy
                   </Typography>
 
                   {/* Sharing Action buttons */}
-                  <Box sx={{ display: 'flex', gap: 1.5, width: '100%', justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <Box sx={{ display: 'flex', gap: 1.5, width: '100%', justifyContent: 'center', flexWrap: 'wrap', zIndex: 2 }}>
                     <Button
                       variant="contained"
                       onClick={handleShareQR}
@@ -1075,13 +1139,15 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
                         textTransform: 'none',
                         fontWeight: 700,
                         fontSize: '0.85rem',
-                        fontFamily: '"Poppins", sans-serif',
-                        bgcolor: 'var(--primary-color, #f06292)',
+                        fontFamily: 'Poppins, sans-serif',
+                        background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
                         color: '#fff',
-                        boxShadow: '0 4px 12px rgba(240, 98, 146, 0.25)',
+                        boxShadow: '0 4px 14px rgba(0, 0, 0, 0.18)',
+                        transition: 'all 0.2s ease',
                         '&:hover': {
-                          bgcolor: 'var(--primary-color, #f06292)',
-                          filter: 'brightness(0.95)'
+                          filter: 'brightness(1.08)',
+                          boxShadow: '0 6px 18px rgba(0, 0, 0, 0.25)',
+                          transform: 'translateY(-1px)'
                         },
                         '&:active': { transform: 'scale(0.97)' }
                       }}
@@ -1100,12 +1166,15 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
                         textTransform: 'none',
                         fontWeight: 700,
                         fontSize: '0.85rem',
-                        fontFamily: '"Poppins", sans-serif',
-                        color: 'var(--primary-color, #f06292)',
-                        borderColor: 'rgba(240, 98, 146, 0.4)',
+                        fontFamily: 'Poppins, sans-serif',
+                        color: 'var(--primary-color, #ff2d6c)',
+                        borderColor: 'var(--primary-color, rgba(255, 45, 108, 0.4))',
+                        bgcolor: isDark ? 'rgba(255, 45, 108, 0.06)' : 'rgba(255, 45, 108, 0.04)',
+                        transition: 'all 0.2s ease',
                         '&:hover': {
-                          borderColor: 'var(--primary-color, #f06292)',
-                          bgcolor: 'rgba(240, 98, 146, 0.08)'
+                          borderColor: 'var(--primary-color, #ff2d6c)',
+                          bgcolor: isDark ? 'rgba(255, 45, 108, 0.12)' : 'rgba(255, 45, 108, 0.08)',
+                          transform: 'translateY(-1px)'
                         },
                         '&:active': { transform: 'scale(0.97)' }
                       }}
@@ -1121,12 +1190,12 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
                     sx={{
                       mt: 2,
                       textTransform: 'none',
-                      fontWeight: 700,
-                      fontFamily: '"Poppins", sans-serif',
-                      color: 'var(--text-color, #121212)',
-                      opacity: 0.7,
+                      fontWeight: 650,
+                      fontFamily: 'Poppins, sans-serif',
+                      color: isDark ? '#94a3b8' : '#64748b',
                       fontSize: '0.8rem',
-                      '&:hover': { color: 'var(--primary-color, #f06292)', opacity: 1 }
+                      zIndex: 2,
+                      '&:hover': { color: 'var(--primary-color, #ff2d6c)' }
                     }}
                   >
                     Copy Username
@@ -1138,14 +1207,15 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
         </>
       ) : (
         // Camera Viewfinder (Scanner tab active)
-        <Box sx={{ display: 'flex', flexDirection: 'column', height: isMobile ? '100%' : '550px', bgcolor: '#000000', color: '#ffffff' }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', height: isMobile ? '100%' : '560px', bgcolor: '#000000', color: '#ffffff' }}>
           {/* Viewfinder Header */}
           <Box sx={{
             display: 'flex',
             alignItems: 'center',
             px: 3,
-            py: 2.5,
-            bgcolor: 'rgba(0,0,0,0.85)',
+            py: 2.2,
+            bgcolor: 'rgba(15, 10, 22, 0.9)',
+            backdropFilter: 'blur(12px)',
             borderBottom: '1px solid rgba(255,255,255,0.08)',
             zIndex: 10
           }}>
@@ -1155,18 +1225,21 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
               size="small"
               sx={{
                 mr: 2,
-                bgcolor: 'rgba(255,255,255,0.05)',
-                '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' }
+                bgcolor: 'rgba(255,255,255,0.08)',
+                borderRadius: '12px',
+                p: 1,
+                transition: 'all 0.2s ease',
+                '&:hover': { bgcolor: 'rgba(255,255,255,0.18)', transform: 'translateX(-2px)' }
               }}
             >
-              <ArrowBackIcon sx={{ fontSize: 20 }} />
+              <ArrowBackIcon sx={{ fontSize: 18 }} />
             </IconButton>
             <Box>
-              <Typography variant="subtitle1" sx={{ fontWeight: 800, lineHeight: 1.2, fontFamily: '"Poppins", sans-serif' }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 800, lineHeight: 1.2, fontFamily: 'Poppins, sans-serif', fontSize: '1.05rem' }}>
                 Scan QR Code
               </Typography>
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>
-                Align the desktop QR code within the frame to link
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.65)' }}>
+                Align the QR code within the frame to link or connect
               </Typography>
             </Box>
           </Box>
@@ -1179,7 +1252,7 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
             justifyContent: 'center',
             alignItems: 'center',
             overflow: 'hidden',
-            bgcolor: '#0c0c0e'
+            bgcolor: '#0a0810'
           }}>
             <video
               ref={videoRef}
@@ -1195,7 +1268,7 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
               muted
             />
 
-            {/* WhatsApp Style Scanner Overlay */}
+            {/* WhatsApp / Modern Scanner Overlay */}
             <Box sx={{
               position: 'absolute',
               top: 0,
@@ -1221,31 +1294,31 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
                   width: 260,
                   height: 260,
                   position: 'relative',
-                  boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.65), 0 0 25px rgba(240, 98, 146, 0.3)',
+                  boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.65), 0 0 30px rgba(255, 45, 108, 0.35)',
                   border: '1px solid rgba(255,255,255,0.15)',
-                  borderRadius: '24px',
+                  borderRadius: '26px',
                   overflow: 'hidden',
                   '&::before': {
                     content: '""',
                     position: 'absolute',
                     top: 0,
                     left: 0,
-                    width: 30,
-                    height: 30,
-                    borderTop: '4px solid var(--primary-color, #F06292)',
-                    borderLeft: '4px solid var(--primary-color, #F06292)',
-                    borderTopLeftRadius: '20px'
+                    width: 32,
+                    height: 32,
+                    borderTop: '4px solid var(--primary-color, #ff2d6c)',
+                    borderLeft: '4px solid var(--primary-color, #ff2d6c)',
+                    borderTopLeftRadius: '22px'
                   },
                   '&::after': {
                     content: '""',
                     position: 'absolute',
                     top: 0,
                     right: 0,
-                    width: 30,
-                    height: 30,
-                    borderTop: '4px solid var(--primary-color, #F06292)',
-                    borderRight: '4px solid var(--primary-color, #F06292)',
-                    borderTopRightRadius: '20px'
+                    width: 32,
+                    height: 32,
+                    borderTop: '4px solid var(--primary-color, #ff2d6c)',
+                    borderRight: '4px solid var(--primary-color, #ff2d6c)',
+                    borderTopRightRadius: '22px'
                   }
                 }}>
                   {/* Bottom Corners */}
@@ -1253,36 +1326,36 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
                     position: 'absolute',
                     bottom: 0,
                     left: 0,
-                    width: 30,
-                    height: 30,
-                    borderBottom: '4px solid var(--primary-color, #F06292)',
-                    borderLeft: '4px solid var(--primary-color, #F06292)',
-                    borderBottomLeftRadius: '20px'
+                    width: 32,
+                    height: 32,
+                    borderBottom: '4px solid var(--primary-color, #ff2d6c)',
+                    borderLeft: '4px solid var(--primary-color, #ff2d6c)',
+                    borderBottomLeftRadius: '22px'
                   }} />
                   <Box sx={{
                     position: 'absolute',
                     bottom: 0,
                     right: 0,
-                    width: 30,
-                    height: 30,
-                    borderBottom: '4px solid var(--primary-color, #F06292)',
-                    borderRight: '4px solid var(--primary-color, #F06292)',
-                    borderBottomRightRadius: '20px'
+                    width: 32,
+                    height: 32,
+                    borderBottom: '4px solid var(--primary-color, #ff2d6c)',
+                    borderRight: '4px solid var(--primary-color, #ff2d6c)',
+                    borderBottomRightRadius: '22px'
                   }} />
 
                   {/* Animated laser scanning line */}
                   <Box sx={{
                     position: 'absolute',
-                    left: '5%',
-                    width: '90%',
+                    left: '6%',
+                    width: '88%',
                     height: '3px',
-                    background: 'linear-gradient(90deg, transparent, var(--primary-color, #FF80AB), var(--primary-color, #F06292), transparent)',
-                    boxShadow: '0 0 15px var(--primary-color, #F06292)',
-                    opacity: 0.9,
-                    animation: 'scanAnimation 2.5s infinite ease-in-out',
+                    background: 'linear-gradient(90deg, transparent, #ff80ab, var(--primary-color, #ff2d6c), transparent)',
+                    boxShadow: '0 0 16px var(--primary-color, #ff2d6c)',
+                    opacity: 0.95,
+                    animation: 'scanAnimation 2.4s infinite ease-in-out',
                     '@keyframes scanAnimation': {
-                      '0%, 100%': { top: '5%' },
-                      '50%': { top: '95%' }
+                      '0%, 100%': { top: '6%' },
+                      '50%': { top: '94%' }
                     },
                     zIndex: 3
                   }} />
@@ -1294,8 +1367,8 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
 
               {/* Bottom translucent block */}
               <Box sx={{ width: '100%', flex: 1, bgcolor: 'rgba(0, 0, 0, 0.65)', display: 'flex', flexDirection: 'column', alignItems: 'center', pt: 3.5 }}>
-                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.85)', textAlign: 'center', fontWeight: 600, px: 3, fontFamily: '"Poppins", sans-serif' }}>
-                  Align the QR code within the frame to link
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.85)', textAlign: 'center', fontWeight: 650, px: 3, fontFamily: 'Poppins, sans-serif', fontSize: '0.88rem' }}>
+                  Align the QR code within the frame
                 </Typography>
               </Box>
             </Box>
@@ -1307,7 +1380,7 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
                 left: 0,
                 width: '100%',
                 height: '100%',
-                bgcolor: '#141416',
+                bgcolor: '#120f18',
                 display: 'flex',
                 flexDirection: 'column',
                 justifyContent: 'center',
@@ -1316,27 +1389,23 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
                 textAlign: 'center',
                 zIndex: 8
               }}>
-                <QrCodeScannerIcon sx={{ fontSize: 60, color: 'rgba(255,255,255,0.4)', opacity: 0.5, mb: 2 }} />
-                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', mb: 3.5, lineHeight: 1.5 }}>
+                <QrCodeScannerIcon sx={{ fontSize: 64, color: 'rgba(255,255,255,0.3)', mb: 2 }} />
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.75)', mb: 3.5, lineHeight: 1.5, maxWidth: 320 }}>
                   {cameraError}
                 </Typography>
                 <Button
                   variant="contained"
-                  size="small"
                   onClick={() => setIsScanning(false)}
                   sx={{
-                    height: 40,
-                    borderRadius: '20px',
+                    height: 42,
+                    borderRadius: '21px',
                     textTransform: 'none',
                     fontWeight: 700,
-                    fontFamily: '"Poppins", sans-serif',
-                    bgcolor: 'var(--primary-color, #f06292)',
-                    px: 3,
+                    fontFamily: 'Poppins, sans-serif',
+                    background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
+                    px: 3.5,
                     color: '#fff',
-                    '&:hover': {
-                      bgcolor: 'var(--primary-color, #f06292)',
-                      filter: 'brightness(0.95)'
-                    }
+                    boxShadow: '0 4px 14px rgba(0,0,0,0.2)',
                   }}
                 >
                   Go Back
@@ -1347,49 +1416,61 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
         </Box>
       )}
 
-      {/* Auto-Generated 5-Digit Code Dialog */}
+      {/* Auto-Generated 5-Digit Code Dialog matching Settings.js */}
       <Dialog
         open={generatedCodeOpen}
         onClose={() => setGeneratedCodeOpen(false)}
         PaperProps={{
           sx: {
-            borderRadius: '24px',
-            bgcolor: 'var(--surface-color, #ffffff)',
-            color: 'var(--text-color, #000000)',
-            maxWidth: 360,
+            borderRadius: '28px',
+            bgcolor: isDark ? '#1a1424' : '#ffffff',
+            color: isDark ? '#f8fafc' : '#0f172a',
+            maxWidth: 370,
             width: '90%',
             p: 1.5,
-            boxShadow: '0 20px 40px rgba(0,0,0,0.15)',
+            border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.08)',
+            boxShadow: '0 24px 60px rgba(0, 0, 0, 0.35)',
             backgroundImage: 'none'
           }
         }}
       >
-        <DialogTitle sx={{ fontWeight: 700, pb: 1, display: 'flex', alignItems: 'center', gap: 1.5, fontFamily: '"Poppins", sans-serif', fontSize: '1.2rem', color: 'var(--text-color, #121212)' }}>
-          <KeyIcon sx={{ color: 'var(--primary-color, #f06292)' }} />
+        <DialogTitle sx={{ fontWeight: 800, pt: 2, pb: 1, display: 'flex', alignItems: 'center', gap: 1.5, fontFamily: 'Poppins, sans-serif', fontSize: '1.2rem', color: isDark ? '#f8fafc' : '#0f172a' }}>
+          <Box sx={{
+            width: 40,
+            height: 40,
+            borderRadius: '12px',
+            bgcolor: isDark ? 'rgba(255, 45, 108, 0.15)' : 'rgba(255, 45, 108, 0.1)',
+            color: 'var(--primary-color, #ff2d6c)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <KeyIcon sx={{ fontSize: 20 }} />
+          </Box>
           Your Linking Code
         </DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" sx={{ color: 'var(--text-color, #121212)', opacity: 0.7, mb: 3, lineHeight: 1.5 }}>
-            Enter this code on your desktop screen to link the devices.
+        <DialogContent sx={{ px: 3 }}>
+          <Typography variant="body2" sx={{ color: isDark ? '#94a3b8' : '#64748b', mb: 3, lineHeight: 1.5 }}>
+            Enter this 5-digit code on your desktop screen to authenticate the link.
           </Typography>
 
-          <Box sx={{ display: 'flex', gap: 1.2, justifyContent: 'center', mb: 3 }}>
+          <Box sx={{ display: 'flex', gap: 1.2, justifyContent: 'center', mb: 2 }}>
             {generatedCode.split('').map((char, index) => (
               <Box
                 key={index}
                 sx={{
-                  width: 44,
-                  height: 48,
-                  bgcolor: 'rgba(240, 98, 146, 0.08)',
-                  borderRadius: '12px',
-                  border: '1.5px solid rgba(240, 98, 146, 0.25)',
+                  width: 48,
+                  height: 54,
+                  bgcolor: isDark ? 'rgba(255, 45, 108, 0.12)' : 'rgba(255, 45, 108, 0.08)',
+                  borderRadius: '14px',
+                  border: isDark ? '1.5px solid rgba(255, 45, 108, 0.35)' : '1.5px solid rgba(255, 45, 108, 0.25)',
                   display: 'flex',
                   justifyContent: 'center',
                   alignItems: 'center',
-                  fontSize: '1.5rem',
-                  fontWeight: 'bold',
-                  color: 'var(--primary-color, #f06292)',
-                  boxShadow: 'inset 0 1px 4px rgba(240, 98, 146, 0.1)'
+                  fontSize: '1.6rem',
+                  fontWeight: 800,
+                  color: 'var(--primary-color, #ff2d6c)',
+                  boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.06)'
                 }}
               >
                 {char}
@@ -1397,17 +1478,17 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
             ))}
           </Box>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
           <Button
             onClick={() => setGeneratedCodeOpen(false)}
             sx={{
-              color: 'var(--text-color, #121212)',
-              opacity: 0.8,
+              color: isDark ? '#94a3b8' : '#64748b',
               textTransform: 'none',
               fontWeight: 700,
-              fontFamily: '"Poppins", sans-serif',
-              borderRadius: '20px',
-              px: 2.5
+              fontFamily: 'Poppins, sans-serif',
+              borderRadius: '18px',
+              px: 3.5,
+              py: 0.9
             }}
           >
             Close
@@ -1415,56 +1496,58 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
         </DialogActions>
       </Dialog>
 
-      {/* DEVICE LINK CONFIRMATION DIALOG */}
+      {/* DEVICE LINK CONFIRMATION DIALOG matching Settings.js */}
       <Dialog
         open={confirmOpen}
         onClose={() => handleConfirmLink(false)}
         disableEscapeKeyDown
         PaperProps={{
           sx: {
-            borderRadius: '24px',
-            bgcolor: 'var(--surface-color, #ffffff)',
-            color: 'var(--text-color, #000000)',
-            maxWidth: 380,
+            borderRadius: '28px',
+            bgcolor: isDark ? '#1a1424' : '#ffffff',
+            color: isDark ? '#f8fafc' : '#0f172a',
+            maxWidth: 390,
             width: '90%',
             p: 1.5,
-            boxShadow: '0 20px 40px rgba(0,0,0,0.15)',
+            border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.08)',
+            boxShadow: '0 24px 60px rgba(0, 0, 0, 0.35)',
             backgroundImage: 'none'
           }
         }}
       >
-        <DialogTitle sx={{ fontWeight: 700, pb: 1, fontFamily: '"Poppins", sans-serif', fontSize: '1.25rem', color: 'var(--text-color, #121212)' }}>
-          Confirm Link Device?
+        <DialogTitle sx={{ fontWeight: 800, pt: 2, pb: 1, fontFamily: 'Poppins, sans-serif', fontSize: '1.25rem', color: isDark ? '#f8fafc' : '#0f172a' }}>
+          Confirm Device Link?
         </DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" sx={{ color: 'var(--text-color, #121212)', opacity: 0.7, mb: 3, lineHeight: 1.5 }}>
+        <DialogContent sx={{ px: 3 }}>
+          <Typography variant="body2" sx={{ color: isDark ? '#94a3b8' : '#64748b', mb: 2.5, lineHeight: 1.5 }}>
             Do you want to authorize and log in to the following desktop device?
           </Typography>
 
           <Card sx={{
-            bgcolor: 'var(--background-color, rgba(240, 98, 146, 0.04))',
+            bgcolor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(255, 45, 108, 0.04)',
             boxShadow: 'none',
-            border: '1px solid rgba(240, 98, 146, 0.15)',
-            borderRadius: '16px',
+            border: isDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(255, 45, 108, 0.15)',
+            borderRadius: '18px',
             p: 0.5,
-            mb: 1.5
+            mb: 1
           }}>
             <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <Avatar sx={{
-                  bgcolor: 'rgba(240, 98, 146, 0.1)',
-                  color: 'var(--primary-color, #f06292)',
+                  bgcolor: isDark ? 'rgba(255, 45, 108, 0.15)' : 'rgba(255, 45, 108, 0.1)',
+                  color: 'var(--primary-color, #ff2d6c)',
                   width: 44,
                   height: 44,
-                  border: '1px solid rgba(240, 98, 146, 0.2)'
+                  borderRadius: '14px',
+                  border: '1px solid rgba(255, 45, 108, 0.2)'
                 }}>
                   <LaptopIcon />
                 </Avatar>
                 <Box>
-                  <Typography variant="body2" sx={{ fontWeight: 700, color: 'var(--text-color, #121212)' }}>
+                  <Typography variant="body2" sx={{ fontWeight: 700, color: isDark ? '#f8fafc' : '#0f172a' }}>
                     {confirmBrowser?.browserName || 'Web Client'}
                   </Typography>
-                  <Typography variant="caption" sx={{ color: 'var(--text-color, #121212)', opacity: 0.7, mt: 0.25, display: 'block' }}>
+                  <Typography variant="caption" sx={{ color: isDark ? '#94a3b8' : '#64748b', mt: 0.25, display: 'block' }}>
                     {confirmBrowser?.osName || 'Desktop OS'} • IP: {confirmBrowser?.ipAddress || '127.0.0.1'}
                   </Typography>
                 </Box>
@@ -1472,18 +1555,18 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
             </CardContent>
           </Card>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
+        <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
           <Button
             onClick={() => handleConfirmLink(false)}
             disabled={confirmingLink}
             sx={{
-              color: 'var(--text-color, #121212)',
-              opacity: 0.7,
+              color: isDark ? '#94a3b8' : '#64748b',
               textTransform: 'none',
               fontWeight: 700,
-              fontFamily: '"Poppins", sans-serif',
-              borderRadius: '20px',
-              px: 2.5
+              fontFamily: 'Poppins, sans-serif',
+              borderRadius: '18px',
+              px: 3,
+              py: 1
             }}
           >
             Cancel
@@ -1493,17 +1576,17 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
             disabled={confirmingLink}
             variant="contained"
             sx={{
-              bgcolor: 'var(--primary-color, #f06292)',
+              background: 'var(--primary-gradient, linear-gradient(135deg, #ff2d6c 0%, #ff5c8d 100%))',
               color: '#fff',
               textTransform: 'none',
               fontWeight: 700,
-              fontFamily: '"Poppins", sans-serif',
-              borderRadius: '20px',
-              px: 3,
-              boxShadow: '0 4px 12px rgba(240, 98, 146, 0.25)',
+              fontFamily: 'Poppins, sans-serif',
+              borderRadius: '18px',
+              px: 3.5,
+              py: 1,
+              boxShadow: '0 4px 14px rgba(255, 45, 108, 0.35)',
               '&:hover': {
-                bgcolor: 'var(--primary-color, #f06292)',
-                filter: 'brightness(0.95)'
+                filter: 'brightness(1.08)'
               },
               '&:active': { transform: 'scale(0.97)' }
             }}
@@ -1513,40 +1596,52 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
         </DialogActions>
       </Dialog>
 
-      {/* Log Out Device Confirmation Dialog */}
+      {/* Log Out Device Confirmation Dialog matching Settings.js */}
       <Dialog
         open={Boolean(logOutTarget)}
         onClose={() => setLogOutTarget(null)}
         PaperProps={{
           sx: {
-            borderRadius: '24px',
-            bgcolor: 'var(--surface-color, #ffffff)',
-            color: 'var(--text-color, #000000)',
+            borderRadius: '28px',
+            bgcolor: isDark ? '#1a1424' : '#ffffff',
+            color: isDark ? '#f8fafc' : '#0f172a',
             p: 1.5,
-            boxShadow: '0 20px 40px rgba(0,0,0,0.15)',
+            border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(239, 68, 68, 0.2)',
+            boxShadow: '0 24px 60px rgba(0,0,0,0.35)',
             backgroundImage: 'none'
           }
         }}
       >
-        <DialogTitle sx={{ fontWeight: 700, pb: 1, fontFamily: '"Poppins", sans-serif', fontSize: '1.2rem', color: 'var(--text-color, #121212)' }}>
+        <DialogTitle sx={{ fontWeight: 800, pt: 2, pb: 1, display: 'flex', alignItems: 'center', gap: 1.5, fontFamily: 'Poppins, sans-serif', fontSize: '1.2rem', color: '#ef4444' }}>
+          <Box sx={{
+            width: 40,
+            height: 40,
+            borderRadius: '12px',
+            bgcolor: 'rgba(239, 68, 68, 0.1)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <LogoutIcon sx={{ fontSize: 20, color: '#ef4444' }} />
+          </Box>
           Unlink Device?
         </DialogTitle>
-        <DialogContent>
-          <Typography variant="body2" sx={{ color: 'var(--text-color, #121212)', opacity: 0.8, lineHeight: 1.5 }}>
-            Are you sure you want to log out and unlink <strong>{logOutTarget?.browserName}</strong> on <strong>{logOutTarget?.osName}</strong>?
+        <DialogContent sx={{ px: 3 }}>
+          <Typography variant="body2" sx={{ color: isDark ? '#cbd5e1' : '#64748b', lineHeight: 1.55 }}>
+            Are you sure you want to remotely log out and unlink <strong>{logOutTarget?.browserName}</strong> on <strong>{logOutTarget?.osName}</strong>?
           </Typography>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
+        <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
           <Button
             onClick={() => setLogOutTarget(null)}
             sx={{
-              color: 'var(--text-color, #121212)',
-              opacity: 0.7,
+              color: isDark ? '#94a3b8' : '#64748b',
               textTransform: 'none',
               fontWeight: 700,
-              fontFamily: '"Poppins", sans-serif',
-              borderRadius: '20px',
-              px: 2.5
+              fontFamily: 'Poppins, sans-serif',
+              borderRadius: '18px',
+              px: 3,
+              py: 1
             }}
           >
             Cancel
@@ -1554,14 +1649,19 @@ export default function Scanner({ open, onClose, user, onUserScanned }) {
           <Button
             onClick={() => handleLogOutDevice(logOutTarget._id)}
             variant="contained"
-            color="error"
             sx={{
               textTransform: 'none',
               fontWeight: 700,
-              fontFamily: '"Poppins", sans-serif',
-              borderRadius: '20px',
-              px: 3,
-              boxShadow: '0 4px 12px rgba(211, 47, 47, 0.25)',
+              fontFamily: 'Poppins, sans-serif',
+              borderRadius: '18px',
+              px: 3.5,
+              py: 1,
+              background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+              color: '#fff',
+              boxShadow: '0 4px 14px rgba(239, 68, 68, 0.35)',
+              '&:hover': {
+                background: 'linear-gradient(135deg, #dc2626 0%, #b91c1c 100%)',
+              },
               '&:active': { transform: 'scale(0.97)' }
             }}
           >

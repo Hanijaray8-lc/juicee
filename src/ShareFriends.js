@@ -35,8 +35,8 @@ const ShareFriendsDialog = ({
         sx: { borderRadius: 3 }
       }}
     >
-      <DialogTitle sx={{ bgcolor: 'var(--primary-color, #128C7E)', color: 'white', py: 2 }}>
-        <Typography variant="h6" fontWeight={700}>Send to...</Typography>
+      <DialogTitle component="div" sx={{ bgcolor: 'var(--primary-color, #128C7E)', color: 'white', py: 2 }}>
+        <Typography component="div" variant="h6" fontWeight={700}>Send to...</Typography>
       </DialogTitle>
       <DialogContent sx={{ p: 0, minHeight: 300, maxHeight: 400 }}>
         <List>

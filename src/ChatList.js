@@ -21,12 +21,12 @@ import {
   Button,
   IconButton,
   Menu,
-  MenuItem
+  MenuItem,
+  Tooltip
 } from '@mui/material';
 import {
   Search as SearchIcon,
-  Gesture as GestureIcon,
-  Add as AddIcon,
+  Phone as PhoneIcon,
   AutoAwesome as AutoAwesomeIcon,
   Check as CheckIcon,
   Delete as DeleteIcon,
@@ -35,7 +35,7 @@ import {
   AddComment as AddCommentIcon
 } from '@mui/icons-material';
 import Yourmood from './Yourmood';
-import loveBotImg from './bot/love.png';
+import loveBotImg from './bot/juicy_ai_hand_wave_3sec.gif';
 import logoImage from './logo/juicee2.png';
 
 const loveBotUser = {
@@ -74,11 +74,54 @@ const ChatList = ({
   showFinder,
   setShowFinder,
   handleDeleteChats,
-  onSignOut
+  onSignOut,
+  hideJerryBot = false
 }) => {
   const loveBotFabRef = useRef(null);
-  const gestureFabRef = useRef(null);
-  const addFabRef = useRef(null);
+
+  const [currentIsDark, setCurrentIsDark] = useState(() => {
+    try {
+      const saved = localStorage.getItem('appTheme');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const bg = parsed.colors?.background;
+        if (bg && bg.startsWith('#')) {
+          const hex = bg.replace('#', '').trim();
+          const r = parseInt(hex.substring(0, 2), 16);
+          const g = parseInt(hex.substring(2, 4), 16);
+          const b = parseInt(hex.substring(4, 6), 16);
+          return (r * 299 + g * 587 + b * 114) / 1000 < 128;
+        }
+        const id = (parsed.id || '').toLowerCase();
+        return id.includes('dark') || id.includes('black') || id.includes('midnight') || id.includes('night');
+      }
+    } catch (e) { }
+    return false;
+  });
+
+  useEffect(() => {
+    const handleThemeChanged = () => {
+      try {
+        const saved = localStorage.getItem('appTheme');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          const bg = parsed.colors?.background;
+          if (bg && bg.startsWith('#')) {
+            const hex = bg.replace('#', '').trim();
+            const r = parseInt(hex.substring(0, 2), 16);
+            const g = parseInt(hex.substring(2, 4), 16);
+            const b = parseInt(hex.substring(4, 6), 16);
+            setCurrentIsDark((r * 299 + g * 587 + b * 114) / 1000 < 128);
+            return;
+          }
+          const id = (parsed.id || '').toLowerCase();
+          setCurrentIsDark(id.includes('dark') || id.includes('black') || id.includes('midnight') || id.includes('night'));
+        }
+      } catch (e) { }
+    };
+    window.addEventListener('themeChanged', handleThemeChanged);
+    return () => window.removeEventListener('themeChanged', handleThemeChanged);
+  }, []);
 
   const [selectedMemberIds, setSelectedMemberIds] = useState(new Set());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -149,9 +192,7 @@ const ChatList = ({
 
     const handleClickOutside = (event) => {
       const clickInside =
-        (loveBotFabRef.current && loveBotFabRef.current.contains(event.target)) ||
-        (gestureFabRef.current && gestureFabRef.current.contains(event.target)) ||
-        (addFabRef.current && addFabRef.current.contains(event.target));
+        (loveBotFabRef.current && loveBotFabRef.current.contains(event.target));
 
       if (!clickInside) {
         setShowFinder(false);
@@ -173,14 +214,14 @@ const ChatList = ({
         <Box
           sx={{
             width: '100%',
-            bgcolor: 'var(--surface-color, #fff)',
+            background: currentIsDark ? '#120f17' : 'var(--background-color, #fff7f9)',
             p: !isMobile ? 1.5 : 2,
             display: 'flex',
             flexDirection: 'column',
             height: '100%',
             overflow: 'hidden',
-            boxShadow: '0px 2px 10px rgba(0,0,0,0.03)',
-            borderRight: '1px solid #f1dcdc'
+            boxShadow: currentIsDark ? 'none' : '0px 4px 20px rgba(0, 0, 0, 0.04)',
+            borderRight: currentIsDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(125, 125, 125, 0.15)'
           }}
         >
           {selectedMemberIds.size > 0 ? (
@@ -189,14 +230,15 @@ const ChatList = ({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                bgcolor: 'var(--primary-color, #ec407a)',
+                background: 'var(--primary-gradient, linear-gradient(135deg, #ff5c8d 0%, #ff2d6c 100%))',
                 color: '#fff',
-                borderRadius: 8,
-                px: 2,
-                py: 1,
+                borderRadius: '24px',
+                px: 2.5,
+                py: 1.2,
                 mb: 2,
-                boxShadow: '0 4px 12px rgba(236, 64, 122, 0.2)',
-                minHeight: '40px'
+                boxShadow: '0 8px 24px rgba(0, 0, 0, 0.25), inset 0 1px 1px rgba(255, 255, 255, 0.4)',
+                border: '1px solid rgba(255, 255, 255, 0.25)',
+                minHeight: '44px'
               }}
             >
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -206,7 +248,7 @@ const ChatList = ({
                 >
                   <ArrowBackIcon />
                 </IconButton>
-                <Typography variant="subtitle1" sx={{ fontWeight: 600, color: '#fff' }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#fff' }}>
                   {selectedMemberIds.size} selected
                 </Typography>
               </Box>
@@ -226,29 +268,54 @@ const ChatList = ({
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   mb: 2,
-                  pb: 1,
-                  borderBottom: '1px solid rgba(241, 220, 220, 0.4)'
+                  pb: 1.5,
+                  borderBottom: currentIsDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(125, 125, 125, 0.15)'
                 }}>
                   <Box
                     component="img"
                     src={logoImage}
                     alt="Juicy"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => {
+                      if (setShowGestureOverlay) setShowGestureOverlay(true);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        if (setShowGestureOverlay) setShowGestureOverlay(true);
+                      }
+                    }}
+                    aria-label="Open gesture drawing"
+                    title="Tap to draw gesture to open chat"
                     sx={{
                       height: !isMobile ? 38 : 48,
                       width: 'auto',
-                      display: 'block'
+                      display: 'block',
+                      cursor: 'pointer',
+                      transition: 'all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                      '&:hover': {
+                        transform: 'scale(1.05)',
+                        filter: 'drop-shadow(0 4px 12px rgba(255, 64, 129, 0.35))'
+                      },
+                      '&:active': {
+                        transform: 'scale(0.95)'
+                      }
                     }}
                   />
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    {/* <IconButton 
-                      onClick={() => setShowFinder(true)} 
-                      sx={{ color: 'var(--text-color, #54656f)', opacity: 0.8 }}
-                    >
-                      <AddCommentIcon />
-                    </IconButton> */}
                     <IconButton
                       onClick={handleMenuOpen}
-                      sx={{ color: 'var(--text-color, #54656f)', opacity: 0.8 }}
+                      sx={{
+                        color: currentIsDark ? '#cbd5e1' : '#64748b',
+                        bgcolor: currentIsDark ? 'rgba(255, 255, 255, 0.06)' : 'var(--surface-color, rgba(255, 255, 255, 0.8))',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+                        border: currentIsDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(125, 125, 125, 0.15)',
+                        '&:hover': {
+                          bgcolor: currentIsDark ? 'rgba(255, 255, 255, 0.1)' : 'var(--background-color, rgba(255, 240, 246, 0.95))',
+                          color: 'var(--primary-color, #ff4081)'
+                        }
+                      }}
                     >
                       <MoreVertIcon />
                     </IconButton>
@@ -260,11 +327,14 @@ const ChatList = ({
                       anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
                       PaperProps={{
                         sx: {
-                          bgcolor: 'var(--surface-color, #fff)',
-                          color: 'var(--text-color, #000)',
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                          borderRadius: '8px',
-                          minWidth: '150px'
+                          bgcolor: currentIsDark ? 'rgba(26, 20, 36, 0.96)' : 'var(--surface-color, rgba(255, 255, 255, 0.96))',
+                          backdropFilter: 'blur(16px)',
+                          color: 'var(--text-color, #1e293b)',
+                          boxShadow: currentIsDark ? '0 12px 36px rgba(0,0,0,0.5)' : '0 12px 36px rgba(0, 0, 0, 0.08)',
+                          borderRadius: '18px',
+                          border: currentIsDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(125, 125, 125, 0.15)',
+                          minWidth: '160px',
+                          p: 0.5
                         }
                       }}
                     >
@@ -275,9 +345,12 @@ const ChatList = ({
                         }}
                         sx={{
                           fontSize: '0.9rem',
-                          color: 'var(--text-color, #000)',
+                          fontWeight: 600,
+                          borderRadius: '12px',
+                          color: 'var(--text-color, #1e293b)',
                           '&:hover': {
-                            bgcolor: 'rgba(0,0,0,0.05)'
+                            bgcolor: currentIsDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(125, 125, 125, 0.08)',
+                            color: 'var(--primary-color, #ff4081)'
                           }
                         }}
                       >
@@ -288,36 +361,98 @@ const ChatList = ({
                 </Box>
               )}
 
-              <TextField
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search chats"
-                variant="outlined"
-                size="small"
-                fullWidth
-                sx={{ mb: !isMobile ? 1.25 : 2 }}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <SearchIcon sx={{ color: 'var(--primary-color, #f06292)' }} />
-                    </InputAdornment>
-                  ),
-                  sx: {
-                    borderRadius: 8,
-                    bgcolor: 'var(--surface-color, #fcecec)',
-                    color: 'var(--text-color, #000)',
-                    '& .MuiOutlinedInput-notchedOutline': {
-                      borderColor: 'var(--primary-color, #f06292)'
-                    },
-                    '&:hover .MuiOutlinedInput-notchedOutline': {
-                      borderColor: 'var(--primary-color, #f06292)'
-                    },
-                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                      borderColor: 'var(--primary-color, #f06292)'
-                    }
-                  }
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1.2,
+                  mb: !isMobile ? 1.5 : 2
                 }}
-              />
+              >
+                <TextField
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Search chats..."
+                  variant="outlined"
+                  size="small"
+                  sx={{
+                    flex: 1,
+                    minWidth: 0
+                  }}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon sx={{ color: 'var(--primary-color, #ff4081)', fontSize: 22 }} />
+                      </InputAdornment>
+                    ),
+                    sx: {
+                      borderRadius: '28px',
+                      bgcolor: currentIsDark ? 'rgba(255, 255, 255, 0.05)' : 'var(--surface-color, rgba(255, 255, 255, 0.95))',
+                      backdropFilter: 'blur(12px)',
+                      color: 'var(--text-color, #1e293b)',
+                      boxShadow: currentIsDark ? '0 4px 16px rgba(0,0,0,0.25)' : '0 4px 16px rgba(0, 0, 0, 0.04)',
+                      transition: 'all 0.2s ease',
+                      '& .MuiOutlinedInput-notchedOutline': {
+                        borderColor: currentIsDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(125, 125, 125, 0.2)',
+                        borderWidth: '1.5px'
+                      },
+                      '&:hover .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--primary-color, #ff6595)'
+                      },
+                      '&.Mui-focused': {
+                        boxShadow: currentIsDark ? '0 6px 22px rgba(0,0,0,0.4)' : '0 6px 22px rgba(0, 0, 0, 0.1)'
+                      },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                        borderColor: 'var(--primary-color, #ff4081)',
+                        borderWidth: '1.5px'
+                      },
+                      '& input::placeholder': {
+                        color: currentIsDark ? '#64748b' : '#94a3b8',
+                        fontWeight: 500,
+                        opacity: 1
+                      }
+                    }
+                  }}
+                />
+
+                {/* Contact Sync Button with Phone Icon & "Sync" */}
+                <Tooltip title="Sync Contacts / Add Friends" arrow>
+                  <Button
+                    onClick={() => {
+                      if (setContactSyncDialogOpen) {
+                        setContactSyncDialogOpen(true);
+                      }
+                    }}
+                    aria-label="sync contacts"
+                    startIcon={<PhoneIcon sx={{ fontSize: { xs: 16, sm: 18 }, color: '#ffffff' }} />}
+                    sx={{
+                      height: 40,
+                      px: { xs: 1.5, sm: 2 },
+                      borderRadius: '24px',
+                      textTransform: 'none',
+                      fontWeight: 700,
+                      fontSize: { xs: '0.82rem', sm: '0.88rem' },
+                      whiteSpace: 'nowrap',
+                      flexShrink: 0,
+                      background: 'var(--primary-gradient, linear-gradient(135deg, #ff6595 0%, #ff2d6c 100%))',
+                      color: '#ffffff',
+                      border: '1px solid rgba(255, 255, 255, 0.35)',
+                      boxShadow: '0 4px 14px rgba(255, 45, 108, 0.28), inset 0 1px 1px rgba(255, 255, 255, 0.4)',
+                      transition: 'all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                      '&:hover': {
+                        transform: 'translateY(-2px) scale(1.03)',
+                        boxShadow: '0 6px 18px rgba(255, 45, 108, 0.4)',
+                        background: 'var(--primary-gradient, linear-gradient(135deg, #ff5085 0%, #eb1a5b 100%))'
+                      },
+                      '&:active': {
+                        transform: 'scale(0.96)'
+                      }
+                    }}
+                  >
+                    Sync
+                  </Button>
+                </Tooltip>
+              </Box>
             </>
           )}
 
@@ -334,24 +469,25 @@ const ChatList = ({
           />
           <Divider
             sx={{
-              my: 0.25,
-              bgcolor: ' #f4e8ecff',
-              opacity: 0.3
+              my: 0.75,
+              borderColor: currentIsDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(125, 125, 125, 0.15)',
+              opacity: 0.6
             }}
           />
           <Box sx={{
             flex: 1,
             overflowY: 'auto',
             pr: 0.5,
+            pt: 0.5,
             '&::-webkit-scrollbar': {
               display: 'none'
             },
             scrollbarWidth: 'none',
             msOverflowStyle: 'none'
           }}>
-            <List>
+            <List sx={{ pt: 0 }}>
               {(searchTerm ? filteredMembers : sortedMembers).map((member, index) => (
-                <ListItem key={member._id || member.username || index} sx={{ mb: !isMobile ? 0.75 : 1.5 }} disablePadding>
+                <ListItem key={member._id || member.username || index} sx={{ mb: !isMobile ? 1 : 1.5 }} disablePadding>
                   <ListItemButton
                     onClick={() => handleItemClick(member)}
                     onMouseDown={(e) => handleStart(e, member)}
@@ -361,19 +497,33 @@ const ChatList = ({
                     onTouchEnd={handleCancel}
                     onTouchMove={handleCancel}
                     sx={{
-                      borderRadius: 3,
-                      px: !isMobile ? 1.5 : 2,
-                      py: !isMobile ? 0.75 : 1.2,
+                      borderRadius: '22px',
+                      px: !isMobile ? 1.75 : 2,
+                      py: !isMobile ? 1.2 : 1.4,
                       bgcolor: selectedMemberIds.has(String(member._id))
-                        ? 'var(--background-color, #ffecec) !important'
-                        : 'transparent',
-                      '&:hover': { bgcolor: 'var(--background-color, #ffecec)' },
+                        ? (currentIsDark ? 'rgba(255, 255, 255, 0.12) !important' : 'rgba(125, 125, 125, 0.12) !important')
+                        : (currentIsDark ? 'rgba(255, 255, 255, 0.04)' : 'var(--surface-color, rgba(255, 255, 255, 0.92))'),
+                      backdropFilter: 'blur(12px)',
+                      border: selectedMemberIds.has(String(member._id))
+                        ? '1.5px solid var(--primary-color, #ff4081)'
+                        : (currentIsDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(125, 125, 125, 0.15)'),
+                      boxShadow: selectedMemberIds.has(String(member._id))
+                        ? '0 6px 20px rgba(0, 0, 0, 0.2), inset 0 1px 1px rgba(255,255,255,0.6)'
+                        : '0 4px 16px rgba(0, 0, 0, 0.04)',
+                      '&:hover': {
+                        bgcolor: currentIsDark ? 'rgba(255, 255, 255, 0.07)' : 'var(--surface-color, rgba(255, 248, 251, 0.98))',
+                        transform: 'translateY(-2px)',
+                        boxShadow: '0 8px 24px rgba(0, 0, 0, 0.08)',
+                        borderColor: 'var(--primary-color, #ff4081)'
+                      },
+                      '&:active': {
+                        transform: 'scale(0.985)'
+                      },
+                      transition: 'all 0.22s cubic-bezier(0.16, 1, 0.3, 1)',
                       position: 'relative',
-                      opacity: member.online ? 1 : 0.6,
                       display: 'flex',
                       alignItems: 'center',
-                      width: '100%',
-                      transition: 'background-color 0.2s ease'
+                      width: '100%'
                     }}
                   >
                     <ListItemAvatar>
@@ -388,52 +538,69 @@ const ChatList = ({
                           }
                         }}
                       >
-                        <Avatar
-                          src={member.profilePic || member.image || undefined}
+                        <Box
                           sx={{
-                            width: !isMobile ? 40 : 48,
-                            height: !isMobile ? 40 : 48,
-                            bgcolor: (!member.profilePic && !member.image) ? 'var(--primary-color, #ff4d86)' : 'transparent',
-                            color: '#fff',
-                            fontWeight: 'bold',
-                            fontSize: !isMobile ? '1.1rem' : '1.3rem'
+                            p: '2.5px',
+                            borderRadius: '50%',
+                            background: member.online
+                              ? 'linear-gradient(135deg, #10b981 0%, #34d399 100%)'
+                              : 'linear-gradient(135deg, rgba(255, 105, 145, 0.35) 0%, rgba(255, 182, 205, 0.15) 100%)',
+                            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)'
                           }}
                         >
-                          {(member.username || member.name || '?')[0].toUpperCase()}
-                        </Avatar>
+                          <Avatar
+                            src={member.profilePic || member.image || undefined}
+                            sx={{
+                              width: !isMobile ? 42 : 48,
+                              height: !isMobile ? 42 : 48,
+                              bgcolor: (!member.profilePic && !member.image) ? 'var(--primary-color, #ff4081)' : 'transparent',
+                              color: '#fff',
+                              fontWeight: 'bold',
+                              fontSize: !isMobile ? '1.1rem' : '1.3rem',
+                              border: currentIsDark ? '2px solid #1a1424' : '2px solid #ffffff',
+                              '& .MuiAvatar-img': (member?.isBot || member?._id === 'lovebot') ? {
+                                objectPosition: 'center 85%',
+                                transform: 'scale(1.25) translateY(-3px)'
+                              } : {}
+                            }}
+                          >
+                            {(member.username || member.name || '?')[0].toUpperCase()}
+                          </Avatar>
+                        </Box>
                         {/* Checkmark overlay if selected */}
                         {selectedMemberIds.has(String(member._id)) && (
                           <Box
                             sx={{
                               position: 'absolute',
-                              top: 0,
-                              left: 0,
-                              width: !isMobile ? 40 : 48,
-                              height: !isMobile ? 40 : 48,
+                              top: 2,
+                              left: 2,
+                              width: !isMobile ? 42 : 48,
+                              height: !isMobile ? 42 : 48,
                               borderRadius: '50%',
-                              bgcolor: 'rgba(236, 64, 122, 0.85)',
+                              bgcolor: 'var(--primary-color, rgba(255, 45, 108, 0.88))',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
                               color: '#fff',
-                              zIndex: 2
+                              zIndex: 2,
+                              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.4)'
                             }}
                           >
-                            <CheckIcon sx={{ fontSize: !isMobile ? 20 : 24, fontWeight: 'bold' }} />
+                            <CheckIcon sx={{ fontSize: !isMobile ? 22 : 26, fontWeight: 'bold' }} />
                           </Box>
                         )}
                         {/* Online/Offline status indicator dot */}
                         <Box
                           sx={{
                             position: 'absolute',
-                            bottom: 0,
-                            right: 0,
-                            width: !isMobile ? 12 : 14,
-                            height: !isMobile ? 12 : 14,
+                            bottom: 1,
+                            right: 1,
+                            width: !isMobile ? 13 : 15,
+                            height: !isMobile ? 13 : 15,
                             borderRadius: '50%',
-                            backgroundColor: member.online ? '#31a24c' : '#bdbdbd',
-                            border: !isMobile ? '1.5px solid white' : '2px solid white',
-                            boxShadow: '0 0 3px rgba(0,0,0,0.2)',
+                            backgroundColor: member.online ? '#10b981' : '#cbd5e1',
+                            border: currentIsDark ? '2.5px solid #1a1424' : '2.5px solid #ffffff',
+                            boxShadow: member.online ? '0 0 6px rgba(16, 185, 129, 0.6)' : '0 1px 3px rgba(0,0,0,0.15)',
                             zIndex: 3
                           }}
                         />
@@ -443,14 +610,14 @@ const ChatList = ({
                       disableTypography
                       primary={
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-                          <Typography sx={{ fontWeight: 600, color: 'var(--text-color, #000)' }}>
+                          <Typography sx={{ fontWeight: 700, fontSize: '0.98rem', color: 'var(--text-color, #1e293b)' }}>
                             {member.username || member.name}
                           </Typography>
                           <Typography
                             sx={{
                               fontSize: '0.75rem',
-                              color: member.online ? '#25d366' : '#999',
-                              fontWeight: 500,
+                              color: member.online ? '#10b981' : (currentIsDark ? '#64748b' : '#94a3b8'),
+                              fontWeight: 600,
                               ml: 2
                             }}
                           >
@@ -476,12 +643,12 @@ const ChatList = ({
                               <Typography
                                 variant="body2"
                                 sx={{
-                                  color: unread[member._id] > 0 ? 'var(--text-color, #000)' : '#777',
+                                  color: unread[member._id] > 0 ? 'var(--text-color, #1e293b)' : (currentIsDark ? '#94a3b8' : '#64748b'),
                                   fontWeight: unread[member._id] > 0 ? 600 : 400,
                                   whiteSpace: 'nowrap',
                                   overflow: 'hidden',
                                   textOverflow: 'ellipsis',
-                                  fontSize: '0.82rem'
+                                  fontSize: '0.86rem'
                                 }}
                               >
                                 {(() => {
@@ -509,27 +676,27 @@ const ChatList = ({
                                 })()}
                               </Typography>
                             ) : (
-                              <Typography variant="body2" sx={{ color: '#aaa', fontSize: '0.82rem', fontStyle: 'italic' }}>
+                              <Typography variant="body2" sx={{ color: currentIsDark ? '#64748b' : '#94a3b8', fontSize: '0.84rem', fontStyle: 'italic' }}>
                                 No messages yet
                               </Typography>
                             )}
                           </Box>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
                             {messages[member._id] && messages[member._id].length > 0 && (
-                              <Typography sx={{ fontSize: '0.75rem', color: '#888', textAlign: 'right' }}>
+                              <Typography sx={{ fontSize: '0.74rem', color: currentIsDark ? '#64748b' : '#94a3b8', fontWeight: 500, textAlign: 'right' }}>
                                 {messages[member._id][messages[member._id].length - 1].timestamp}
                               </Typography>
                             )}
-                            {/* WhatsApp-like unread badge */}
+                            {/* Unread badge */}
                             {unread[member._id] > 0 && (
                               <Box
                                 sx={{
-                                  bgcolor: '#25d366',
+                                  background: 'var(--primary-gradient, linear-gradient(135deg, #ff5c8d 0%, #ff2d6c 100%))',
                                   color: '#fff',
-                                  borderRadius: '50%',
-                                  px: 1.2,
+                                  borderRadius: '12px',
+                                  px: 1.1,
                                   py: 0.2,
-                                  fontSize: '0.85rem',
+                                  fontSize: '0.78rem',
                                   fontWeight: 700,
                                   minWidth: 22,
                                   minHeight: 22,
@@ -537,7 +704,7 @@ const ChatList = ({
                                   alignItems: 'center',
                                   justifyContent: 'center',
                                   ml: 1,
-                                  boxShadow: 1
+                                  boxShadow: '0 3px 10px rgba(0, 0, 0, 0.2)'
                                 }}
                               >
                                 {unread[member._id]}
@@ -555,82 +722,55 @@ const ChatList = ({
         </Box>
       )}
 
-      {/* LoveBot FAB */}
-      {bottomNav === 0 && showChatList && !selectedUser && showFinder && (
-        <Fab
-          ref={loveBotFabRef}
-          aria-label="jerrybot"
-          onClick={() => handleSelectUser(loveBotUser)}
-          sx={{
-            position: 'absolute',
-            bottom: isMobile ? 80 : 30,
-            right: 100,
-            bgcolor: '#ffffff',
-            '&:hover': {
-              bgcolor: '#fff0f4',
-              transform: 'scale(1.1)'
-            },
-            zIndex: 1000,
-            boxShadow: '0 4px 20px rgba(255, 77, 134, 0.4)',
-            transition: 'all 0.3s ease',
-            p: 0,
-            overflow: 'hidden'
-          }}
-        >
-          <img src={loveBotImg} alt="jerryBot" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-        </Fab>
-      )}
-
-      {/* Gesture Draw FAB */}
-      {bottomNav === 0 && showChatList && !selectedUser && showFinder && (
-        <Fab
-          ref={gestureFabRef}
-          color="secondary"
-          aria-label="gesture"
-          onClick={() => setShowGestureOverlay(true)}
-          sx={{
-            position: 'absolute',
-            bottom: isMobile ? 150 : 100,
-            right: 30,
-            bgcolor: '#7e57c2', // beautiful purple matching juicee accent
-            '&:hover': {
-              bgcolor: '#5e35b1'
-            },
-            zIndex: 1000,
-            boxShadow: '0 4px 20px rgba(126, 87, 194, 0.4)'
-          }}
-        >
-          <GestureIcon />
-        </Fab>
-      )}
-
-      {/* Contact Sync FAB */}
-      {bottomNav === 0 && showChatList && !selectedUser && (
-        <Fab
-          ref={addFabRef}
-          color="primary"
-          aria-label="add"
-          onClick={() => {
-            if (!showFinder) {
-              setShowFinder(true);
-            } else {
-              setContactSyncDialogOpen(true);
-            }
-          }}
-          sx={{
-            position: 'absolute',
-            bottom: isMobile ? 80 : 30,
-            right: 30,
-            bgcolor: 'var(--primary-color, #ec407a)',
-            '&:hover': {
-              bgcolor: 'var(--primary-color, #d81b60)'
-            },
-            zIndex: 1000,
-            boxShadow: '0 4px 20px rgba(236, 64, 122, 0.4)'
-          }}
-        >
-          <AddIcon />
-        </Fab>
+      {/* Jerry Bot FAB - Only Jerry Bot stands at the bottom right */}
+      {bottomNav === 0 && showChatList && !selectedUser && !hideJerryBot && (
+        <Tooltip title="Chat with Jerry Bot ✨" placement="left" arrow>
+          <Fab
+            ref={loveBotFabRef}
+            aria-label="jerrybot"
+            onClick={() => handleSelectUser(loveBotUser)}
+            sx={{
+              position: 'absolute',
+              bottom: isMobile ? 80 : 30,
+              right: 30,
+              width: 65,
+              height: 65,
+              bgcolor: '#ffffff',
+              border: '2px solid rgba(255, 205, 222, 0.85)',
+              borderRadius: '50%',
+              '&:hover': {
+                bgcolor: '#fff0f5',
+                transform: 'translateY(-3px) scale(1.08)',
+                boxShadow: '0 12px 30px rgba(255, 45, 108, 0.35)'
+              },
+              '&:active': {
+                transform: 'scale(0.95)'
+              },
+              zIndex: 20,
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.22), inset 0 1px 1px #fff',
+              transition: 'all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)',
+              p: 0,
+              overflow: 'hidden',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <img
+              src={loveBotImg}
+              alt="jerryBot"
+              style={{
+                width: '125%',
+                height: '125%',
+                objectFit: 'cover',
+                objectPosition: 'center 85%',
+                transform: 'translateY(-6px)',
+                borderRadius: '50%',
+                pointerEvents: 'none'
+              }}
+            />
+          </Fab>
+        </Tooltip>
       )}
 
       {/* Delete Chat Confirmation Dialog */}
@@ -641,26 +781,32 @@ const ChatList = ({
         aria-describedby="delete-chat-dialog-description"
         PaperProps={{
           sx: {
-            borderRadius: 4,
-            p: 1
+            borderRadius: '24px',
+            p: 1.5,
+            bgcolor: currentIsDark ? 'rgba(26, 20, 36, 0.96)' : 'var(--surface-color, rgba(255, 255, 255, 0.96))',
+            backdropFilter: 'blur(20px)',
+            border: currentIsDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(125, 125, 125, 0.2)',
+            boxShadow: currentIsDark ? '0 16px 48px rgba(0, 0, 0, 0.5)' : '0 16px 48px rgba(0, 0, 0, 0.12)'
           }
         }}
       >
-        <DialogTitle id="delete-chat-dialog-title" sx={{ fontWeight: 600 }}>
+        <DialogTitle id="delete-chat-dialog-title" sx={{ fontWeight: 700, fontSize: '1.2rem', color: 'var(--text-color, #1e293b)' }}>
           Delete Selected Chats?
         </DialogTitle>
         <DialogContent>
-          <DialogContentText id="delete-chat-dialog-description">
+          <DialogContentText id="delete-chat-dialog-description" sx={{ color: currentIsDark ? '#94a3b8' : '#64748b' }}>
             Are you sure you want to delete the selected chat conversation(s)? This will clear all messages and remove them from your active chats.
           </DialogContentText>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
+        <DialogActions sx={{ px: 3, pb: 2, gap: 1 }}>
           <Button
             onClick={() => setDeleteDialogOpen(false)}
             sx={{
-              color: '#777',
+              color: currentIsDark ? '#94a3b8' : '#64748b',
               fontWeight: 600,
-              textTransform: 'none'
+              textTransform: 'none',
+              borderRadius: '12px',
+              px: 2
             }}
           >
             Cancel
@@ -668,15 +814,17 @@ const ChatList = ({
           <Button
             onClick={confirmDeleteChats}
             variant="contained"
-            color="error"
             sx={{
-              bgcolor: 'var(--primary-color, #ec407a)',
+              background: 'var(--primary-gradient, linear-gradient(135deg, #ff5c8d 0%, #ff2d6c 100%))',
+              boxShadow: '0 4px 14px rgba(0, 0, 0, 0.25)',
               '&:hover': {
-                bgcolor: 'var(--primary-color, #d81b60)'
+                opacity: 0.9,
+                boxShadow: '0 6px 18px rgba(0, 0, 0, 0.35)'
               },
-              fontWeight: 600,
-              borderRadius: 2,
-              textTransform: 'none'
+              fontWeight: 700,
+              borderRadius: '12px',
+              textTransform: 'none',
+              px: 2.5
             }}
             autoFocus
           >
