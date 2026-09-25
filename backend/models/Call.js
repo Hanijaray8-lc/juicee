@@ -24,6 +24,10 @@ const callSchema = new mongoose.Schema({
   }
 });
 
+// Compound Indexes for fast call logs retrieval and sorting without collection scans
+callSchema.index({ callerId: 1, timestamp: -1 });
+callSchema.index({ receiverId: 1, timestamp: -1 });
+
 // TTL Index: Auto-delete call logs after 30 days
 callSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 

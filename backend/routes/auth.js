@@ -1912,13 +1912,16 @@ router.get('/call-logs/:userId', async (req, res) => {
     const { userId } = req.params;
     const Call = require('../models/Call');
 
-    // Fetch calls where user is either caller or receiver
+    // Fetch calls where user is either caller or receiver (lean for high performance)
     const callLogs = await Call.find({
       $or: [
         { callerId: userId },
         { receiverId: userId }
       ]
-    }).sort({ timestamp: -1 }).limit(100);
+    })
+      .sort({ timestamp: -1 })
+      .limit(60)
+      .lean();
 
     res.json(callLogs);
   } catch (error) {
