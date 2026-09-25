@@ -671,8 +671,8 @@ router.put('/user/:id/about', async (req, res) => {
   }
 });
 
-// Update user general info (profileVisible, etc)
-router.put('/user/:id', async (req, res) => {
+// Update user general info (profileVisible, email, phone, gender, etc)
+const handleUpdateUser = async (req, res) => {
   try {
     const userId = req.params.id;
     const { profileVisible, messageEncryption, ...otherFields } = req.body;
@@ -693,7 +693,10 @@ router.put('/user/:id', async (req, res) => {
     console.error('Update user error:', err);
     res.status(500).json({ message: 'Server error' });
   }
-});
+};
+
+router.put('/user/:id', handleUpdateUser);
+router.patch('/user/:id', handleUpdateUser);
 
 // Get user's friends list (fixed: handle old/raw ObjectId entries and skip stale refs)
 router.get('/user/:id/friends', async (req, res) => {
