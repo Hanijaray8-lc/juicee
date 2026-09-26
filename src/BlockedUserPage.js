@@ -15,7 +15,7 @@ import {
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ShieldRoundedIcon from '@mui/icons-material/ShieldRounded';
 import BlockRoundedIcon from '@mui/icons-material/BlockRounded';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import API_BASE_URL from './config/apiConfig';
 import {
   initOfflineDb,
@@ -28,6 +28,18 @@ import { getProfileImageSrc } from './utils/imageUtils';
 const BlockedUsersPage = () => {
   const userId = localStorage.getItem('userId');
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Deduplicate by userId to avoid React duplicate-key warnings
+  const deduplicateBlocked = (list) => {
+    const seen = new Set();
+    return list.filter(u => {
+      const id = String(u.userId || u._id || u.id || '');
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+  };
 
   // Instant synchronous initial load from cache
   const [blockedUsers, setBlockedUsers] = useState(() => {
@@ -46,6 +58,57 @@ const BlockedUsersPage = () => {
   const [selectedUser, setSelectedUser] = useState(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
+  const [currentIsDark, setCurrentIsDark] = useState(() => {
+    try {
+      const saved = localStorage.getItem('appTheme');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const bgCol = parsed?.colors?.background;
+        if (bgCol && bgCol.startsWith('#')) {
+          const hex = bgCol.replace('#', '').trim();
+          const r = parseInt(hex.substring(0, 2), 16);
+          const g = parseInt(hex.substring(2, 4), 16);
+          const b = parseInt(hex.substring(4, 6), 16);
+          return (r * 299 + g * 587 + b * 114) / 1000 < 128;
+        }
+      }
+    } catch (e) {}
+    return false;
+  });
+
+  useEffect(() => {
+    const handleThemeChange = () => {
+      try {
+        const saved = localStorage.getItem('appTheme');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          const bgCol = parsed?.colors?.background;
+          if (bgCol && bgCol.startsWith('#')) {
+            const hex = bgCol.replace('#', '').trim();
+            const r = parseInt(hex.substring(0, 2), 16);
+            const g = parseInt(hex.substring(2, 4), 16);
+            const b = parseInt(hex.substring(4, 6), 16);
+            setCurrentIsDark((r * 299 + g * 587 + b * 114) / 1000 < 128);
+          }
+        }
+      } catch (e) {}
+    };
+    window.addEventListener('themeChanged', handleThemeChange);
+    return () => window.removeEventListener('themeChanged', handleThemeChange);
+  }, []);
+
+  // Merge newly blocked user from navigation state immediately
+  useEffect(() => {
+    const newlyBlocked = location.state?.newlyBlocked;
+    if (!newlyBlocked) return;
+    setBlockedUsers(prev => {
+      const merged = [newlyBlocked, ...prev];
+      return deduplicateBlocked(merged);
+    });
+    // Clear state so back-navigation doesn't re-add
+    window.history.replaceState({}, '');
+  }, [location.state]);
+
   // Load from SQLite and sync with server in background
   useEffect(() => {
     if (!userId) return;
@@ -59,7 +122,11 @@ const BlockedUsersPage = () => {
         const sqliteBlocked = await getBlockedUsersLocally(userId);
         if (isMounted && Array.isArray(sqliteBlocked)) {
           if (sqliteBlocked.length > 0) {
-            setBlockedUsers(sqliteBlocked);
+            setBlockedUsers(prev => {
+              // Merge SQLite data but keep any newlyBlocked entry already in state
+              const merged = [...prev, ...sqliteBlocked];
+              return deduplicateBlocked(merged);
+            });
           }
         }
       } catch (err) {
@@ -75,7 +142,8 @@ const BlockedUsersPage = () => {
       .then(async data => {
         if (!isMounted) return;
         if (Array.isArray(data)) {
-          setBlockedUsers(data);
+          // Server is source of truth — deduplicate and replace
+          setBlockedUsers(deduplicateBlocked(data));
           await saveBlockedUsersLocally(userId, data);
         }
       })
@@ -129,8 +197,9 @@ const BlockedUsersPage = () => {
     <Box
       sx={{
         minHeight: '100dvh',
-        background: 'linear-gradient(180deg, #fff5f8 0%, #fdf0f5 40%, #fbebf1 100%)',
-        color: '#2b1736',
+        bgcolor: 'var(--background-color, #fff5f8)',
+        background: 'var(--background-color, linear-gradient(180deg, #fff5f8 0%, #fdf0f5 40%, #fbebf1 100%))',
+        color: 'var(--text-color, #2b1736)',
         position: 'relative',
         overflowX: 'hidden',
         pb: 6
@@ -145,7 +214,7 @@ const BlockedUsersPage = () => {
           width: 260,
           height: 260,
           borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(255, 105, 180, 0.18) 0%, rgba(255, 192, 203, 0) 70%)',
+          background: 'radial-gradient(circle, rgba(var(--primary-rgb, 240, 98, 146), 0.18) 0%, rgba(255, 192, 203, 0) 70%)',
           pointerEvents: 'none',
           zIndex: 0,
           filter: 'blur(30px)'
@@ -159,7 +228,7 @@ const BlockedUsersPage = () => {
           width: 240,
           height: 240,
           borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(240, 98, 146, 0.14) 0%, rgba(255, 192, 203, 0) 70%)',
+          background: 'radial-gradient(circle, rgba(var(--primary-rgb, 240, 98, 146), 0.14) 0%, rgba(255, 192, 203, 0) 70%)',
           pointerEvents: 'none',
           zIndex: 0,
           filter: 'blur(30px)'
@@ -194,15 +263,15 @@ const BlockedUsersPage = () => {
               width: 44,
               height: 44,
               borderRadius: '50%',
-              background: 'linear-gradient(145deg, #ffffff, #ffeef4)',
-              boxShadow: '0 6px 16px -2px rgba(240, 98, 146, 0.22), inset 0 1px 1px rgba(255, 255, 255, 0.95), inset 0 -1px 2px rgba(240, 98, 146, 0.1)',
-              border: '1px solid rgba(255, 255, 255, 0.95)',
-              color: '#f06292',
+              background: currentIsDark ? 'rgba(255, 255, 255, 0.1)' : 'var(--surface-color, linear-gradient(145deg, #ffffff, #ffeef4))',
+              boxShadow: '0 6px 16px -2px rgba(var(--primary-rgb, 240, 98, 146), 0.22), inset 0 1px 1px rgba(255, 255, 255, 0.95), inset 0 -1px 2px rgba(240, 98, 146, 0.1)',
+              border: '1px solid rgba(255, 255, 255, 0.3)',
+              color: 'var(--primary-color, #f06292)',
               transition: 'all 0.22s cubic-bezier(0.34, 1.56, 0.64, 1)',
               '&:hover': {
                 transform: 'scale(1.06)',
-                background: 'linear-gradient(145deg, #ffffff, #ffe4ee)',
-                boxShadow: '0 8px 20px -2px rgba(240, 98, 146, 0.32)'
+                background: currentIsDark ? 'rgba(255, 255, 255, 0.18)' : 'var(--surface-color, linear-gradient(145deg, #ffffff, #ffe4ee))',
+                boxShadow: '0 8px 20px -2px rgba(var(--primary-rgb, 240, 98, 146), 0.32)'
               },
               '&:active': {
                 transform: 'scale(0.92)'
@@ -219,7 +288,7 @@ const BlockedUsersPage = () => {
                 fontWeight: 800,
                 fontSize: { xs: '1.25rem', sm: '1.35rem' },
                 letterSpacing: '-0.02em',
-                color: '#2b1736',
+                color: 'var(--text-color, #2b1736)',
                 lineHeight: 1.2
               }}
             >
@@ -228,7 +297,7 @@ const BlockedUsersPage = () => {
             <Typography
               variant="caption"
               sx={{
-                color: '#8b738e',
+                color: currentIsDark ? 'rgba(255, 255, 255, 0.6)' : '#8b738e',
                 fontWeight: 600,
                 fontSize: '0.78rem'
               }}
@@ -250,11 +319,11 @@ const BlockedUsersPage = () => {
               py: { xs: 8, sm: 10 },
               px: 3,
               borderRadius: '28px',
-              background: 'linear-gradient(145deg, rgba(255, 255, 255, 0.88) 0%, rgba(255, 245, 248, 0.68) 100%)',
+              background: currentIsDark ? 'rgba(30, 24, 42, 0.85)' : 'var(--surface-color, linear-gradient(145deg, rgba(255, 255, 255, 0.88) 0%, rgba(255, 245, 248, 0.68) 100%))',
               backdropFilter: 'blur(16px)',
               WebkitBackdropFilter: 'blur(16px)',
-              border: '1.5px solid rgba(255, 255, 255, 0.9)',
-              boxShadow: '0 12px 32px -8px rgba(240, 98, 146, 0.12), inset 0 1px 1px rgba(255, 255, 255, 0.95)',
+              border: currentIsDark ? '1px solid rgba(255, 255, 255, 0.12)' : '1.5px solid rgba(255, 255, 255, 0.9)',
+              boxShadow: '0 12px 32px -8px rgba(var(--primary-rgb, 240, 98, 146), 0.12), inset 0 1px 1px rgba(255, 255, 255, 0.95)',
               mt: 2
             }}
           >
@@ -277,7 +346,7 @@ const BlockedUsersPage = () => {
                   width: '100%',
                   height: '100%',
                   borderRadius: '50%',
-                  background: 'radial-gradient(circle, rgba(240, 98, 146, 0.22) 0%, rgba(255, 240, 245, 0) 70%)',
+                  background: 'radial-gradient(circle, rgba(var(--primary-rgb, 240, 98, 146), 0.22) 0%, rgba(255, 240, 245, 0) 70%)',
                   animation: 'juicyShieldPulse 3s infinite ease-in-out',
                   '@keyframes juicyShieldPulse': {
                     '0%': { transform: 'scale(0.95)', opacity: 0.7 },
@@ -292,9 +361,9 @@ const BlockedUsersPage = () => {
                   width: 80,
                   height: 80,
                   borderRadius: '26px',
-                  background: 'linear-gradient(145deg, #ffffff 0%, #ffeaf1 100%)',
-                  boxShadow: '0 12px 28px -4px rgba(240, 98, 146, 0.28), inset 0 2px 3px rgba(255, 255, 255, 0.95), inset 0 -2px 4px rgba(240, 98, 146, 0.15)',
-                  border: '1.5px solid rgba(255, 255, 255, 0.9)',
+                  background: currentIsDark ? 'rgba(45, 36, 62, 0.9)' : 'linear-gradient(145deg, #ffffff 0%, #ffeaf1 100%)',
+                  boxShadow: '0 12px 28px -4px rgba(var(--primary-rgb, 240, 98, 146), 0.28), inset 0 2px 3px rgba(255, 255, 255, 0.95), inset 0 -2px 4px rgba(240, 98, 146, 0.15)',
+                  border: '1.5px solid rgba(255, 255, 255, 0.3)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -305,8 +374,8 @@ const BlockedUsersPage = () => {
                 <ShieldRoundedIcon
                   sx={{
                     fontSize: 44,
-                    color: '#f06292',
-                    filter: 'drop-shadow(0 4px 8px rgba(240, 98, 146, 0.35))'
+                    color: 'var(--primary-color, #f06292)',
+                    filter: 'drop-shadow(0 4px 8px rgba(var(--primary-rgb, 240, 98, 146), 0.35))'
                   }}
                 />
               </Box>
@@ -317,7 +386,7 @@ const BlockedUsersPage = () => {
               sx={{
                 fontWeight: 800,
                 fontSize: { xs: '1.25rem', sm: '1.35rem' },
-                color: '#2b1736',
+                color: 'var(--text-color, #2b1736)',
                 letterSpacing: '-0.01em',
                 mb: 1
               }}
@@ -327,7 +396,7 @@ const BlockedUsersPage = () => {
             <Typography
               variant="body2"
               sx={{
-                color: '#7a677d',
+                color: currentIsDark ? 'rgba(255, 255, 255, 0.65)' : '#7a677d',
                 maxWidth: 280,
                 lineHeight: 1.5,
                 fontWeight: 500,
@@ -350,16 +419,16 @@ const BlockedUsersPage = () => {
                     justifyContent: 'space-between',
                     p: { xs: 2, sm: 2.25 },
                     borderRadius: '26px',
-                    background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.92) 0%, rgba(255, 245, 249, 0.85) 100%)',
+                    background: currentIsDark ? 'rgba(35, 28, 48, 0.9)' : 'var(--surface-color, linear-gradient(135deg, rgba(255, 255, 255, 0.92) 0%, rgba(255, 245, 249, 0.85) 100%))',
                     backdropFilter: 'blur(16px)',
                     WebkitBackdropFilter: 'blur(16px)',
-                    border: '1.5px solid rgba(255, 255, 255, 0.92)',
-                    boxShadow: '0 10px 24px -6px rgba(240, 98, 146, 0.12), 0 4px 10px rgba(0, 0, 0, 0.02), inset 0 1px 1px rgba(255, 255, 255, 1)',
+                    border: currentIsDark ? '1px solid rgba(255, 255, 255, 0.12)' : '1.5px solid rgba(255, 255, 255, 0.92)',
+                    boxShadow: '0 10px 24px -6px rgba(var(--primary-rgb, 240, 98, 146), 0.12), 0 4px 10px rgba(0, 0, 0, 0.02), inset 0 1px 1px rgba(255, 255, 255, 1)',
                     transition: 'all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1)',
                     '&:hover': {
                       transform: 'translateY(-2px)',
-                      boxShadow: '0 14px 28px -6px rgba(240, 98, 146, 0.2), 0 6px 14px rgba(0, 0, 0, 0.03)',
-                      background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(255, 242, 247, 0.92) 100%)'
+                      boxShadow: '0 14px 28px -6px rgba(var(--primary-rgb, 240, 98, 146), 0.2), 0 6px 14px rgba(0, 0, 0, 0.03)',
+                      background: currentIsDark ? 'rgba(45, 36, 62, 0.95)' : 'linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(255, 242, 247, 0.92) 100%)'
                     }
                   }}
                 >
@@ -373,8 +442,8 @@ const BlockedUsersPage = () => {
                           height: 52,
                           borderRadius: '18px',
                           border: '2.5px solid #ffffff',
-                          boxShadow: '0 8px 18px -3px rgba(240, 98, 146, 0.28), inset 0 1px 1px rgba(255, 255, 255, 0.8)',
-                          background: 'linear-gradient(135deg, #f06292 0%, #ec407a 100%)',
+                          boxShadow: '0 8px 18px -3px rgba(var(--primary-rgb, 240, 98, 146), 0.28), inset 0 1px 1px rgba(255, 255, 255, 0.8)',
+                          background: 'var(--primary-gradient, linear-gradient(135deg, #f06292 0%, #ec407a 100%))',
                           fontWeight: 700,
                           fontSize: '1.15rem',
                           color: '#ffffff',
@@ -412,7 +481,7 @@ const BlockedUsersPage = () => {
                         sx={{
                           fontWeight: 700,
                           fontSize: '1.02rem',
-                          color: '#2b1736',
+                          color: 'var(--text-color, #2b1736)',
                           lineHeight: 1.3
                         }}
                       >
@@ -421,7 +490,7 @@ const BlockedUsersPage = () => {
                       <Typography
                         variant="caption"
                         sx={{
-                          color: '#9e859e',
+                          color: currentIsDark ? 'rgba(255, 255, 255, 0.5)' : '#9e859e',
                           fontWeight: 600,
                           fontSize: '0.75rem',
                           display: 'flex',
@@ -477,11 +546,11 @@ const BlockedUsersPage = () => {
           PaperProps={{
             sx: {
               borderRadius: '28px',
-              background: 'linear-gradient(145deg, rgba(255, 255, 255, 0.96) 0%, rgba(255, 245, 249, 0.92) 100%)',
+              background: currentIsDark ? 'rgba(26, 20, 36, 0.96)' : 'var(--surface-color, linear-gradient(145deg, rgba(255, 255, 255, 0.96) 0%, rgba(255, 245, 249, 0.92) 100%))',
               backdropFilter: 'blur(24px)',
               WebkitBackdropFilter: 'blur(24px)',
-              boxShadow: '0 24px 48px -8px rgba(240, 98, 146, 0.28), 0 12px 24px rgba(0, 0, 0, 0.06), inset 0 1px 2px rgba(255, 255, 255, 1)',
-              border: '1.5px solid rgba(255, 255, 255, 0.95)',
+              boxShadow: '0 24px 48px -8px rgba(var(--primary-rgb, 240, 98, 146), 0.28), 0 12px 24px rgba(0, 0, 0, 0.06), inset 0 1px 2px rgba(255, 255, 255, 1)',
+              border: currentIsDark ? '1px solid rgba(255, 255, 255, 0.15)' : '1.5px solid rgba(255, 255, 255, 0.95)',
               p: { xs: 2.5, sm: 3 },
               maxWidth: 380,
               mx: 2
@@ -496,19 +565,19 @@ const BlockedUsersPage = () => {
                 borderRadius: '50%',
                 mx: 'auto',
                 mb: 2,
-                background: 'linear-gradient(145deg, #ffffff, #ffeaf1)',
-                boxShadow: '0 8px 18px -2px rgba(240, 98, 146, 0.22), inset 0 1px 1px #ffffff',
-                border: '1.5px solid #ffffff',
+                background: currentIsDark ? 'rgba(45, 36, 62, 0.9)' : 'linear-gradient(145deg, #ffffff, #ffeaf1)',
+                boxShadow: '0 8px 18px -2px rgba(var(--primary-rgb, 240, 98, 146), 0.22), inset 0 1px 1px #ffffff',
+                border: '1.5px solid rgba(255, 255, 255, 0.3)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center'
               }}
             >
-              <BlockRoundedIcon sx={{ fontSize: 26, color: '#f06292' }} />
+              <BlockRoundedIcon sx={{ fontSize: 26, color: 'var(--primary-color, #f06292)' }} />
             </Box>
             <DialogContentText
               sx={{
-                color: '#2b1736',
+                color: 'var(--text-color, #2b1736)',
                 fontSize: '1.02rem',
                 lineHeight: 1.5,
                 fontWeight: 500

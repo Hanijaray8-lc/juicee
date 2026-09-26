@@ -51,6 +51,7 @@ import { App as CapacitorApp } from '@capacitor/app';
 import MusicNoteRoundedIcon from '@mui/icons-material/MusicNoteRounded';
 import RingtoneModal from './components/RingtoneModal';
 import { getRingtoneSetting } from './utils/ringtoneManager';
+import { useSocket } from './context/socketContext';
 import {
   getCustomWallpapersLocally,
   saveCustomWallpaperLocally,
@@ -614,6 +615,7 @@ const initialSwitchState = {
 
 const Settings = ({ onBack }) => {
   useSwipeBack();
+  const socket = useSocket();
   const [showEditProfile, setShowEditProfile] = React.useState(false);
   const [showHelp, setShowHelp] = React.useState(false);
   const [showTutorialGuide, setShowTutorialGuide] = React.useState(false);
@@ -2315,10 +2317,9 @@ const Settings = ({ onBack }) => {
             }}
             fullWidth={isMobile}
             onClick={async () => {
-              localStorage.removeItem('userId');
-              localStorage.removeItem('token');
-              localStorage.removeItem('username');
-              localStorage.removeItem('profileImage');
+              const currentUserId = userId || localStorage.getItem('userId');
+
+              // 1. Clear native AudioRoute session
               if (typeof window !== 'undefined' && window.Capacitor) {
                 const { AudioRoute } = window.Capacitor.Plugins || {};
                 if (AudioRoute && typeof AudioRoute.clearSession === 'function') {
@@ -2327,7 +2328,45 @@ const Settings = ({ onBack }) => {
                   } catch (e) { }
                 }
               }
-              navigate('/signin');
+
+              // 2. Disconnect socket session immediately
+              if (socket) {
+                try {
+                  if (currentUserId) socket.emit('logout', { userId: currentUserId });
+                  socket.disconnect();
+                } catch (e) {
+                  console.warn('Socket disconnect error:', e);
+                }
+              }
+
+              // 3. Clear all user localstorage & localmemory (sessionStorage)
+              try {
+                const savedTheme = localStorage.getItem('appTheme');
+                localStorage.clear();
+                if (savedTheme) {
+                  localStorage.setItem('appTheme', savedTheme);
+                }
+              } catch (e) {
+                console.warn('LocalStorage clear error:', e);
+              }
+
+              try {
+                sessionStorage.clear();
+              } catch (e) { }
+
+              // 4. Dispatch logout events
+              try {
+                window.dispatchEvent(new CustomEvent('juicy_user_logged_out', { detail: { userId: currentUserId } }));
+                window.dispatchEvent(new Event('storage'));
+              } catch (e) { }
+
+              // 5. Instantly navigate to SignInPage
+              navigate('/signin', { replace: true });
+              setTimeout(() => {
+                if (window.location.pathname !== '/signin') {
+                  window.location.replace('/signin');
+                }
+              }, 150);
             }}
           >
             Sign Out

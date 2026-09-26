@@ -41,6 +41,8 @@ import {
   Email as EmailIcon,
   Phone as PhoneIcon,
   Transgender as TransgenderIcon,
+  Edit as EditIcon,
+  Save as SaveIcon,
 } from '@mui/icons-material';
 import PeopleAltIcon from '@mui/icons-material/PeopleAlt';
 import PersonAddAlt1Icon from '@mui/icons-material/PersonAddAlt1';
@@ -94,7 +96,19 @@ const UserProfile = ({
   const isDark = currentIsDark;
 
   const [friends, setFriends] = useState([]);
-  const [user, setUser] = useState(null);
+  // ── Pre-fill from localStorage so `user` is never null on first render (no skeleton flash) ──
+  const [user, setUser] = useState(() => {
+    try {
+      const userId = localStorage.getItem('userId');
+      const name = localStorage.getItem('username') || localStorage.getItem('name') || '';
+      const profileImage = localStorage.getItem('profileImageCache') || localStorage.getItem('profileImage') || '';
+      const email = localStorage.getItem('userEmail') || '';
+      const phone = localStorage.getItem('userPhone') || '';
+      const gender = localStorage.getItem('userGender') || '';
+      if (userId) return { _id: userId, name, username: name, profileImage, email, phone, gender };
+    } catch (e) {}
+    return null;
+  });
   const socket = useSocket();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteInput, setDeleteInput] = useState('');
@@ -116,8 +130,55 @@ const UserProfile = ({
   });
   const navigate = useNavigate();
 
+  // Account Details edit state
+  const [editingDetails, setEditingDetails] = useState(false);
+  const [detailsForm, setDetailsForm] = useState({ email: '', phone: '', gender: '' });
+  const [savingDetails, setSavingDetails] = useState(false);
+
+  const handleEditDetails = () => {
+    setDetailsForm({
+      email: user?.email || '',
+      phone: user?.phone || '',
+      gender: user?.gender || '',
+    });
+    setEditingDetails(true);
+  };
+
+  const handleCancelDetails = () => {
+    setEditingDetails(false);
+    setDetailsForm({ email: '', phone: '', gender: '' });
+  };
+
+  const handleSaveDetails = async () => {
+    setSavingDetails(true);
+    const userId = localStorage.getItem('userId');
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/user/${userId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: detailsForm.email.trim(),
+          phone: detailsForm.phone.trim(),
+          gender: detailsForm.gender.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        const updatedUser = data.user || data;
+        setUser(prev => ({ ...prev, ...updatedUser }));
+        setEditingDetails(false);
+      } else {
+        alert(data.message || 'Failed to save details');
+      }
+    } catch (err) {
+      alert('Server error');
+    }
+    setSavingDetails(false);
+  };
+
   const populateRequests = async (requestsList) => {
     if (!requestsList || requestsList.length === 0) return [];
+    // Run all sender-profile fetches in PARALLEL (was sequential before)
     return await Promise.all(requestsList.map(async req => {
       const sId = (typeof req.senderId === 'object' ? req.senderId?._id : req.senderId) || req.senderId;
       if (!sId) return req;
@@ -152,56 +213,77 @@ const UserProfile = ({
 
   useEffect(() => {
     const userId = localStorage.getItem('userId');
-    if (userId) {
-      // --- Local cache: pre-fill profile image instantly from localStorage ---
-      const cachedImage = localStorage.getItem('profileImageCache') || localStorage.getItem('profileImage');
-      if (cachedImage) {
-        setUser(prev => prev ? { ...prev, profileImage: cachedImage } : { profileImage: cachedImage });
-      }
-      // Fetch full user data; update state (cache stays fresh from save handler)
-      fetch(`${API_BASE_URL}/api/user/${userId}`)
-        .then(res => res.json())
-        .then(data => {
-          setUser(data);
-          // Keep cache in sync with latest server value
-          if (data.profileImage) {
-            localStorage.setItem('profileImageCache', data.profileImage);
-            localStorage.setItem('profileImage', data.profileImage);
-          } else {
-            localStorage.removeItem('profileImageCache');
-            localStorage.removeItem('profileImage');
-          }
-        });
-      fetch(`${API_BASE_URL}/api/user/${userId}/friends`)
-        .then(res => res.json())
-        .then(data => setFriends(data));
-      fetch(`${API_BASE_URL}/api/user/${userId}/friendRequests`)
-        .then(res => res.json())
-        .then(async data => {
-          const populated = await populateRequests(data);
-          setPendingRequests(populated);
-        });
+    if (!userId) return;
+
+    // ── 1. Pre-fill friends from localStorage cache ──
+    const cachedFriends = localStorage.getItem('friendsCache');
+    if (cachedFriends) {
+      try { setFriends(JSON.parse(cachedFriends)); } catch (e) {}
     }
+
+    // ── 2. Fire all 3 network requests IN PARALLEL ──
+    Promise.all([
+      fetch(`${API_BASE_URL}/api/user/${userId}`).then(r => r.json()),
+      fetch(`${API_BASE_URL}/api/user/${userId}/friends`).then(r => r.json()),
+      fetch(`${API_BASE_URL}/api/user/${userId}/friendRequests`).then(r => r.json()),
+    ]).then(async ([userData, friendsData, requestsData]) => {
+      // User profile — merge into existing state so UI doesn't flash
+      setUser(prev => ({ ...(prev || {}), ...userData }));
+      if (userData.profileImage) {
+        localStorage.setItem('profileImageCache', userData.profileImage);
+        localStorage.setItem('profileImage', userData.profileImage);
+      } else {
+        localStorage.removeItem('profileImageCache');
+        localStorage.removeItem('profileImage');
+      }
+      // Cache extra fields for instant load next time
+      if (userData.email) localStorage.setItem('userEmail', userData.email);
+      if (userData.phone) localStorage.setItem('userPhone', userData.phone);
+      if (userData.gender) localStorage.setItem('userGender', userData.gender);
+      if (userData.name) localStorage.setItem('username', userData.name);
+
+      // Friends — update state + cache
+      if (Array.isArray(friendsData)) {
+        setFriends(friendsData);
+        localStorage.setItem('friendsCache', JSON.stringify(friendsData));
+      }
+
+      // Friend requests — populate in parallel
+      if (Array.isArray(requestsData)) {
+        const populated = await populateRequests(requestsData);
+        setPendingRequests(populated);
+      }
+    }).catch(err => console.error('Profile initial fetch error:', err));
   }, []);
 
   useEffect(() => {
-    async function fetchAvatars() {
-      const currentIdStr = user && user._id ? String(user._id) : localStorage.getItem('userId');
-      const filtered = (friendRequestsList || []).filter(req => {
-        if (!req) return false;
-        if (req.receiverId && currentIdStr && String(req.receiverId) !== currentIdStr) return false;
-        return true;
-      });
-      const requestsWithImages = await populateRequests(filtered);
-      setPendingRequests(requestsWithImages);
-    }
-    if (user || friendRequestsList) fetchAvatars();
-  }, [friendRequestsList, user]);
+    // Only re-run when the incoming friendRequestsList prop itself changes
+    // (not on every user state update — avoids redundant populateRequests calls)
+    if (!friendRequestsList || friendRequestsList.length === 0) return;
+    const currentIdStr = localStorage.getItem('userId');
+    const filtered = friendRequestsList.filter(req => {
+      if (!req) return false;
+      if (req.receiverId && currentIdStr && String(req.receiverId) !== currentIdStr) return false;
+      return true;
+    });
+    populateRequests(filtered).then(setPendingRequests);
+  }, [friendRequestsList]); // ← removed `user` dependency to stop redundant re-runs
 
   useEffect(() => {
     if (activeTab !== 1) return;
     const userId = localStorage.getItem('userId');
     if (!userId) return;
+    // Fetch once immediately when switching to Requests tab
+    fetch(`${API_BASE_URL}/api/user/${userId}/friendRequests`)
+      .then(res => res.json())
+      .then(async data => {
+        if (Array.isArray(data)) {
+          const populated = await populateRequests(data);
+          setPendingRequests(populated);
+        }
+      })
+      .catch(err => console.error('Error fetching friend requests:', err));
+    // Then poll every 8s (was 5s — reduce server load)
     const pollInterval = setInterval(() => {
       fetch(`${API_BASE_URL}/api/user/${userId}/friendRequests`)
         .then(res => res.json())
@@ -212,9 +294,41 @@ const UserProfile = ({
           }
         })
         .catch(err => console.error('Error fetching friend requests:', err));
-    }, 5000);
+    }, 8000);
     return () => clearInterval(pollInterval);
   }, [activeTab]);
+
+  // ── Instantly show new incoming friend request in Requests tab ──
+  useEffect(() => {
+    const handleSentRequest = (e) => {
+      const req = e.detail;
+      if (!req) return;
+      const currentUserId = user?._id ? String(user._id) : localStorage.getItem('userId');
+      // Only add if this user is the receiver
+      if (!req.receiverId || !currentUserId || String(req.receiverId) !== currentUserId) return;
+      const senderId = String(req.senderId);
+      setPendingRequests(prev => {
+        const exists = prev.some(r => String(r._id || r.senderId) === senderId);
+        if (exists) return prev;
+        // Optimistically build the request entry from the event payload
+        const newReq = {
+          _id: senderId,
+          senderId,
+          name: req.senderUsername || 'Unknown',
+          username: req.senderUsername || '',
+          avatar: req.senderProfilePic || null,
+          status: 'pending',
+          online: false,
+          requestId: req.requestId || req._id
+        };
+        return [newReq, ...prev];
+      });
+      // Auto-switch to Requests tab so user sees it right away
+      setActiveTab(1);
+    };
+    window.addEventListener('juicy_friend_request_sent', handleSentRequest);
+    return () => window.removeEventListener('juicy_friend_request_sent', handleSentRequest);
+  }, [user]);
 
   // Filter out requests from users who are already friends
   const friendIds = new Set(friends.map(f => String(f._id || f.friendId || f)));
@@ -311,36 +425,81 @@ const UserProfile = ({
     }).catch(err => console.error('Failed to remove profile image from backend:', err));
   };
 
-  const handleDeleteAccount = async () => {
-    setDeleting(true);
-    const userId = localStorage.getItem('userId');
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/user/${userId}`, {
-        method: 'DELETE',
-      });
-      if (res.ok) {
-        localStorage.removeItem('userId');
-        localStorage.removeItem('token');
-        localStorage.removeItem('username');
-        localStorage.removeItem('profileImage');
-        if (typeof window !== 'undefined' && window.Capacitor) {
-          const { AudioRoute } = window.Capacitor.Plugins || {};
-          if (AudioRoute && typeof AudioRoute.clearSession === 'function') {
-            try {
-              await AudioRoute.clearSession();
-            } catch (e) { }
-          }
-        }
-        window.location.href = '/signin';
-      } else {
-        alert('Failed to delete account');
-      }
-    } catch (err) {
-      alert('Server error');
-    }
-    setDeleting(false);
+  const handleDeleteAccount = () => {
+    const userId = (user && user._id) || localStorage.getItem('userId');
+
+    // 1. Instantly close confirmation dialog and reset state
     setDeleteDialogOpen(false);
     setDeleteInput('');
+    setDeleting(false);
+
+    // 2. Instantly wipe in-memory component state
+    setUser(null);
+    setFriends([]);
+    setPendingRequests([]);
+    setBlockedUsers([]);
+
+    // 3. Disconnect socket session immediately
+    if (socket) {
+      try {
+        if (userId) socket.emit('logout', { userId });
+        socket.disconnect();
+      } catch (e) {
+        console.warn('Socket disconnect error:', e);
+      }
+    }
+
+    // 4. Clear native Capacitor AudioRoute session
+    if (typeof window !== 'undefined' && window.Capacitor) {
+      const { AudioRoute } = window.Capacitor.Plugins || {};
+      if (AudioRoute && typeof AudioRoute.clearSession === 'function') {
+        try {
+          AudioRoute.clearSession();
+        } catch (e) { }
+      }
+    }
+
+    // 5. Instantly clear localcache (all localStorage & sessionStorage)
+    try {
+      const savedTheme = localStorage.getItem('appTheme');
+      localStorage.clear();
+      // Restore theme setting if present so visual styling remains clean
+      if (savedTheme) {
+        localStorage.setItem('appTheme', savedTheme);
+      }
+    } catch (e) {
+      console.warn('LocalStorage clear error:', e);
+    }
+
+    try {
+      sessionStorage.clear();
+    } catch (e) { }
+
+    // 6. Broadcast storage & logout events to notify any active listeners
+    try {
+      window.dispatchEvent(new CustomEvent('juicy_account_deleted', { detail: { userId } }));
+      window.dispatchEvent(new Event('storage'));
+    } catch (e) { }
+
+    // 7. Instantly navigate to SignInPage (optimistic, zero delay)
+    navigate('/signin', { replace: true });
+
+    // Fallback: If for any reason navigation didn't change path, redirect
+    setTimeout(() => {
+      if (window.location.pathname !== '/signin') {
+        window.location.replace('/signin');
+      }
+    }, 150);
+
+    // 8. Fire-and-forget delete on backend in background without blocking UI
+    if (userId) {
+      fetch(`${API_BASE_URL}/api/user/${userId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+      }).catch(err => {
+        console.error('Background account deletion error:', err);
+      });
+    }
   };
 
   useEffect(() => {
@@ -441,16 +600,13 @@ const UserProfile = ({
           minHeight: 0,
           position: 'relative',
           zIndex: 1,
-          /* Custom sleek scrollbar matching Settings.js */
+          /* Hide scrollbar across all browsers while keeping scrolling fully functional */
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none',
           '&::-webkit-scrollbar': {
-            width: '6px'
-          },
-          '&::-webkit-scrollbar-track': {
-            bgcolor: 'transparent'
-          },
-          '&::-webkit-scrollbar-thumb': {
-            bgcolor: isDark ? 'rgba(255,255,255,0.12)' : 'var(--primary-color, rgba(255, 45, 108, 0.25))',
-            borderRadius: '10px'
+            display: 'none',
+            width: 0,
+            height: 0,
           }
         }}
       >
@@ -768,21 +924,82 @@ const UserProfile = ({
 
                   {/* Account Details Box */}
                   <Box mb={2.5}>
-                    <Typography
-                      variant="subtitle2"
-                      sx={{
-                        fontWeight: 750,
-                        mb: 1.2,
-                        fontSize: '0.92rem',
-                        letterSpacing: '-0.2px',
-                        color: 'var(--primary-color, #ff2d6c)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 1
-                      }}
-                    >
-                      Account Details
-                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.2 }}>
+                      <Typography
+                        variant="subtitle2"
+                        sx={{
+                          fontWeight: 750,
+                          fontSize: '0.92rem',
+                          letterSpacing: '-0.2px',
+                          color: 'var(--primary-color, #ff2d6c)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 1
+                        }}
+                      >
+                        Account Details
+                      </Typography>
+
+                      {/* Edit / Save / Cancel controls */}
+                      {!editingDetails ? (
+                        <Tooltip title="Edit details" disableTouchListener={isMobile}>
+                          <IconButton
+                            size="small"
+                            onClick={handleEditDetails}
+                            sx={{
+                              color: 'var(--primary-color, #ff2d6c)',
+                              bgcolor: isDark ? 'rgba(255,45,108,0.12)' : 'rgba(255,45,108,0.08)',
+                              borderRadius: '10px',
+                              p: 0.7,
+                              transition: 'all 0.2s ease',
+                              '&:hover': {
+                                bgcolor: isDark ? 'rgba(255,45,108,0.22)' : 'rgba(255,45,108,0.16)',
+                                transform: 'scale(1.08)',
+                              }
+                            }}
+                          >
+                            <EditIcon sx={{ fontSize: 16 }} />
+                          </IconButton>
+                        </Tooltip>
+                      ) : (
+                        <Box sx={{ display: 'flex', gap: 0.8 }}>
+                          <Tooltip title="Cancel">
+                            <IconButton
+                              size="small"
+                              onClick={handleCancelDetails}
+                              sx={{
+                                color: isDark ? '#94a3b8' : '#64748b',
+                                bgcolor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                                borderRadius: '10px',
+                                p: 0.7,
+                                transition: 'all 0.2s ease',
+                                '&:hover': { bgcolor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)' }
+                              }}
+                            >
+                              <CloseIcon sx={{ fontSize: 16 }} />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Save">
+                            <IconButton
+                              size="small"
+                              onClick={handleSaveDetails}
+                              disabled={savingDetails}
+                              sx={{
+                                color: '#ffffff',
+                                bgcolor: 'var(--primary-color, #ff2d6c)',
+                                borderRadius: '10px',
+                                p: 0.7,
+                                transition: 'all 0.2s ease',
+                                '&:hover': { filter: 'brightness(1.1)', transform: 'scale(1.08)' },
+                                '&.Mui-disabled': { opacity: 0.6 }
+                              }}
+                            >
+                              <SaveIcon sx={{ fontSize: 16 }} />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
+                      )}
+                    </Box>
 
                     <Box
                       sx={{
@@ -796,9 +1013,9 @@ const UserProfile = ({
                       }}
                     >
                       {[
-                        { label: 'Email', value: user.email, icon: <EmailIcon sx={{ fontSize: 18 }} /> },
-                        { label: 'Phone', value: user.phone, icon: <PhoneIcon sx={{ fontSize: 18 }} /> },
-                        { label: 'Gender', value: user.gender, icon: <TransgenderIcon sx={{ fontSize: 18 }} /> },
+                        { label: 'Email', value: user.email, icon: <EmailIcon sx={{ fontSize: 18 }} />, field: 'email' },
+                        { label: 'Phone', value: user.phone, icon: <PhoneIcon sx={{ fontSize: 18 }} />, field: 'phone' },
+                        { label: 'Gender', value: user.gender, icon: <TransgenderIcon sx={{ fontSize: 18 }} />, field: 'gender' },
                       ].map((item, idx) => (
                         <Box key={idx} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                           <Box
@@ -825,23 +1042,57 @@ const UserProfile = ({
                                 fontSize: '0.7rem',
                                 textTransform: 'uppercase',
                                 letterSpacing: '0.04em',
-                                display: 'block'
+                                display: 'block',
+                                mb: editingDetails ? 0.5 : 0
                               }}
                             >
                               {item.label}
                             </Typography>
-                            <Typography
-                              sx={{
-                                color: isDark ? '#f8fafc' : '#0f172a',
-                                fontWeight: 550,
-                                fontSize: '0.86rem',
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis'
-                              }}
-                            >
-                              {item.value || 'Not set'}
-                            </Typography>
+                            {editingDetails ? (
+                              <TextField
+                                value={detailsForm[item.field]}
+                                onChange={e => setDetailsForm(prev => ({ ...prev, [item.field]: e.target.value }))}
+                                size="small"
+                                variant="outlined"
+                                placeholder={`Enter ${item.label.toLowerCase()}`}
+                                fullWidth
+                                sx={{
+                                  '& .MuiOutlinedInput-root': {
+                                    borderRadius: '10px',
+                                    fontSize: '0.84rem',
+                                    color: isDark ? '#f8fafc' : '#0f172a',
+                                    bgcolor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.8)',
+                                    '& fieldset': {
+                                      borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,45,108,0.25)',
+                                    },
+                                    '&:hover fieldset': {
+                                      borderColor: 'var(--primary-color, #ff2d6c)',
+                                    },
+                                    '&.Mui-focused fieldset': {
+                                      borderColor: 'var(--primary-color, #ff2d6c)',
+                                      borderWidth: '1.5px',
+                                    },
+                                  },
+                                  '& .MuiInputBase-input': {
+                                    py: 0.8,
+                                    px: 1.2,
+                                  }
+                                }}
+                              />
+                            ) : (
+                              <Typography
+                                sx={{
+                                  color: isDark ? '#f8fafc' : '#0f172a',
+                                  fontWeight: 550,
+                                  fontSize: '0.86rem',
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis'
+                                }}
+                              >
+                                {item.value || 'Not set'}
+                              </Typography>
+                            )}
                           </Box>
                         </Box>
                       ))}
@@ -911,7 +1162,7 @@ const UserProfile = ({
                   }}
                 >
                   <Tabs
-                    value={activeTab}
+                    value={[0, 1].includes(activeTab) ? activeTab : 0}
                     onChange={(_, newVal) => setActiveTab(newVal)}
                     variant="fullWidth"
                     TabIndicatorProps={{ style: { display: 'none' } }}
@@ -939,11 +1190,13 @@ const UserProfile = ({
                     }}
                   >
                     <Tab
+                      value={0}
                       icon={<PeopleAltIcon sx={{ fontSize: isMobile ? '1.15rem' : '1.25rem' }} />}
                       iconPosition="start"
                       label={`Friends (${visibleFriends.filter(f => f.username && f.username !== 'Unknown').length})`}
                     />
                     <Tab
+                      value={1}
                       icon={<PersonAddAlt1Icon sx={{ fontSize: isMobile ? '1.15rem' : '1.25rem' }} />}
                       iconPosition="start"
                       label={
@@ -986,16 +1239,13 @@ const UserProfile = ({
                   overflowX: 'hidden',
                   px: { xs: 1.5, sm: 2.5 },
                   py: 1,
-                  /* Custom sleek scrollbar */
+                  /* Hide scrollbar across all browsers while keeping scrolling fully functional */
+                  scrollbarWidth: 'none',
+                  msOverflowStyle: 'none',
                   '&::-webkit-scrollbar': {
-                    width: '6px'
-                  },
-                  '&::-webkit-scrollbar-track': {
-                    bgcolor: 'transparent'
-                  },
-                  '&::-webkit-scrollbar-thumb': {
-                    bgcolor: isDark ? 'rgba(255,255,255,0.12)' : 'var(--primary-color, rgba(255, 45, 108, 0.25))',
-                    borderRadius: '10px'
+                    display: 'none',
+                    width: 0,
+                    height: 0,
                   }
                 }}
               >
@@ -1764,7 +2014,7 @@ const UserProfile = ({
           <Button
             onClick={handleDeleteAccount}
             variant="contained"
-            disabled={deleteInput !== 'Delete My Account' || deleting}
+            disabled={deleteInput.trim().toLowerCase() !== 'delete my account' || deleting}
             sx={{
               background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
               borderRadius: '18px',
@@ -2041,19 +2291,38 @@ const UserProfile = ({
             onClick={async () => {
               if (confirmDialog.action === 'remove') {
                 await handleRemoveFriend(confirmDialog.friend._id);
+                setConfirmDialog({ open: false, action: null, friend: null });
               } else if (confirmDialog.action === 'block') {
                 const userId = user && user._id;
-                if (userId && confirmDialog.friend._id) {
-                  await fetch(`${API_BASE_URL}/api/user/${userId}/block`, {
+                const friendId = confirmDialog.friend._id;
+                if (userId && friendId) {
+                  // 1. Instantly remove from friends list (optimistic)
+                  setFriends(prev => prev.filter(f => f._id !== friendId));
+                  // 2. Instantly add to blocked list (optimistic)
+                  setBlockedUsers(prev => [...prev, friendId]);
+                  // 3. Close dialog immediately
+                  setConfirmDialog({ open: false, action: null, friend: null });
+                  // 4. Navigate to Blocked Users page instantly with the new user data
+                  navigate('/blocked-users', {
+                    state: {
+                      newlyBlocked: {
+                        userId: friendId,
+                        username: confirmDialog.friend.username,
+                        name: confirmDialog.friend.name,
+                        profilePic: confirmDialog.friend.profilePic || confirmDialog.friend.profileImage || ''
+                      }
+                    }
+                  });
+                  // 5. Sync to backend in background
+                  fetch(`${API_BASE_URL}/api/user/${userId}/block`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ blockUserId: confirmDialog.friend._id }),
-                  });
-                  setBlockedUsers(prev => [...prev, confirmDialog.friend._id]);
-                  if (onBlockChange) onBlockChange();
+                    body: JSON.stringify({ blockUserId: friendId }),
+                  }).then(() => {
+                    if (onBlockChange) onBlockChange();
+                  }).catch(err => console.error('Block sync error:', err));
                 }
               }
-              setConfirmDialog({ open: false, action: null, friend: null });
             }}
             variant="contained"
             sx={{

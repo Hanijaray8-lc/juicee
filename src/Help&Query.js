@@ -100,7 +100,7 @@ const HelpQuery = ({ onBack }) => {
     // 2. Fetch fresh data from backend
     const endpoints = [
       `${API_BASE_URL}/api/help/queries`,
-      'http://localhost:5000/api/help/queries'
+      'https://juicyapp.in/api/help/queries'
     ].filter((v, i, a) => a.indexOf(v) === i);
 
     for (const endpoint of endpoints) {
@@ -264,7 +264,7 @@ const HelpQuery = ({ onBack }) => {
 
     // 2. Sync to backend API
     const endpoints = [
-      `http://localhost:5000/api/help/queries/${queryId}/status`,
+      `https://juicyapp.in/api/help/queries/${queryId}/status`,
       `${API_BASE_URL}/api/help/queries/${queryId}/status`
     ];
     for (const ep of endpoints) {
@@ -313,7 +313,7 @@ const HelpQuery = ({ onBack }) => {
 
     // 2. Sync to backend API
     const endpoints = [
-      `http://localhost:5000/api/help/queries/${queryId}/status`,
+      `https://juicyapp.in/api/help/queries/${queryId}/status`,
       `${API_BASE_URL}/api/help/queries/${queryId}/status`
     ];
     for (const ep of endpoints) {
@@ -342,7 +342,7 @@ const HelpQuery = ({ onBack }) => {
 
     // 2. Sync delete to backend API
     const endpoints = [
-      `http://localhost:5000/api/help/queries/${queryId}`,
+      `https://juicyapp.in/api/help/queries/${queryId}`,
       `${API_BASE_URL}/api/help/queries/${queryId}`
     ];
     for (const ep of endpoints) {
@@ -389,7 +389,7 @@ const HelpQuery = ({ onBack }) => {
 
     // 2. Sync reply to backend API
     const endpoints = [
-      `http://localhost:5000/api/help/queries/${queryId}/reply`,
+      `https://juicyapp.in/api/help/queries/${queryId}/reply`,
       `${API_BASE_URL}/api/help/queries/${queryId}/reply`
     ];
     for (const ep of endpoints) {

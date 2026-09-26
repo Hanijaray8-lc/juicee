@@ -172,6 +172,45 @@ const FinderPage = () => {
     return {};
   });
 
+  const [currentIsDark, setCurrentIsDark] = useState(() => {
+    try {
+      const saved = localStorage.getItem('appTheme');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const bgCol = parsed?.colors?.background;
+        if (bgCol && bgCol.startsWith('#')) {
+          const hex = bgCol.replace('#', '').trim();
+          const r = parseInt(hex.substring(0, 2), 16);
+          const g = parseInt(hex.substring(2, 4), 16);
+          const b = parseInt(hex.substring(4, 6), 16);
+          return (r * 299 + g * 587 + b * 114) / 1000 < 128;
+        }
+      }
+    } catch (e) {}
+    return false;
+  });
+
+  useEffect(() => {
+    const handleThemeChange = () => {
+      try {
+        const saved = localStorage.getItem('appTheme');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          const bgCol = parsed?.colors?.background;
+          if (bgCol && bgCol.startsWith('#')) {
+            const hex = bgCol.replace('#', '').trim();
+            const r = parseInt(hex.substring(0, 2), 16);
+            const g = parseInt(hex.substring(2, 4), 16);
+            const b = parseInt(hex.substring(4, 6), 16);
+            setCurrentIsDark((r * 299 + g * 587 + b * 114) / 1000 < 128);
+          }
+        }
+      } catch (e) {}
+    };
+    window.addEventListener('themeChanged', handleThemeChange);
+    return () => window.removeEventListener('themeChanged', handleThemeChange);
+  }, []);
+
   // Only show initial skeleton if we have neither cached friends nor cached gestures
   const [initialLoading, setInitialLoading] = useState(() => {
     if (!userId) return false;
@@ -480,7 +519,9 @@ const FinderPage = () => {
   return (
     <Box sx={{
       height: '100%',
-      bgcolor: '#faf5f7',
+      bgcolor: 'var(--background-color, #faf5f7)',
+      background: 'var(--background-color, #faf5f7)',
+      color: 'var(--text-color, #1a1a2e)',
       display: 'flex',
       flexDirection: 'column',
       fontFamily: `'Poppins', sans-serif`,
@@ -495,7 +536,7 @@ const FinderPage = () => {
         width: 240,
         height: 240,
         borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(240,98,146,0.15) 0%, transparent 70%)',
+        background: 'radial-gradient(circle, rgba(var(--primary-rgb, 240,98,146), 0.15) 0%, transparent 70%)',
         pointerEvents: 'none',
         zIndex: 0
       }} />
@@ -506,7 +547,7 @@ const FinderPage = () => {
         width: 160,
         height: 160,
         borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(240,98,146,0.08) 0%, transparent 70%)',
+        background: 'radial-gradient(circle, rgba(var(--primary-rgb, 240,98,146), 0.08) 0%, transparent 70%)',
         pointerEvents: 'none',
         zIndex: 0
       }} />
@@ -516,9 +557,9 @@ const FinderPage = () => {
         position: 'sticky',
         top: 0,
         zIndex: 10,
-        bgcolor: 'rgba(250,245,247,0.96)',
+        bgcolor: currentIsDark ? 'rgba(26, 20, 36, 0.95)' : 'var(--surface-color, rgba(250,245,247,0.96))',
         backdropFilter: 'blur(16px)',
-        borderBottom: '1px solid rgba(240,98,146,0.1)',
+        borderBottom: '1px solid rgba(var(--primary-rgb, 240,98,146), 0.15)',
         px: { xs: 2, sm: 3 },
         pt: { xs: 2, sm: 2.5 },
         pb: 1.5
@@ -528,10 +569,10 @@ const FinderPage = () => {
           <IconButton 
             onClick={() => navigate('/chat?tab=settings')} 
             sx={{
-              color: '#f06292',
+              color: 'var(--primary-color, #f06292)',
               mr: 1.5,
-              bgcolor: 'rgba(240,98,146,0.08)',
-              '&:hover': { bgcolor: 'rgba(240,98,146,0.18)' }
+              bgcolor: 'rgba(var(--primary-rgb, 240,98,146), 0.08)',
+              '&:hover': { bgcolor: 'rgba(var(--primary-rgb, 240,98,146), 0.18)' }
             }}
           >
             <ArrowBackIcon />
@@ -541,7 +582,7 @@ const FinderPage = () => {
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <Typography variant="h6" sx={{
                 fontWeight: 800,
-                color: '#1a1a2e',
+                color: 'var(--text-color, #1a1a2e)',
                 letterSpacing: '-0.4px',
                 lineHeight: 1.2
               }}>
@@ -549,7 +590,7 @@ const FinderPage = () => {
               </Typography>
             </Box>
             <Typography variant="caption" sx={{ 
-              color: '#888', 
+              color: currentIsDark ? 'rgba(255,255,255,0.6)' : '#888', 
               display: 'block', 
               mt: 0.2,
               fontWeight: 500 
@@ -565,9 +606,9 @@ const FinderPage = () => {
                 onClick={() => loadData(true)}
                 disabled={isRefreshing}
                 sx={{
-                  color: '#f06292',
-                  bgcolor: 'rgba(240,98,146,0.08)',
-                  '&:hover': { bgcolor: 'rgba(240,98,146,0.18)' },
+                  color: 'var(--primary-color, #f06292)',
+                  bgcolor: 'rgba(var(--primary-rgb, 240,98,146), 0.08)',
+                  '&:hover': { bgcolor: 'rgba(var(--primary-rgb, 240,98,146), 0.18)' },
                   animation: isRefreshing ? 'spin 1s linear infinite' : 'none',
                   '@keyframes spin': {
                     '0%': { transform: 'rotate(0deg)' },
@@ -580,14 +621,14 @@ const FinderPage = () => {
             </Tooltip>
 
             <Chip
-              icon={<GestureIcon sx={{ fontSize: 15, color: '#f06292 !important' }} />}
+              icon={<GestureIcon sx={{ fontSize: 15, color: 'var(--primary-color, #f06292) !important' }} />}
               label={`${mappedCount}/${friends.length}`}
               size="small"
               sx={{
-                bgcolor: 'rgba(240,98,146,0.1)',
-                color: '#f06292',
+                bgcolor: 'rgba(var(--primary-rgb, 240,98,146), 0.1)',
+                color: 'var(--primary-color, #f06292)',
                 fontWeight: 700,
-                border: '1px solid rgba(240,98,146,0.25)',
+                border: '1px solid rgba(var(--primary-rgb, 240,98,146), 0.25)',
                 '& .MuiChip-label': { px: 1 }
               }}
             />
@@ -605,16 +646,16 @@ const FinderPage = () => {
               px: 1.5,
               py: 0.5,
               borderRadius: 2.5,
-              bgcolor: '#ffffff',
-              border: '1.5px solid rgba(240,98,146,0.15)',
+              bgcolor: currentIsDark ? 'rgba(40, 32, 54, 0.8)' : 'var(--surface-color, #ffffff)',
+              border: '1.5px solid rgba(var(--primary-rgb, 240,98,146), 0.15)',
               transition: 'all 0.2s ease',
               '&:focus-within': {
-                borderColor: '#f06292',
-                boxShadow: '0 0 0 3px rgba(240,98,146,0.1)'
+                borderColor: 'var(--primary-color, #f06292)',
+                boxShadow: '0 0 0 3px rgba(var(--primary-rgb, 240,98,146), 0.1)'
               }
             }}
           >
-            <SearchIcon sx={{ color: '#f06292', mr: 1, fontSize: 20 }} />
+            <SearchIcon sx={{ color: 'var(--primary-color, #f06292)', mr: 1, fontSize: 20 }} />
             <InputBase
               placeholder="Search friends to map gestures..."
               value={searchQuery}
@@ -623,7 +664,7 @@ const FinderPage = () => {
                 flex: 1,
                 fontSize: '0.88rem',
                 fontFamily: `'Poppins', sans-serif`,
-                color: '#1a1a2e'
+                color: 'var(--text-color, #1a1a2e)'
               }}
             />
             {searchQuery && (
@@ -641,11 +682,11 @@ const FinderPage = () => {
               onClick={() => setActiveFilter('all')}
               sx={{
                 fontWeight: activeFilter === 'all' ? 700 : 500,
-                bgcolor: activeFilter === 'all' ? '#f06292' : 'rgba(0,0,0,0.04)',
-                color: activeFilter === 'all' ? '#fff' : '#666',
-                border: activeFilter === 'all' ? 'none' : '1px solid rgba(0,0,0,0.06)',
+                bgcolor: activeFilter === 'all' ? 'var(--primary-color, #f06292)' : (currentIsDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)'),
+                color: activeFilter === 'all' ? '#fff' : (currentIsDark ? 'rgba(255,255,255,0.7)' : '#666'),
+                border: activeFilter === 'all' ? 'none' : (currentIsDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.06)'),
                 '&:hover': {
-                  bgcolor: activeFilter === 'all' ? '#e91e63' : 'rgba(240,98,146,0.08)'
+                  bgcolor: activeFilter === 'all' ? 'var(--primary-color, #e91e63)' : 'rgba(var(--primary-rgb, 240,98,146), 0.08)'
                 }
               }}
             />
@@ -682,11 +723,11 @@ const FinderPage = () => {
 
         {/* Progress indicator */}
         {friends.length > 0 && (
-          <Box sx={{ width: '100%', height: 3, bgcolor: 'rgba(240,98,146,0.1)', borderRadius: 2, overflow: 'hidden', mt: 1.5 }}>
+          <Box sx={{ width: '100%', height: 3, bgcolor: 'rgba(var(--primary-rgb, 240,98,146), 0.1)', borderRadius: 2, overflow: 'hidden', mt: 1.5 }}>
             <Box sx={{
               width: `${(mappedCount / friends.length) * 100}%`,
               height: '100%',
-              bgcolor: '#f06292',
+              bgcolor: 'var(--primary-color, #f06292)',
               borderRadius: 2,
               transition: 'width 0.4s ease'
             }} />
@@ -718,14 +759,14 @@ const FinderPage = () => {
                 sx={{
                   borderRadius: 3,
                   p: 2,
-                  bgcolor: '#ffffff',
-                  border: '1px solid rgba(0,0,0,0.04)',
+                  bgcolor: currentIsDark ? 'rgba(36, 28, 48, 0.9)' : 'var(--surface-color, #ffffff)',
+                  border: currentIsDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.04)',
                   display: 'flex',
                   alignItems: 'center',
                   gap: 2
                 }}
               >
-                <Skeleton variant="circular" width={52} height={52} sx={{ bgcolor: 'rgba(240,98,146,0.08)' }} />
+                <Skeleton variant="circular" width={52} height={52} sx={{ bgcolor: 'rgba(var(--primary-rgb, 240,98,146), 0.08)' }} />
                 <Box sx={{ flex: 1 }}>
                   <Skeleton variant="text" width="60%" height={24} />
                   <Skeleton variant="text" width="30%" height={18} />
@@ -749,22 +790,22 @@ const FinderPage = () => {
               width: 80,
               height: 80,
               borderRadius: '50%',
-              bgcolor: 'rgba(240,98,146,0.08)',
+              bgcolor: 'rgba(var(--primary-rgb, 240,98,146), 0.08)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center'
             }}>
-              <GestureIcon sx={{ fontSize: 38, color: '#f06292', opacity: 0.6 }} />
+              <GestureIcon sx={{ fontSize: 38, color: 'var(--primary-color, #f06292)', opacity: 0.6 }} />
             </Box>
             <Typography sx={{
-              color: '#1a1a2e',
+              color: 'var(--text-color, #1a1a2e)',
               fontWeight: 700,
               fontSize: '1.05rem'
             }}>
               No friends found
             </Typography>
             <Typography sx={{
-              color: '#888',
+              color: currentIsDark ? 'rgba(255,255,255,0.6)' : '#888',
               fontSize: '0.85rem',
               maxWidth: 260,
               lineHeight: 1.5
@@ -778,8 +819,8 @@ const FinderPage = () => {
               sx={{
                 mt: 1,
                 borderRadius: 2.5,
-                color: '#f06292',
-                borderColor: '#f06292',
+                color: 'var(--primary-color, #f06292)',
+                borderColor: 'var(--primary-color, #f06292)',
                 textTransform: 'none',
                 fontWeight: 600
               }}
@@ -798,8 +839,8 @@ const FinderPage = () => {
             gap: 1.5,
             textAlign: 'center'
           }}>
-            <FilterListIcon sx={{ fontSize: 36, color: '#f06292', opacity: 0.4 }} />
-            <Typography sx={{ color: '#666', fontWeight: 600, fontSize: '0.95rem' }}>
+            <FilterListIcon sx={{ fontSize: 36, color: 'var(--primary-color, #f06292)', opacity: 0.4 }} />
+            <Typography sx={{ color: currentIsDark ? 'rgba(255,255,255,0.7)' : '#666', fontWeight: 600, fontSize: '0.95rem' }}>
               No contacts match your filter
             </Typography>
             <Button
@@ -808,7 +849,7 @@ const FinderPage = () => {
                 setSearchQuery('');
                 setActiveFilter('all');
               }}
-              sx={{ color: '#f06292', textTransform: 'none', fontWeight: 600 }}
+              sx={{ color: 'var(--primary-color, #f06292)', textTransform: 'none', fontWeight: 600 }}
             >
               Reset Filters
             </Button>
@@ -828,13 +869,13 @@ const FinderPage = () => {
                   sx={{
                     borderRadius: 3,
                     overflow: 'hidden',
-                    bgcolor: '#ffffff',
-                    border: '1px solid rgba(0,0,0,0.04)',
+                    bgcolor: currentIsDark ? 'rgba(36, 28, 48, 0.9)' : 'var(--surface-color, #ffffff)',
+                    border: currentIsDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.04)',
                     boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
                     transition: 'all 0.2s ease',
                     '&:hover': {
-                      boxShadow: '0 4px 14px rgba(240,98,146,0.08)',
-                      borderColor: 'rgba(240,98,146,0.15)'
+                      boxShadow: '0 4px 14px rgba(var(--primary-rgb, 240,98,146), 0.12)',
+                      borderColor: 'rgba(var(--primary-rgb, 240,98,146), 0.25)'
                     }
                   }}
                 >
@@ -880,7 +921,7 @@ const FinderPage = () => {
                     <Box sx={{ flex: 1, minWidth: 0 }}>
                       <Typography sx={{ 
                         fontWeight: 700, 
-                        color: '#1a1a2e',
+                        color: 'var(--text-color, #1a1a2e)',
                         fontSize: '0.95rem',
                         mb: 0.3,
                         whiteSpace: 'nowrap',
@@ -912,8 +953,8 @@ const FinderPage = () => {
                               height: 22,
                               fontSize: '0.7rem',
                               fontWeight: 600,
-                              bgcolor: 'rgba(0,0,0,0.04)',
-                              color: '#888',
+                              bgcolor: currentIsDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
+                              color: currentIsDark ? 'rgba(255,255,255,0.6)' : '#888',
                               '& .MuiChip-label': { px: 1 }
                             }}
                           />
@@ -937,12 +978,12 @@ const FinderPage = () => {
                           py: 0.6,
                           fontSize: '0.8rem',
                           minWidth: 0,
-                          color: isMapped ? '#f06292' : '#ffffff',
-                          borderColor: isMapped ? 'rgba(240,98,146,0.35)' : 'transparent',
-                          bgcolor: isMapped ? 'transparent' : '#f06292',
+                          color: isMapped ? 'var(--primary-color, #f06292)' : '#ffffff',
+                          borderColor: isMapped ? 'rgba(var(--primary-rgb, 240,98,146), 0.35)' : 'transparent',
+                          bgcolor: isMapped ? 'transparent' : 'var(--primary-color, #f06292)',
                           '&:hover': {
-                            bgcolor: isMapped ? 'rgba(240,98,146,0.08)' : '#e91e63',
-                            borderColor: isMapped ? 'rgba(240,98,146,0.6)' : 'transparent'
+                            bgcolor: isMapped ? 'rgba(var(--primary-rgb, 240,98,146), 0.08)' : 'var(--primary-color, #e91e63)',
+                            borderColor: isMapped ? 'rgba(var(--primary-rgb, 240,98,146), 0.6)' : 'transparent'
                           }
                         }}
                       >
@@ -984,7 +1025,8 @@ const FinderPage = () => {
           sx: {
             borderRadius: 3.5,
             m: { xs: 1.5, sm: 2 },
-            bgcolor: '#ffffff',
+            bgcolor: currentIsDark ? '#1f182e' : 'var(--surface-color, #ffffff)',
+            color: 'var(--text-color, #1a1a2e)',
             overflow: 'hidden',
             boxShadow: '0 20px 60px rgba(0,0,0,0.18)'
           }
@@ -995,23 +1037,23 @@ const FinderPage = () => {
           pb: 1, 
           pt: 2.5,
           px: 2.5,
-          color: '#1a1a2e',
+          color: 'var(--text-color, #1a1a2e)',
           display: 'flex',
           alignItems: 'center',
           gap: 1
         }}>
-          <AutoFixHighIcon sx={{ color: '#f06292', fontSize: 22 }} />
+          <AutoFixHighIcon sx={{ color: 'var(--primary-color, #f06292)', fontSize: 22 }} />
           Map Quick Gesture
         </DialogTitle>
         
         <DialogContent sx={{ px: 2.5, pb: 1 }}>
           <Typography variant="body2" sx={{ 
-            color: '#666', 
+            color: currentIsDark ? 'rgba(255,255,255,0.7)' : '#666', 
             mb: 2,
             lineHeight: 1.6,
             fontSize: '0.85rem'
           }}>
-            Draw a unique sign for <b style={{ color: '#f06292' }}>{drawingUser?.username || drawingUser?.name}</b> in one continuous stroke.
+            Draw a unique sign for <b style={{ color: 'var(--primary-color, #f06292)' }}>{drawingUser?.username || drawingUser?.name}</b> in one continuous stroke.
           </Typography>
 
           <Box
@@ -1028,13 +1070,13 @@ const FinderPage = () => {
                 height: { xs: 280, sm: 320 },
                 maxWidth: 320,
                 borderRadius: 3,
-                border: '2.5px dashed rgba(240,98,146,0.35)',
-                bgcolor: 'rgba(240,98,146,0.02)',
+                border: '2.5px dashed rgba(var(--primary-rgb, 240,98,146), 0.35)',
+                bgcolor: 'rgba(var(--primary-rgb, 240,98,146), 0.02)',
                 position: 'relative',
                 overflow: 'hidden',
                 transition: 'border-color 0.2s',
                 '&:hover': {
-                  borderColor: 'rgba(240,98,146,0.6)'
+                  borderColor: 'rgba(var(--primary-rgb, 240,98,146), 0.6)'
                 }
               }}
             >
@@ -1066,8 +1108,8 @@ const FinderPage = () => {
                   pointerEvents: 'none',
                   textAlign: 'center'
                 }}>
-                  <GestureIcon sx={{ fontSize: 40, color: 'rgba(240,98,146,0.25)', mb: 1 }} />
-                  <Typography sx={{ color: 'rgba(240,98,146,0.4)', fontSize: '0.85rem', fontWeight: 500 }}>
+                  <GestureIcon sx={{ fontSize: 40, color: 'rgba(var(--primary-rgb, 240,98,146), 0.25)', mb: 1 }} />
+                  <Typography sx={{ color: 'rgba(var(--primary-rgb, 240,98,146), 0.4)', fontSize: '0.85rem', fontWeight: 500 }}>
                     Start drawing gesture here
                   </Typography>
                 </Box>
@@ -1091,11 +1133,11 @@ const FinderPage = () => {
               borderRadius: 2.5,
               textTransform: 'none',
               fontWeight: 700,
-              color: '#666',
-              borderColor: 'rgba(0,0,0,0.12)',
+              color: currentIsDark ? 'rgba(255,255,255,0.7)' : '#666',
+              borderColor: currentIsDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.12)',
               py: 0.9,
               flex: { xs: '1 1 100%', sm: '0 0 auto' },
-              '&:hover': { borderColor: 'rgba(0,0,0,0.25)', bgcolor: 'rgba(0,0,0,0.02)' }
+              '&:hover': { borderColor: currentIsDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.25)', bgcolor: 'rgba(0,0,0,0.02)' }
             }}
           >
             Cancel
@@ -1127,12 +1169,12 @@ const FinderPage = () => {
               fontWeight: 700,
               py: 0.9,
               flex: { xs: '1 1 100%', sm: '1 1 auto' },
-              bgcolor: '#f06292',
-              '&:hover': { bgcolor: '#e91e63' },
-              '&.Mui-disabled': { bgcolor: 'rgba(240,98,146,0.2)', color: 'rgba(255,255,255,0.6)' }
+              bgcolor: 'var(--primary-color, #f06292)',
+              '&:hover': { bgcolor: 'var(--primary-color, #e91e63)' },
+              '&.Mui-disabled': { bgcolor: 'rgba(var(--primary-rgb, 240,98,146), 0.2)', color: 'rgba(255,255,255,0.6)' }
             }}
           >
-            Save to SQLite & Cloud
+            Save
           </Button>
         </DialogActions>
       </Dialog>

@@ -22,7 +22,7 @@ const NOTIFICATION_CONFIG = {
       lights: true,
     },
     calls: {
-      id: 'call_notifications_v6',
+      id: 'call_notifications_v7',
       name: 'Call Notifications',
       icon: 'ic_notification',
       color: '#FF6B35',
@@ -259,6 +259,7 @@ export const createNotificationChannels = async () => {
         await PushNotifications.deleteChannel({ id: 'call_notifications_v3' });
         await PushNotifications.deleteChannel({ id: 'call_notifications_v4' });
         await PushNotifications.deleteChannel({ id: 'call_notifications_v5' });
+        await PushNotifications.deleteChannel({ id: 'call_notifications_v6' });
       }
     } catch (cleanErr) {
       console.debug('Info: Legacy channel cleanup:', cleanErr.message);

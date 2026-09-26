@@ -248,6 +248,19 @@ const SearchPage = () => {
         const requestData = await response.json();
         setFriendRequests((prev) => ({ ...prev, [userId]: true }));
 
+        // ── Instantly update ChatPage bell badge + UserProfile requests tab ──
+        window.dispatchEvent(new CustomEvent('juicy_friend_request_sent', {
+          detail: {
+            senderId: currentUserId,
+            senderUsername: currentUsername,
+            senderProfilePic: currentProfileImage || '',
+            receiverId: user._id,
+            requestId: requestData._id || requestData.id,
+            _id: requestData._id || requestData.id,
+            timestamp: new Date().toISOString()
+          }
+        }));
+
         // Emit socket event to notify friend request to recipient in real-time
         if (socket && socket.connected) {
           socket.emit('send_friend_request', {

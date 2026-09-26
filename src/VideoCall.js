@@ -799,6 +799,9 @@ const useVideoCall = (socket, user, selectedUser, dbFriends, iceServers, rtcConf
       if (window.AudioRouteBridge && typeof window.AudioRouteBridge.onCallerRingtoneStop === 'function') {
         try { window.AudioRouteBridge.onCallerRingtoneStop(); } catch (e) {}
       }
+      if (window.AudioRouteBridge && typeof window.AudioRouteBridge.onReceiverRingtoneStop === 'function') {
+        try { window.AudioRouteBridge.onReceiverRingtoneStop(); } catch (e) {}
+      }
     };
     _stopRingtones();
     // ✅ [FixGhostRinging] Double-stop after 200ms to catch any play() promise that resolved late
@@ -2270,6 +2273,11 @@ const useVideoCall = (socket, user, selectedUser, dbFriends, iceServers, rtcConf
       if (window.AudioRouteBridge && typeof window.AudioRouteBridge.onCallerRingtoneStop === 'function') {
         try {
           window.AudioRouteBridge.onCallerRingtoneStop();
+        } catch (e) {}
+      }
+      if (window.AudioRouteBridge && typeof window.AudioRouteBridge.onReceiverRingtoneStop === 'function') {
+        try {
+          window.AudioRouteBridge.onReceiverRingtoneStop();
         } catch (e) {}
       }
     }

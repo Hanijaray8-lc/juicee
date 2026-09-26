@@ -1047,7 +1047,7 @@ const StartPage = () => {
             whiteSpace: 'normal',
           }}
         >
-          Dripping with sweet gossip in the air.
+          Pick up the vibe with Juicy.
         </Typography>
       </Box>
 

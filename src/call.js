@@ -40,6 +40,7 @@ import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded';
 import toast from 'react-hot-toast';
 import useSwipeBack from './hooks/useSwipeBack';
 import API_BASE_URL from './config/apiConfig';
+import { getAllCallLogsLocally } from './db/callLogsDb';
 
 // --- COLOR PALETTE & DESIGN TOKENS ---
 const WHATSAPP_GREEN = '#25D366';
@@ -47,27 +48,82 @@ const WHATSAPP_DARK_GREEN = '#128C7E';
 const MISSED_RED = '#ef4444';
 const GRAY_TEXT = '#64748b';
 
+// ⚡ Global module-level in-memory cache for 0ms instant loading
+let inMemoryCallLogs = null;
+let inMemoryUserId = null;
+let inMemoryLastFetch = 0;
+let inFlightFetchPromise = null;
+
+// Helper to get cached call logs from memory or localStorage immediately
+const getCachedLogs = (userId) => {
+    if (inMemoryCallLogs && (!userId || inMemoryUserId === userId)) {
+        return inMemoryCallLogs;
+    }
+    try {
+        if (userId) {
+            const userCached = localStorage.getItem(`cached_call_logs_${userId}`);
+            if (userCached) {
+                const parsed = JSON.parse(userCached);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    inMemoryCallLogs = parsed;
+                    inMemoryUserId = userId;
+                    return parsed;
+                }
+            }
+        }
+    } catch (_) { }
+
+    try {
+        const genericCached = localStorage.getItem('cached_call_logs');
+        if (genericCached) {
+            const parsed = JSON.parse(genericCached);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+                inMemoryCallLogs = parsed;
+                inMemoryUserId = userId;
+                return parsed;
+            }
+        }
+    } catch (_) { }
+
+    return [];
+};
+
 // Helper to safely cache call logs without exceeding localStorage quota
-const safeCacheCallLogs = (logsToCache) => {
+const safeCacheCallLogs = (logsToCache, userId) => {
+    const currentUserId = userId || (typeof localStorage !== 'undefined' ? localStorage.getItem('userId') : null);
+
+    // Keep memory cache updated at 0ms
+    if (Array.isArray(logsToCache)) {
+        inMemoryCallLogs = logsToCache;
+        inMemoryUserId = currentUserId;
+    } else {
+        inMemoryCallLogs = [];
+    }
+
     if (!logsToCache || !Array.isArray(logsToCache)) {
         try {
+            if (currentUserId) localStorage.removeItem(`cached_call_logs_${currentUserId}`);
             localStorage.removeItem('cached_call_logs');
-        } catch (_) {}
+        } catch (_) { }
         return;
     }
     try {
-        // Strip heavy base64 profile images (> 500 chars) and cap to 50 items to keep storage lightweight
-        const optimized = logsToCache.slice(0, 50).map(item => ({
+        // Strip heavy base64 profile images (> 500 chars) and cap to 60 items to keep storage lightweight
+        const optimized = logsToCache.slice(0, 60).map(item => ({
             ...item,
             image: (typeof item.image === 'string' && (item.image.startsWith('data:') || item.image.length > 500))
                 ? ''
                 : item.image
         }));
-        localStorage.setItem('cached_call_logs', JSON.stringify(optimized));
+        const jsonStr = JSON.stringify(optimized);
+        if (currentUserId) {
+            localStorage.setItem(`cached_call_logs_${currentUserId}`, jsonStr);
+        }
+        localStorage.setItem('cached_call_logs', jsonStr);
     } catch (e) {
-        // If quota exceeded or storage restricted, fallback to caching minified logs without images
+        // If quota exceeded or storage restricted, fallback to minified logs without images
         try {
-            const minified = logsToCache.slice(0, 30).map(({ id, targetUserId, name, type, time, duration, status }) => ({
+            const minified = logsToCache.slice(0, 40).map(({ id, targetUserId, name, type, time, duration, status }) => ({
                 id,
                 targetUserId,
                 name,
@@ -77,20 +133,136 @@ const safeCacheCallLogs = (logsToCache) => {
                 duration,
                 status
             }));
-            localStorage.setItem('cached_call_logs', JSON.stringify(minified));
+            const minifiedStr = JSON.stringify(minified);
+            if (currentUserId) {
+                localStorage.setItem(`cached_call_logs_${currentUserId}`, minifiedStr);
+            }
+            localStorage.setItem('cached_call_logs', minifiedStr);
         } catch (innerError) {
-            // If storage is completely full, remove key cleanly so it doesn't fail
             try {
+                if (currentUserId) localStorage.removeItem(`cached_call_logs_${currentUserId}`);
                 localStorage.removeItem('cached_call_logs');
-            } catch (_) {}
+            } catch (_) { }
         }
     }
 };
+
+// ⚡ Dedupe call log entries that represent the same underlying call.
+// A single call can get logged twice: once as a transient "calling"/"answered"
+// placeholder the moment it starts, and again with its final status
+// (completed/missed/rejected/cancelled) when it ends. These two entries get
+// different ids from different sources (local SQLite, real-time event, backend
+// fetch), so simple id-based dedup doesn't catch them and the same call shows
+// twice in the list. This drops the placeholder whenever a final entry for the
+// same contact already exists, while leaving genuinely separate calls untouched.
+const dedupeCallLogs = (rawLogs) => {
+    if (!Array.isArray(rawLogs) || rawLogs.length === 0) return rawLogs;
+
+    // Step 1: drop exact id duplicates, keeping the first occurrence
+    const seenIds = new Set();
+    const uniqueById = [];
+    for (const log of rawLogs) {
+        const idKey = String(log?.id);
+        if (seenIds.has(idKey)) continue;
+        seenIds.add(idKey);
+        uniqueById.push(log);
+    }
+
+    // Step 2: drop "calling"/"answered" placeholders when a final entry for the
+    // same contact already exists elsewhere in the list
+    const PLACEHOLDER_STATUSES = new Set(['calling', 'answered']);
+    const namesWithFinalStatus = new Set(
+        uniqueById
+            .filter(l => !PLACEHOLDER_STATUSES.has(l?.status))
+            .map(l => (l?.name || '').trim().toLowerCase())
+            .filter(Boolean)
+    );
+
+    return uniqueById.filter(log => {
+        const isPlaceholder = PLACEHOLDER_STATUSES.has(log?.status);
+        if (!isPlaceholder) return true;
+        const nameKey = (log?.name || '').trim().toLowerCase();
+        return !(nameKey && namesWithFinalStatus.has(nameKey));
+    });
+};
+
+// ⚡ Background prefetch function exported for ChatPage & module self-warmup
+export const prefetchCallLogs = async (userId) => {
+    const currentUserId = userId || (typeof localStorage !== 'undefined' ? localStorage.getItem('userId') : null);
+    if (!currentUserId) return [];
+
+    // Warm up memory cache from storage if not already loaded
+    getCachedLogs(currentUserId);
+
+    // If fetched within last 12 seconds and we have data, avoid redundant network calls
+    const now = Date.now();
+    if (inMemoryLastFetch && (now - inMemoryLastFetch < 12000) && inMemoryCallLogs?.length > 0) {
+        return inMemoryCallLogs;
+    }
+
+    if (inFlightFetchPromise) {
+        return inFlightFetchPromise;
+    }
+
+    inFlightFetchPromise = (async () => {
+        try {
+            const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+            const timeoutId = controller ? setTimeout(() => controller.abort(), 6000) : null;
+            const response = await fetch(`${API_BASE_URL}/api/call-logs/${currentUserId}`, {
+                signal: controller?.signal
+            });
+            if (timeoutId) clearTimeout(timeoutId);
+
+            if (response.ok) {
+                const data = await response.json();
+                inMemoryLastFetch = Date.now();
+                if (Array.isArray(data)) {
+                    const transformedLogs = data.map(log => ({
+                        id: log._id || log.id,
+                        targetUserId: log.callerId === currentUserId ? log.receiverId : log.callerId,
+                        name: log.callerId === currentUserId ? log.receiverUsername : log.callerUsername,
+                        image: log.callerId === currentUserId ? log.receiverProfileImage : log.callerProfileImage,
+                        type: log.status === 'missed' ? 'missed' : (log.callerId === currentUserId ? 'outgoing' : 'incoming'),
+                        time: log.timestamp ? new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (log.time || ''),
+                        duration: log.duration,
+                        status: log.status
+                    }));
+                    safeCacheCallLogs(transformedLogs, currentUserId);
+                    return transformedLogs;
+                }
+            }
+        } catch (err) {
+            // Silently fall back to cached data
+        } finally {
+            inFlightFetchPromise = null;
+        }
+        return inMemoryCallLogs || [];
+    })();
+
+    return inFlightFetchPromise;
+};
+
+// ⚡ Auto-warmup on module import if user is logged in
+if (typeof window !== 'undefined') {
+    try {
+        const storedUid = localStorage.getItem('userId');
+        if (storedUid) {
+            getCachedLogs(storedUid);
+            if (typeof requestIdleCallback === 'function') {
+                requestIdleCallback(() => prefetchCallLogs(storedUid), { timeout: 1500 });
+            } else {
+                setTimeout(() => prefetchCallLogs(storedUid), 400);
+            }
+        }
+    } catch (_) { }
+}
 
 const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
     useSwipeBack(); // Default threshold is 80px
     const theme = useTheme();
     const isMobile = useMediaQuery('(max-width: 1024px)');
+    const currentUserId = typeof localStorage !== 'undefined' ? localStorage.getItem('userId') : null;
+
     const [currentIsDark, setCurrentIsDark] = useState(() => {
         try {
             const saved = localStorage.getItem('appTheme');
@@ -105,7 +277,7 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                     return (r * 299 + g * 587 + b * 114) / 1000 < 128;
                 }
             }
-        } catch (e) {}
+        } catch (e) { }
         return theme.palette.mode === 'dark';
     });
     const isDark = currentIsDark;
@@ -126,29 +298,25 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                         return;
                     }
                 }
-            } catch (e) {}
+            } catch (e) { }
             setCurrentIsDark(theme.palette.mode === 'dark');
         };
         window.addEventListener('themeChanged', handleThemeChange);
         return () => window.removeEventListener('themeChanged', handleThemeChange);
     }, [theme.palette.mode]);
 
+    // ⚡ Instant Cache Hydration: Read memory/localStorage/props at 0ms delay
     const [logs, setLogs] = useState(() => {
-        try {
-            const cached = localStorage.getItem('cached_call_logs');
-            return cached ? JSON.parse(cached) : [];
-        } catch (e) {
-            return [];
-        }
+        const cached = getCachedLogs(currentUserId);
+        if (cached && cached.length > 0) return cached;
+        if (Array.isArray(callLogs) && callLogs.length > 0) return callLogs;
+        return [];
     });
 
+    // Loading is false if we already have any cached logs or props, avoiding blocking spinner
     const [loading, setLoading] = useState(() => {
-        try {
-            const cached = localStorage.getItem('cached_call_logs');
-            return cached ? JSON.parse(cached).length === 0 : true;
-        } catch (e) {
-            return true;
-        }
+        const cached = getCachedLogs(currentUserId);
+        return (!cached || cached.length === 0) && (!callLogs || callLogs.length === 0);
     });
 
     // Custom Confirmation Dialog States
@@ -161,44 +329,125 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [activeFilter, setActiveFilter] = useState('all'); // 'all' | 'missed'
 
-    // Fetch call logs from backend on mount
+    // Helper to get friend avatar if call log image is empty (e.g. stripped from cache)
+    const getFriendAvatar = useMemo(() => {
+        const friendsMap = {};
+        try {
+            if (currentUserId) {
+                const raw = localStorage.getItem(`juicy_cached_friends_${currentUserId}`);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (Array.isArray(parsed)) {
+                        parsed.forEach(f => {
+                            const fId = f._id || f.id || f.friendId;
+                            const pic = f.profilePic || f.image || f.profileImage;
+                            if (fId && pic) friendsMap[String(fId)] = pic;
+                        });
+                    }
+                }
+            }
+        } catch (_) { }
+        return (targetUserId) => friendsMap[String(targetUserId)] || '';
+    }, [currentUserId]);
+
+    // ⚡ Sync with SQLite & Backend in background (Stale-While-Revalidate pattern)
     useEffect(() => {
-        const fetchCallLogs = async () => {
+        let isMounted = true;
+
+        const syncCallLogs = async () => {
+            if (!currentUserId) {
+                if (isMounted) setLoading(false);
+                return;
+            }
+
+            // 1. Immediately load local SQLite logs for offline-first speed
+            getAllCallLogsLocally().then(localRows => {
+                if (!isMounted || !Array.isArray(localRows) || localRows.length === 0) return;
+                const formatted = localRows.map(row => ({
+                    id: row.id,
+                    targetUserId: row.callerId === currentUserId ? row.receiverId : row.callerId,
+                    name: row.name || 'Unknown Contact',
+                    image: row.image || '',
+                    type: row.status === 'missed' ? 'missed' : (row.direction || (row.callerId === currentUserId ? 'outgoing' : 'incoming')),
+                    time: row.startTime ? new Date(row.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (row.createdAt ? new Date(row.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''),
+                    duration: row.duration || 0,
+                    status: row.status || 'completed'
+                }));
+
+                setLogs(prev => {
+                    const existingIds = new Set(prev.map(p => String(p.id)));
+                    const toAdd = formatted.filter(f => !existingIds.has(String(f.id)));
+                    if (toAdd.length > 0) {
+                        const merged = [...toAdd, ...prev];
+                        safeCacheCallLogs(merged, currentUserId);
+                        return merged;
+                    }
+                    return prev;
+                });
+                if (isMounted) setLoading(false);
+            }).catch(() => { });
+
+            // 2. Fetch fresh logs from backend in background
             try {
-                const userId = localStorage.getItem('userId');
-                if (!userId) {
-                    setLoading(false);
-                    return;
+                const freshLogs = await prefetchCallLogs(currentUserId);
+                if (isMounted && Array.isArray(freshLogs) && freshLogs.length > 0) {
+                    setLogs(prev => {
+                        const serverIds = new Set(freshLogs.map(l => String(l.id)));
+                        const localOnly = prev.filter(l => !serverIds.has(String(l.id)));
+                        return [...localOnly, ...freshLogs];
+                    });
                 }
-                const response = await fetch(`${API_BASE_URL}/api/call-logs/${userId}`);
-                if (response.ok) {
-                    const data = await response.json();
-                    // Transform backend data to match UI format
-                    const transformedLogs = data.map(log => ({
-                        id: log._id,
-                        targetUserId: log.callerId === userId ? log.receiverId : log.callerId,
-                        name: log.callerId === userId ? log.receiverUsername : log.callerUsername,
-                        image: log.callerId === userId ? log.receiverProfileImage : log.callerProfileImage,
-                        type: log.status === 'missed' ? 'missed' : (log.callerId === userId ? 'outgoing' : 'incoming'),
-                        time: new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                        duration: log.duration,
-                        status: log.status
-                    }));
-                    setLogs(transformedLogs);
-                    safeCacheCallLogs(transformedLogs);
-                }
-            } catch (error) {
-                console.error('Error fetching call logs:', error);
+            } catch (err) {
+                console.warn('Call logs background sync notice:', err?.message || err);
             } finally {
-                setLoading(false);
+                if (isMounted) setLoading(false);
             }
         };
 
-        fetchCallLogs();
-    }, []);
+        syncCallLogs();
 
-    // Base display logs
-    const baseLogs = logs.length > 0 ? logs : callLogs;
+        // 3. Real-time update listener: when a call ends anywhere in the app, update list instantly
+        const handleNewLogAdded = (event) => {
+            const newLog = event?.detail;
+            if (!newLog || !isMounted) return;
+            setLogs(prev => {
+                const exists = prev.some(l => String(l.id) === String(newLog.id));
+                if (exists) return prev;
+                const updated = [newLog, ...prev];
+                safeCacheCallLogs(updated, currentUserId);
+                return updated;
+            });
+            if (isMounted) setLoading(false);
+        };
+
+        window.addEventListener('juicy_call_log_added', handleNewLogAdded);
+
+        return () => {
+            isMounted = false;
+            window.removeEventListener('juicy_call_log_added', handleNewLogAdded);
+        };
+    }, [currentUserId]);
+
+    // Keep in sync with parent's callLogs prop if passed
+    useEffect(() => {
+        if (Array.isArray(callLogs) && callLogs.length > 0) {
+            setLogs(prev => {
+                const existingIds = new Set(prev.map(l => String(l.id)));
+                const toAdd = callLogs.filter(l => !existingIds.has(String(l.id)));
+                if (toAdd.length > 0) {
+                    const merged = [...toAdd, ...prev];
+                    safeCacheCallLogs(merged, currentUserId);
+                    return merged;
+                }
+                return prev;
+            });
+            setLoading(false);
+        }
+    }, [callLogs, currentUserId]);
+
+    // Base display logs — deduplicated so a call logged as both an in-progress
+    // placeholder and a final entry doesn't render twice in the UI
+    const baseLogs = useMemo(() => dedupeCallLogs(logs), [logs]);
 
     // Filtered logs by active tab and search query
     const filteredLogs = useMemo(() => {
@@ -332,21 +581,22 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
         }
     };
 
-    // Perform deletion based on confirmed type
+    // Perform deletion based on confirmed type (optimistic instant update)
     const handleConfirmDelete = async () => {
         setConfirmOpen(false);
         if (deleteType === 'all') {
             try {
-                const userId = localStorage.getItem('userId');
-                if (!userId) return;
+                if (!currentUserId) return;
 
-                const response = await fetch(`${API_BASE_URL}/api/call-logs/${userId}`, {
+                // Optimistic instant clear
+                setLogs([]);
+                safeCacheCallLogs([], currentUserId);
+
+                const response = await fetch(`${API_BASE_URL}/api/call-logs/${currentUserId}`, {
                     method: 'DELETE'
                 });
 
                 if (response.ok) {
-                    setLogs([]);
-                    safeCacheCallLogs([]);
                     toast.success('All call logs deleted successfully');
                 } else {
                     toast.error('Failed to delete call logs');
@@ -357,16 +607,19 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
             }
         } else if (deleteType === 'single' && selectedLogId) {
             try {
+                const idToRemove = selectedLogId;
+                // Optimistic instant removal
+                setLogs(prev => {
+                    const updated = prev.filter(log => log.id !== idToRemove);
+                    safeCacheCallLogs(updated, currentUserId);
+                    return updated;
+                });
+
                 const response = await fetch(`${API_BASE_URL}/api/call-logs/single/${selectedLogId}`, {
                     method: 'DELETE'
                 });
 
                 if (response.ok) {
-                    setLogs(prev => {
-                        const updated = prev.filter(log => log.id !== selectedLogId);
-                        safeCacheCallLogs(updated);
-                        return updated;
-                    });
                     toast.success('Call log deleted');
                 } else {
                     toast.error('Failed to delete call log');
@@ -385,7 +638,9 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
         <Box
             sx={{
                 width: '100%',
-                height: isMobile ? 'calc(100dvh - 120px)' : '100%',
+                height: '100%',
+                flex: 1,
+                minHeight: 0,
                 display: 'flex',
                 flexDirection: 'column',
                 bgcolor: 'var(--background-color, #fff7f9)',
@@ -402,7 +657,7 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
             <Box
                 sx={{
                     px: isMobile ? 2 : 3,
-                    pt: isMobile ? 1.8 : 2.5,
+                    pt: isMobile ? 2 : 2.5,
                     pb: 1.8,
                     flexShrink: 0,
                     bgcolor: isDark ? 'rgba(18, 15, 23, 0.75)' : 'var(--surface-color, rgba(255, 255, 255, 0.88))',
@@ -774,21 +1029,21 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                                                     }}
                                                 >
                                                     <Avatar
-                                                        src={log.image}
+                                                        src={log.image || getFriendAvatar(log.targetUserId)}
                                                         alt={log.name}
                                                         sx={{
                                                             width: 44,
                                                             height: 44,
                                                             fontSize: '1.1rem',
                                                             fontWeight: 700,
-                                                            bgcolor: !log.image
+                                                            bgcolor: !(log.image || getFriendAvatar(log.targetUserId))
                                                                 ? 'var(--primary-color, #ff4d86)'
                                                                 : 'transparent',
                                                             color: '#ffffff',
                                                             border: isDark ? '2px solid #1c1626' : '2px solid #ffffff'
                                                         }}
                                                     >
-                                                        {(!log.image && log.name) ? log.name[0].toUpperCase() : '?'}
+                                                        {(!(log.image || getFriendAvatar(log.targetUserId)) && log.name) ? log.name[0].toUpperCase() : '?'}
                                                     </Avatar>
                                                 </Box>
                                                 {/* Mini status indicator badge on bottom-right of avatar */}
@@ -1016,19 +1271,19 @@ const Call = ({ callLogs = [], onInitiateCall, onSelectUser }) => {
                                 }}
                             >
                                 <Avatar
-                                    src={selectedCallUser.image}
+                                    src={selectedCallUser.image || getFriendAvatar(selectedCallUser.targetUserId || selectedCallUser.id)}
                                     alt={selectedCallUser.name}
                                     sx={{
                                         width: 86,
                                         height: 86,
                                         fontSize: 34,
                                         fontWeight: 700,
-                                        bgcolor: !selectedCallUser.image ? 'var(--primary-color, #ff4d86)' : 'transparent',
+                                        bgcolor: !(selectedCallUser.image || getFriendAvatar(selectedCallUser.targetUserId || selectedCallUser.id)) ? 'var(--primary-color, #ff4d86)' : 'transparent',
                                         color: '#ffffff',
                                         border: isDark ? '3px solid #1a1424' : '3px solid #ffffff'
                                     }}
                                 >
-                                    {(!selectedCallUser.image && selectedCallUser.name) ? selectedCallUser.name[0].toUpperCase() : '?'}
+                                    {(!(selectedCallUser.image || getFriendAvatar(selectedCallUser.targetUserId || selectedCallUser.id)) && selectedCallUser.name) ? selectedCallUser.name[0].toUpperCase() : '?'}
                                 </Avatar>
                             </Box>
                         </Box>

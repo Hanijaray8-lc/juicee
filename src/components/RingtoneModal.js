@@ -994,7 +994,7 @@ const RingtoneModal = ({ open, onClose, isDark = false, onShowSnackbar }) => {
                   >
                     {currentSetting.customAudio
                       ? currentSetting.customAudio.title || currentSetting.customAudio.fileName
-                      : 'Choose an audio file from your mobile to crop'}
+                      : ''}
                   </Typography>
                 </Box>
               </Box>

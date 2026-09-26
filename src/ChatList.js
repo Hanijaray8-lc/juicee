@@ -35,7 +35,7 @@ import {
   AddComment as AddCommentIcon
 } from '@mui/icons-material';
 import Yourmood from './Yourmood';
-import loveBotImg from './bot/juicy_ai_hand_wave_3sec.gif';
+import loveBotImg from './bot/jerry.gif';
 import logoImage from './logo/juicee2.png';
 
 const loveBotUser = {
@@ -559,8 +559,8 @@ const ChatList = ({
                               fontSize: !isMobile ? '1.1rem' : '1.3rem',
                               border: currentIsDark ? '2px solid #1a1424' : '2px solid #ffffff',
                               '& .MuiAvatar-img': (member?.isBot || member?._id === 'lovebot') ? {
-                                objectPosition: 'center 85%',
-                                transform: 'scale(1.25) translateY(-3px)'
+                                objectPosition: 'center 35%',
+                                transform: 'scale(1.25)'
                               } : {}
                             }}
                           >
@@ -627,92 +627,99 @@ const ChatList = ({
                           </Typography>
                         </Box>
                       }
-                      secondary={
-                        <Box
-                          sx={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            position: 'relative',
-                            width: '100%',
-                            mt: 0.5
-                          }}
-                        >
-                          <Box sx={{ display: 'flex', alignItems: 'center', maxWidth: '70%', overflow: 'hidden' }}>
-                            {messages[member._id] && messages[member._id].length > 0 ? (
-                              <Typography
-                                variant="body2"
-                                sx={{
-                                  color: unread[member._id] > 0 ? 'var(--text-color, #1e293b)' : (currentIsDark ? '#94a3b8' : '#64748b'),
-                                  fontWeight: unread[member._id] > 0 ? 600 : 400,
-                                  whiteSpace: 'nowrap',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  fontSize: '0.86rem'
-                                }}
-                              >
-                                {(() => {
-                                  const lastMsg = messages[member._id][messages[member._id].length - 1];
-                                  if (lastMsg.text) {
-                                    if (lastMsg.text.startsWith('JUICY_GAME:')) {
-                                      try {
-                                        const jsonStr = lastMsg.text.indexOf('{') !== -1 ? lastMsg.text.slice(lastMsg.text.indexOf('{')) : lastMsg.text.substring(11);
-                                        const gameData = JSON.parse(jsonStr);
-                                        const gameType = gameData.gameType;
-                                        const gameName = gameType === 'tictactoe'
-                                          ? 'Tic Tac Toe'
-                                          : (gameType === 'truthordare' ? 'Truth or Dare' : 'Rock Paper Scissors');
-                                        return `🎮 ${gameName}`;
-                                      } catch (e) {
-                                        return '🎮 Game';
+                      secondary={(() => {
+                        const memberId = member._id ? String(member._id) : (member.id ? String(member.id) : '');
+                        const memberMsgs = (messages && (messages[memberId] || (member._id && messages[member._id]) || (member.id && messages[member.id]))) || [];
+                        const hasMsgs = memberMsgs.length > 0;
+                        const memberUnread = (unread && (unread[memberId] || (member._id && unread[member._id]) || 0)) || 0;
+                        const lastMsg = hasMsgs ? memberMsgs[memberMsgs.length - 1] : null;
+
+                        return (
+                          <Box
+                            sx={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              position: 'relative',
+                              width: '100%',
+                              mt: 0.5
+                            }}
+                          >
+                            <Box sx={{ display: 'flex', alignItems: 'center', maxWidth: '70%', overflow: 'hidden' }}>
+                              {hasMsgs && lastMsg ? (
+                                <Typography
+                                  variant="body2"
+                                  sx={{
+                                    color: memberUnread > 0 ? 'var(--text-color, #1e293b)' : (currentIsDark ? '#94a3b8' : '#64748b'),
+                                    fontWeight: memberUnread > 0 ? 600 : 400,
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    fontSize: '0.86rem'
+                                  }}
+                                >
+                                  {(() => {
+                                    if (lastMsg.text) {
+                                      if (lastMsg.text.startsWith('JUICY_GAME:')) {
+                                        try {
+                                          const jsonStr = lastMsg.text.indexOf('{') !== -1 ? lastMsg.text.slice(lastMsg.text.indexOf('{')) : lastMsg.text.substring(11);
+                                          const gameData = JSON.parse(jsonStr);
+                                          const gameType = gameData.gameType;
+                                          const gameName = gameType === 'tictactoe'
+                                            ? 'Tic Tac Toe'
+                                            : (gameType === 'truthordare' ? 'Truth or Dare' : 'Rock Paper Scissors');
+                                          return `🎮 ${gameName}`;
+                                        } catch (e) {
+                                          return '🎮 Game';
+                                        }
                                       }
+                                      return lastMsg.text;
                                     }
-                                    return lastMsg.text;
-                                  }
-                                  if (lastMsg.image) return '📷 Photo';
-                                  if (lastMsg.audio) return '🎵 Voice message';
-                                  if (lastMsg.document) return '📄 Document';
-                                  return 'Media';
-                                })()}
-                              </Typography>
-                            ) : (
-                              <Typography variant="body2" sx={{ color: currentIsDark ? '#64748b' : '#94a3b8', fontSize: '0.84rem', fontStyle: 'italic' }}>
-                                No messages yet
-                              </Typography>
-                            )}
+                                    if (lastMsg.image) return '📷 Photo';
+                                    if (lastMsg.audio) return '🎵 Voice message';
+                                    if (lastMsg.document) return '📄 Document';
+                                    return 'Media';
+                                  })()}
+                                </Typography>
+                              ) : (
+                                <Typography variant="body2" sx={{ color: currentIsDark ? '#64748b' : '#94a3b8', fontSize: '0.84rem', fontStyle: 'italic' }}>
+                                  No messages yet
+                                </Typography>
+                              )}
+                            </Box>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
+                              {hasMsgs && lastMsg && (
+                                <Typography sx={{ fontSize: '0.74rem', color: currentIsDark ? '#64748b' : '#94a3b8', fontWeight: 500, textAlign: 'right' }}>
+                                  {lastMsg.timestamp}
+                                </Typography>
+                              )}
+                              {/* Unread badge */}
+                              {memberUnread > 0 && (
+                                <Box
+                                  sx={{
+                                    background: 'var(--primary-gradient, linear-gradient(135deg, #ff5c8d 0%, #ff2d6c 100%))',
+                                    color: '#fff',
+                                    borderRadius: '12px',
+                                    px: 1.1,
+                                    py: 0.2,
+                                    fontSize: '0.78rem',
+                                    fontWeight: 700,
+                                    minWidth: 22,
+                                    minHeight: 22,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    ml: 1,
+                                    boxShadow: '0 3px 10px rgba(0, 0, 0, 0.2)'
+                                  }}
+                                >
+                                  {memberUnread}
+                                </Box>
+                              )}
+                            </Box>
                           </Box>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
-                            {messages[member._id] && messages[member._id].length > 0 && (
-                              <Typography sx={{ fontSize: '0.74rem', color: currentIsDark ? '#64748b' : '#94a3b8', fontWeight: 500, textAlign: 'right' }}>
-                                {messages[member._id][messages[member._id].length - 1].timestamp}
-                              </Typography>
-                            )}
-                            {/* Unread badge */}
-                            {unread[member._id] > 0 && (
-                              <Box
-                                sx={{
-                                  background: 'var(--primary-gradient, linear-gradient(135deg, #ff5c8d 0%, #ff2d6c 100%))',
-                                  color: '#fff',
-                                  borderRadius: '12px',
-                                  px: 1.1,
-                                  py: 0.2,
-                                  fontSize: '0.78rem',
-                                  fontWeight: 700,
-                                  minWidth: 22,
-                                  minHeight: 22,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  ml: 1,
-                                  boxShadow: '0 3px 10px rgba(0, 0, 0, 0.2)'
-                                }}
-                              >
-                                {unread[member._id]}
-                              </Box>
-                            )}
-                          </Box>
-                        </Box>
-                      }
+                        );
+                      })()}
                     />
                   </ListItemButton>
                 </ListItem>
@@ -722,54 +729,45 @@ const ChatList = ({
         </Box>
       )}
 
-      {/* Jerry Bot FAB - Only Jerry Bot stands at the bottom right */}
+      {/* Jerry Bot Mascot - Floating at the bottom right */}
       {bottomNav === 0 && showChatList && !selectedUser && !hideJerryBot && (
         <Tooltip title="Chat with Jerry Bot ✨" placement="left" arrow>
-          <Fab
+          <Box
             ref={loveBotFabRef}
-            aria-label="jerrybot"
+            component="button"
+            type="button"
+            aria-label="Chat with Jerry Bot"
             onClick={() => handleSelectUser(loveBotUser)}
+            className="jerry-bot-floating-btn"
             sx={{
               position: 'absolute',
               bottom: isMobile ? 80 : 30,
-              right: 30,
-              width: 65,
-              height: 65,
-              bgcolor: '#ffffff',
-              border: '2px solid rgba(255, 205, 222, 0.85)',
-              borderRadius: '50%',
-              '&:hover': {
-                bgcolor: '#fff0f5',
-                transform: 'translateY(-3px) scale(1.08)',
-                boxShadow: '0 12px 30px rgba(255, 45, 108, 0.35)'
-              },
-              '&:active': {
-                transform: 'scale(0.95)'
-              },
-              zIndex: 20,
-              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.22), inset 0 1px 1px #fff',
-              transition: 'all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1)',
+              right: isMobile ? 20 : 30,
+              width: isMobile ? 75 : 85,
+              height: isMobile ? 75 : 85,
+              bgcolor: 'transparent',
+              background: 'none',
+              border: 'none',
+              outline: 'none',
               p: 0,
-              overflow: 'hidden',
+              m: 0,
+              cursor: 'pointer',
+              zIndex: 20,
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center'
+              justifyContent: 'center',
+              WebkitTapHighlightColor: 'transparent',
+              '&:focus': {
+                outline: 'none'
+              }
             }}
           >
             <img
               src={loveBotImg}
               alt="jerryBot"
-              style={{
-                width: '125%',
-                height: '125%',
-                objectFit: 'cover',
-                objectPosition: 'center 85%',
-                transform: 'translateY(-6px)',
-                borderRadius: '50%',
-                pointerEvents: 'none'
-              }}
+              className="jerry-bot-img"
             />
-          </Fab>
+          </Box>
         </Tooltip>
       )}
 

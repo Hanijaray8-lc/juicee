@@ -146,6 +146,9 @@ export const useInitializeCalls = (socket, user, selectedUser, dbFriends, setCal
       ...prev
     ]);
     saveCallLogLocally(logEntry);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('juicy_call_log_added', { detail: logEntry }));
+    }
   }, [setCallLogs]);
 
   // Initialize video call hook (must be after `iceServers` and `rtcConfig` are defined)

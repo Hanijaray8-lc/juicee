@@ -31,6 +31,12 @@ import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
+import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
+import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import BlockIcon from '@mui/icons-material/Block';
+import OpacityIcon from '@mui/icons-material/Opacity';
+import PersonAddIcon from '@mui/icons-material/PersonAdd';
 
 // Import tutorial images from Tuto folder
 import image1 from './Tuto/1.jpeg';
@@ -43,22 +49,35 @@ import image7 from './Tuto/7.jpeg';
 import image8 from './Tuto/8.jpeg';
 import image9 from './Tuto/9.jpeg';
 import image10 from './Tuto/10.jpeg';
-
+import image11 from './Tuto/11.png';
+import image12 from './Tuto/12.png';
+import image13 from './Tuto/13.png';
+import image14 from './Tuto/14.png';
+import image15 from './Tuto/15.png';
+import image16 from './Tuto/16.png';
+import image17 from './Tuto/17.png';
 // Key for LocalStorage
 export const USER_GUIDE_STORAGE_KEY = 'juicy_has_seen_user_guide';
 
 // ─── Catalog data (mirrors STEPS_DATA titles/icons) ────────────────────────
 const CATALOG_ITEMS = [
-  { stepIndex: 0, emoji: '🌟', title: 'Daily Moods',       subtitle: 'Status notes & 15s music clips', color: '#9c27b0', bg: 'linear-gradient(135deg,#9c27b0,#e52e71)' },
-  { stepIndex: 1, emoji: '😀', title: 'Stickers',          subtitle: 'Animated packs & trending emojis', color: '#ff8a00', bg: 'linear-gradient(135deg,#ff8a00,#ffb347)' },
-  { stepIndex: 2, emoji: '🎨', title: 'Doodle Canvas',     subtitle: 'Draw & send sketches in chat',     color: '#e52e71', bg: 'linear-gradient(135deg,#e52e71,#ff8a00)' },
-  { stepIndex: 3, emoji: '🎮', title: 'Play Games',        subtitle: 'Tic Tac Toe, Truth or Dare & more', color: '#00b4d8', bg: 'linear-gradient(135deg,#00b4d8,#0077b6)' },
+  { stepIndex: 0, emoji: '🌟', title: 'Daily Moods', subtitle: 'Status notes & 15s music clips', color: '#9c27b0', bg: 'linear-gradient(135deg,#9c27b0,#e52e71)' },
+  { stepIndex: 1, emoji: '😀', title: 'Stickers', subtitle: 'Animated packs & trending emojis', color: '#ff8a00', bg: 'linear-gradient(135deg,#ff8a00,#ffb347)' },
+  { stepIndex: 2, emoji: '🎨', title: 'Doodle Canvas', subtitle: 'Draw & send sketches in chat', color: '#e52e71', bg: 'linear-gradient(135deg,#e52e71,#ff8a00)' },
+  { stepIndex: 3, emoji: '🎮', title: 'Play Games', subtitle: 'Tic Tac Toe, Truth or Dare & more', color: '#00b4d8', bg: 'linear-gradient(135deg,#00b4d8,#0077b6)' },
   { stepIndex: 4, emoji: '💬', title: 'Message Reactions', subtitle: 'Long-press for reactions & options', color: '#38a169', bg: 'linear-gradient(135deg,#38a169,#2f855a)' },
-  { stepIndex: 5, emoji: '🤖', title: 'Jerry Bot AI',      subtitle: '24/7 AI assistant for anything',    color: '#6366f1', bg: 'linear-gradient(135deg,#6366f1,#8b5cf6)' },
-  { stepIndex: 6, emoji: '☀️', title: 'App Theme',         subtitle: 'Light, dark & vibrant palettes',    color: '#8b5cf6', bg: 'linear-gradient(135deg,#8b5cf6,#d946ef)' },
-  { stepIndex: 7, emoji: '🖼️', title: 'Wallpapers',        subtitle: 'Custom chat backgrounds & patterns', color: '#0284c7', bg: 'linear-gradient(135deg,#0284c7,#38bdf8)' },
-  { stepIndex: 8, emoji: '✍️', title: 'Gestures',          subtitle: 'Tap logo → draw to open chats',     color: '#f06292', bg: 'linear-gradient(135deg,#f06292,#ab47bc)' },
-  { stepIndex: 9, emoji: '👤', title: 'Edit Profile',      subtitle: 'Avatar, bio & privacy settings',    color: '#d97706', bg: 'linear-gradient(135deg,#d97706,#f59e0b)' },
+  { stepIndex: 5, emoji: '🤖', title: 'Jerry Bot AI', subtitle: '24/7 AI assistant for anything', color: '#6366f1', bg: 'linear-gradient(135deg,#6366f1,#8b5cf6)' },
+  { stepIndex: 6, emoji: '☀️', title: 'App Theme', subtitle: 'Light, dark & vibrant palettes', color: '#8b5cf6', bg: 'linear-gradient(135deg,#8b5cf6,#d946ef)' },
+  { stepIndex: 7, emoji: '🖼️', title: 'Wallpapers', subtitle: 'Custom chat backgrounds & patterns', color: '#0284c7', bg: 'linear-gradient(135deg,#0284c7,#38bdf8)' },
+  { stepIndex: 8, emoji: '✍️', title: 'Gestures', subtitle: 'Tap logo → draw to open chats', color: '#f06292', bg: 'linear-gradient(135deg,#f06292,#ab47bc)' },
+  { stepIndex: 9, emoji: '👤', title: 'Edit Profile', subtitle: 'Avatar, bio & privacy settings', color: '#d97706', bg: 'linear-gradient(135deg,#d97706,#f59e0b)' },
+  { stepIndex: 10, emoji: '📱', title: 'Linked Devices & QR', subtitle: 'Linked devices & stranger QR scan chat', color: '#10b981', bg: 'linear-gradient(135deg,#10b981,#059669)' },
+  { stepIndex: 11, emoji: '❓', title: 'Help & Support', subtitle: 'Submit queries, report bugs & track status', color: '#ec4899', bg: 'linear-gradient(135deg,#ec4899,#f43f5e)' },
+  { stepIndex: 12, emoji: '🗑️', title: 'Delete Account', subtitle: 'Permanently remove your Juicy account', color: '#ef4444', bg: 'linear-gradient(135deg,#ef4444,#dc2626)' },
+  { stepIndex: 13, emoji: '🚫', title: 'Block User', subtitle: 'Block contacts & manage blocked list', color: '#64748b', bg: 'linear-gradient(135deg,#64748b,#475569)' },
+  { stepIndex: 14, emoji: '🖼️', title: 'Chat Background', subtitle: 'Change wallpaper & chat background style', color: '#0ea5e9', bg: 'linear-gradient(135deg,#0ea5e9,#0284c7)' },
+  { stepIndex: 15, emoji: '✨', title: 'Opacity & Transparency', subtitle: 'Increase or decrease background transparency', color: '#a855f7', bg: 'linear-gradient(135deg,#a855f7,#7c3aed)' },
+  { stepIndex: 16, emoji: '🤝', title: 'Connect with New People', subtitle: 'Search suggestions, send requests & approve friends', color: '#e52e71', bg: 'linear-gradient(135deg,#e52e71,#ff8a00)' }
 ];
 
 // Step detail data used by CatalogStepContent
@@ -143,6 +162,63 @@ const STEP_DETAIL_DATA = [
       { num: '1', badgeBg: '#d97706', text: 'Go to Settings → Edit Profile.' },
       { num: '2', badgeBg: '#e52e71', text: 'Upload a new profile picture and crop to perfection.' },
       { num: '3', badgeBg: '#0284c7', text: 'Update display name, personal bio status, and privacy settings.' }
+    ]
+  },
+  {
+    image: image11,
+    instructions: [
+      { num: '1', badgeBg: '#10b981', text: '📱 Linked Devices: Open top menu → Linked Devices to scan QR code on web/desktop and sync chats across devices.' },
+      { num: '2', badgeBg: '#0284c7', text: '🔲 My QR Code: Tap "My QR" tab to display your personal QR code for instant sharing.' },
+      { num: '3', badgeBg: '#e52e71', text: '🤝 Stranger QR Scan: Strangers can scan your QR code with their camera to start chatting immediately without using mobile numbers!' }
+    ]
+  },
+  {
+    image: image12,
+    instructions: [
+      { num: '1', badgeBg: '#ec4899', text: 'Go to Settings → Help & Support to report app issues, bugs, or submit questions.' },
+      { num: '2', badgeBg: '#8b5cf6', text: 'Submit Ticket: Select your query topic, enter details, attach screenshots, and submit your request.' },
+      { num: '3', badgeBg: '#10b981', text: 'Live Status Tracker: Track resolution progress and admin responses live with your Ticket ID!' }
+    ]
+  },
+  {
+    image: image13,
+    instructions: [
+      { num: '1', badgeBg: '#ef4444', text: 'Go to Settings → Account → Delete Account.' },
+      { num: '2', badgeBg: '#dc2626', text: 'Confirm Identity: Enter your password or verify via OTP to proceed with account deletion.' },
+      { num: '3', badgeBg: '#991b1b', text: 'Permanent Deletion: Once confirmed, all your data, chats, and profile will be permanently erased and cannot be recovered.' }
+    ]
+  },
+  {
+    image: image14,
+    instructions: [
+      { num: '1', badgeBg: '#64748b', text: 'Open Chat or Profile: Go to the user\'s chat or tap their profile avatar to open their profile page.' },
+      { num: '2', badgeBg: '#475569', text: 'Tap Block: Tap the ⋮ menu → Block User. The contact will no longer be able to message or call you.' },
+      { num: '3', badgeBg: '#334155', text: 'Manage Blocked List: Go to Settings → Privacy → Blocked Users to view or unblock any contact at any time.' }
+    ]
+  },
+  {
+    image: image15,
+    instructions: [
+      { num: '1', badgeBg: '#0ea5e9', text: 'Open any chat → Tap the ⋮ menu at the top right → Select "Change Background".' },
+      { num: '2', badgeBg: '#0284c7', text: 'Choose Style: Pick from curated wallpapers, solid colors, gradients, or upload your own photo from gallery.' },
+      { num: '3', badgeBg: '#0369a1', text: 'Apply & Save: Tap "Apply" to set the background for that chat only, or choose "Set for All Chats" to apply globally.' }
+    ]
+  },
+  {
+    image: image16,
+    instructions: [
+      { num: '1', badgeBg: '#a855f7', text: 'After selecting a wallpaper, find the Opacity slider just below the background preview screen.' },
+      { num: '2', badgeBg: '#7c3aed', text: 'Slide to Adjust: Drag the slider left to make the background more transparent, or right to make it fully opaque.' },
+      { num: '3', badgeBg: '#6d28d9', text: 'Live Preview: See the transparency change in real-time on the chat preview before saving your preference.' }
+    ]
+  },
+  {
+    image: image17,
+    instructions: [
+      { num: '1', badgeBg: '#e52e71', text: 'Search & Suggestions: Tap the "Search" tab at the top. Scroll down to the "Suggested Users" section to discover recommended people, or search directly by name or @username.' },
+      { num: '2', badgeBg: '#ff8a00', text: 'Send Friend Request: In the Suggested Users list, tap the "+ Add" button next to any person. The request is sent instantly and status changes to "Requested".' },
+      { num: '3', badgeBg: '#0284c7', text: 'Go to Profile → Friend Requests: Open your Profile and tap the "Friend Requests" tab (or check "Incoming Friend Requests" at the top of the Search page).' },
+      { num: '4', badgeBg: '#10b981', text: 'Approve to Become Friends: Tap "Accept" / "Approve" on any incoming friend request. Once approved, you become friends and can start chatting and calling right away! 🎉' }
     ]
   }
 ];
@@ -343,21 +419,6 @@ export const FeatureCatalogModal = ({ open, onClose, isDarkTheme = false }) => {
           }}
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
-            <Box
-              sx={{
-                width: isMobile ? 36 : 40,
-                height: isMobile ? 36 : 40,
-                borderRadius: '12px',
-                bgcolor: isDarkTheme ? 'rgba(229,46,113,0.18)' : '#fff0f5',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: isMobile ? '1.2rem' : '1.35rem',
-                border: '1px solid rgba(229,46,113,0.15)'
-              }}
-            >
-              🍊
-            </Box>
             <Box>
               <Typography
                 variant={isMobile ? 'subtitle1' : 'h6'}
@@ -883,14 +944,15 @@ export const FeatureCatalogModal = ({ open, onClose, isDarkTheme = false }) => {
 
 
 /**
- * 10-Step Onboarding Walkthrough User Guide Modal (with AI ChatBot Guide)
+ * 12-Step Onboarding Walkthrough User Guide Modal (with AI ChatBot, Linked Devices & Help & Support)
  */
 export const UserGuideModal = ({
   open,
   onClose,
   initialStep = 0,
   isDarkTheme = false,
-  hideSkipButton = false
+  hideSkipButton = false,
+  includeDeleteAndBlock = false
 }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -918,7 +980,7 @@ export const UserGuideModal = ({
   };
 
   const handleNext = () => {
-    if (currentStep < 9) {
+    if (currentStep < STEPS_DATA.length - 1) {
       setCurrentStep(prev => prev + 1);
     } else {
       handleClose();
@@ -1049,10 +1111,97 @@ export const UserGuideModal = ({
         { num: '2', badgeBg: '#e52e71', text: 'Upload a new profile picture and crop to perfection.' },
         { num: '3', badgeBg: '#0284c7', text: 'Update display name, personal bio status, and privacy settings.' }
       ]
+    },
+    {
+      title: "11. Linked Devices & My QR Code 📱⚡",
+      subtitle: "Link web/desktop devices & let strangers scan your QR to chat without mobile numbers!",
+      icon: <QrCodeScannerIcon sx={{ color: '#fff', fontSize: isMobile ? 22 : 26 }} />,
+      color: '#10b981',
+      image: image11,
+      instructions: [
+        { num: '1', badgeBg: '#10b981', text: '📱 Linked Devices: Tap menu → Linked Devices to scan the QR code on web/desktop and link your account seamlessly.' },
+        { num: '2', badgeBg: '#0284c7', text: '🔲 My QR Code: Share your personal QR code from the "My QR" tab with friends or strangers.' },
+        { num: '3', badgeBg: '#e52e71', text: '🤝 Stranger QR Chat: Anyone can scan your QR code to initiate a direct chat instantly — zero mobile number required!' }
+      ]
+    },
+    {
+      title: "12. Help & Support Desk ❓💬",
+      subtitle: "Submit support tickets, report bugs, ask queries & track live resolution status!",
+      icon: <HelpOutlineIcon sx={{ color: '#fff', fontSize: isMobile ? 22 : 26 }} />,
+      color: '#ec4899',
+      image: image12,
+      instructions: [
+        { num: '1', badgeBg: '#ec4899', text: 'Go to Settings → Help & Support to open the Juicy Help & Support desk.' },
+        { num: '2', badgeBg: '#8b5cf6', text: 'Submit Ticket: Choose query type, enter details, attach images if needed, and submit your support query.' },
+        { num: '3', badgeBg: '#10b981', text: 'Track Progress: Check ticket response status, admin updates, and resolution progress live with your Ticket ID.' }
+      ]
+    },
+    ...(includeDeleteAndBlock ? [
+      {
+        title: "13. How to Delete Account 🗑️",
+        subtitle: "Permanently remove your Juicy account and erase data",
+        icon: <DeleteOutlineIcon sx={{ color: '#fff', fontSize: isMobile ? 22 : 26 }} />,
+        color: '#ef4444',
+        image: image13,
+        instructions: [
+          { num: '1', badgeBg: '#ef4444', text: 'Go to Settings → Account → Delete Account.' },
+          { num: '2', badgeBg: '#dc2626', text: 'Confirm Identity: Enter your password or verify via OTP to proceed with account deletion.' },
+          { num: '3', badgeBg: '#991b1b', text: 'Permanent Deletion: Once confirmed, all your data, chats, and profile will be permanently erased and cannot be recovered.' }
+        ]
+      },
+      {
+        title: "14. How to Block User 🚫",
+        subtitle: "Block contacts & manage your blocked contacts list",
+        icon: <BlockIcon sx={{ color: '#fff', fontSize: isMobile ? 22 : 26 }} />,
+        color: '#64748b',
+        image: image14,
+        instructions: [
+          { num: '1', badgeBg: '#64748b', text: 'Open Chat or Profile: Go to the user\'s chat or tap their profile avatar to open their profile page.' },
+          { num: '2', badgeBg: '#475569', text: 'Tap Block: Tap the ⋮ menu → Block User. The contact will no longer be able to message or call you.' },
+          { num: '3', badgeBg: '#334155', text: 'Manage Blocked List: Go to Settings → Privacy → Blocked Users to view or unblock any contact at any time.' }
+        ]
+      }
+    ] : []),
+    {
+      title: includeDeleteAndBlock ? "15. How to Change Chat Background 🖼️" : "13. How to Change Chat Background 🖼️",
+      subtitle: "Personalize chat wallpaper with photos, gradients & solids",
+      icon: <WallpaperIcon sx={{ color: '#fff', fontSize: isMobile ? 22 : 26 }} />,
+      color: '#0ea5e9',
+      image: image15,
+      instructions: [
+        { num: '1', badgeBg: '#0ea5e9', text: 'Open any chat → Tap the ⋮ menu at the top right → Select "Change Background".' },
+        { num: '2', badgeBg: '#0284c7', text: 'Choose Style: Pick from curated wallpapers, solid colors, gradients, or upload your own photo from gallery.' },
+        { num: '3', badgeBg: '#0369a1', text: 'Apply & Save: Tap "Apply" to set the background for that chat only, or choose "Set for All Chats" to apply globally.' }
+      ]
+    },
+    {
+      title: includeDeleteAndBlock ? "16. Opacity & Transparency ✨" : "14. Opacity & Transparency ✨",
+      subtitle: "Increase or decrease chat wallpaper transparency in real time",
+      icon: <OpacityIcon sx={{ color: '#fff', fontSize: isMobile ? 22 : 26 }} />,
+      color: '#a855f7',
+      image: image16,
+      instructions: [
+        { num: '1', badgeBg: '#a855f7', text: 'After selecting a wallpaper, find the Opacity slider just below the background preview screen.' },
+        { num: '2', badgeBg: '#7c3aed', text: 'Slide to Adjust: Drag the slider left to make the background more transparent, or right to make it fully opaque.' },
+        { num: '3', badgeBg: '#6d28d9', text: 'Live Preview: See the transparency change in real-time on the chat preview before saving your preference.' }
+      ]
+    },
+    {
+      title: includeDeleteAndBlock ? "17. How to Connect with New People 🤝" : "15. How to Connect with New People 🤝",
+      subtitle: "Search suggestions, send requests & approve incoming requests in Profile!",
+      icon: <PersonAddIcon sx={{ color: '#fff', fontSize: isMobile ? 22 : 26 }} />,
+      color: '#e52e71',
+      image: image17,
+      instructions: [
+        { num: '1', badgeBg: '#e52e71', text: 'Search & Suggestions: Tap the "Search" tab at the top. Scroll down to the "Suggested Users" section to discover recommended people, or search directly by name or @username.' },
+        { num: '2', badgeBg: '#ff8a00', text: 'Send Friend Request: In the Suggested Users list, tap the "+ Add" button next to any person. The request is sent instantly and status changes to "Requested".' },
+        { num: '3', badgeBg: '#0284c7', text: 'Go to Profile → Friend Requests: Open your Profile and tap the "Friend Requests" tab (or check "Incoming Friend Requests" at the top of the Search page).' },
+        { num: '4', badgeBg: '#10b981', text: 'Approve to Become Friends: Tap "Accept" / "Approve" on any incoming friend request. Once approved, you become friends and can start chatting and calling right away! 🎉' }
+      ]
     }
   ];
 
-  const activeStepObj = STEPS_DATA[currentStep];
+  const activeStepObj = STEPS_DATA[currentStep] || STEPS_DATA[0];
 
   return (
     <Dialog
@@ -1166,7 +1315,7 @@ export const UserGuideModal = ({
       <Box sx={{ width: '100%', bgcolor: isDarkTheme ? 'rgba(255,255,255,0.06)' : '#f1e5eb', flexShrink: 0 }}>
         <LinearProgress
           variant="determinate"
-          value={((currentStep + 1) / 10) * 100}
+          value={((currentStep + 1) / STEPS_DATA.length) * 100}
           sx={{
             height: 3.5,
             bgcolor: 'transparent',
@@ -1188,7 +1337,7 @@ export const UserGuideModal = ({
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Chip
-              label={`Step ${currentStep + 1}/10`}
+              label={`Step ${currentStep + 1}/${STEPS_DATA.length}`}
               size="small"
               sx={{
                 height: 22,
@@ -1218,7 +1367,7 @@ export const UserGuideModal = ({
             </Box>
           </Box>
           <Typography variant="caption" fontWeight={600} sx={{ color: isDarkTheme ? 'rgba(255,255,255,0.6)' : '#718096', fontSize: isMobile ? '0.7rem' : '0.75rem' }}>
-            {Math.round(((currentStep + 1) / 10) * 100)}% Completed
+            {Math.round(((currentStep + 1) / STEPS_DATA.length) * 100)}% Completed
           </Typography>
         </Box>
       </Box>
@@ -1556,7 +1705,7 @@ export const UserGuideModal = ({
             </Button>
           )}
 
-          {currentStep < 9 ? (
+          {currentStep < STEPS_DATA.length - 1 ? (
             <Button
               size="small"
               variant="contained"

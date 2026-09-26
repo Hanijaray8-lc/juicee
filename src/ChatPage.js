@@ -56,7 +56,7 @@ import { UserGuideModal, FeatureCatalogModal, USER_GUIDE_STORAGE_KEY } from './U
 import { Keyboard } from '@capacitor/keyboard';
 import { App as CapacitorApp } from '@capacitor/app';
 import './ChatPage.css';
-import Call from './call';
+import Call, { prefetchCallLogs } from './call';
 import { useInitializeCalls } from './initializeCalls';
 import useNetworkStatus from './hooks/useNetworkStatus';
 import { useTheme } from '@mui/material/styles';
@@ -90,7 +90,7 @@ import DownloadIcon from '@mui/icons-material/Download';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
 import { VoiceMessageRecorder, VoiceMessagePlayer } from './VoiceMessage';
 import { getLoveBotResponse } from './LoveBot';
-import jerryBotGif from './bot/juicy_ai_hand_wave_3sec.gif';
+import jerryBotGif from './bot/jerry.gif';
 import { GameBubble, GameSelectorDialog } from './Game';
 import SportsEsportsIcon from '@mui/icons-material/SportsEsports';
 import {
@@ -144,7 +144,9 @@ const SidebarSettingsIcon = (props) => (
 // Utility functions for localStorage persistence
 const loadMessagesFromStorage = () => {
   try {
-    const stored = localStorage.getItem('chatMessages');
+    const currentUserId = localStorage.getItem('userId');
+    const userKey = currentUserId ? `chatMessages_${currentUserId}` : null;
+    const stored = (userKey && localStorage.getItem(userKey)) || localStorage.getItem('chatMessages');
     return stored ? JSON.parse(stored) : {};
   } catch (e) {
     console.warn('Failed to load messages from localStorage:', e);
@@ -153,14 +155,24 @@ const loadMessagesFromStorage = () => {
 };
 
 const saveMessagesToStorage = (messagesObj) => {
+  if (!messagesObj || (typeof messagesObj === 'object' && Object.keys(messagesObj).length === 0)) {
+    // Guard against wiping valid messages with empty object
+    return;
+  }
   try {
+    const currentUserId = localStorage.getItem('userId');
+    if (currentUserId) {
+      localStorage.setItem(`chatMessages_${currentUserId}`, JSON.stringify(messagesObj));
+    }
     localStorage.setItem('chatMessages', JSON.stringify(messagesObj));
   } catch (e) {
     console.warn('Failed to save messages to localStorage:', e);
   }
   try {
     const currentUserId = localStorage.getItem('userId');
-    saveMessagesLocally(currentUserId, messagesObj);
+    if (currentUserId) {
+      saveMessagesLocally(currentUserId, messagesObj);
+    }
   } catch (e) {
     console.warn('Failed to save messages to local SQLite:', e);
   }
@@ -357,6 +369,7 @@ const ChatPage = () => {
   const [showAttachments, setShowAttachments] = useState(false);
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState(loadMessagesFromStorage);
+  const messagesRef = useRef(loadMessagesFromStorage());
   const [unread, setUnread] = useState({}); // { userId: count }
   const [isRecording, setIsRecording] = useState(false);
   const [recordingPreviewUrl, setRecordingPreviewUrl] = useState('');
@@ -633,6 +646,11 @@ const ChatPage = () => {
   useEffect(() => {
     const currentUserId = localStorage.getItem('userId');
     if (!currentUserId) return;
+
+    // ⚡ Instant Call Logs: Prefetch in background so Calls tab opens with 0ms delay
+    if (typeof prefetchCallLogs === 'function') {
+      prefetchCallLogs(currentUserId);
+    }
 
     // Load cached user profile if missing
     if (!user) {
@@ -1595,6 +1613,13 @@ const ChatPage = () => {
   useEffect(() => {
     const userId = localStorage.getItem('userId');
     if (userId) {
+      // ✅ Instant tutorial check — no network wait
+      const userGuideKey = `juicy_has_seen_user_guide_${userId}`;
+      const hasSeenGuide = localStorage.getItem(userGuideKey) || localStorage.getItem(USER_GUIDE_STORAGE_KEY);
+      if (!hasSeenGuide) {
+        setShowUserGuide(true);
+      }
+
       fetch(`${API_BASE_URL}/api/user/${userId}`)
         .then(res => {
           if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
@@ -1607,12 +1632,7 @@ const ChatPage = () => {
               localStorage.setItem('juicy_contact_gestures', JSON.stringify(data.gestures));
               saveContactGesturesLocally(data._id, data.gestures, 'synced');
             }
-            // Show user guide only once for new users (step-by-step walkthrough)
-            const userGuideKey = `juicy_has_seen_user_guide_${data._id}`;
-            const hasSeenGuide = localStorage.getItem(userGuideKey) || localStorage.getItem(USER_GUIDE_STORAGE_KEY);
-            if (!hasSeenGuide) {
-              setShowUserGuide(true);
-            }
+            // Show user guide only once for new users (handled instantly at mount above)
 
             // 🔑 Persist session to native SharedPreferences for background FCM token refresh
             if (typeof window !== 'undefined' && window.Capacitor) {
@@ -1772,13 +1792,19 @@ const ChatPage = () => {
     return () => clearInterval(intervalId);
   }, [hasLoadedFriends]);
 
+  // Keep messagesRef always in sync with the latest messages state
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
   useEffect(() => {
     if (!user || !Array.isArray(dbFriends) || dbFriends.length === 0) return;
 
     dbFriends.forEach(friend => {
       const friendIdStr = String(friend._id);
-      // Only fetch if we don't have messages for this friend in state yet
-      if (!messages[friendIdStr] || messages[friendIdStr].length === 0) {
+      // Use messagesRef.current (always fresh) to avoid stale closure causing re-fetch
+      const currentMsgs = messagesRef.current;
+      if (!currentMsgs[friendIdStr] || currentMsgs[friendIdStr].length === 0) {
         fetch(`${API_BASE_URL}/api/messages/${user._id}/${friend._id}`)
           .then(res => {
             if (res.ok) return res.json();
@@ -2806,18 +2832,38 @@ const ChatPage = () => {
       const currentToken = localStorage.getItem('token');
       if (data && data.token === currentToken) {
         toast.error('This device has been remotely unlinked.');
-        localStorage.removeItem('userId');
-        localStorage.removeItem('token');
-        localStorage.removeItem('username');
-        localStorage.removeItem('profileImage');
+        const currentUserId = localStorage.getItem('userId');
         if (typeof window !== 'undefined' && window.Capacitor) {
           const { AudioRoute } = window.Capacitor.Plugins || {};
           if (AudioRoute && typeof AudioRoute.clearSession === 'function') {
             AudioRoute.clearSession().catch(() => { });
           }
         }
-        socket.disconnect();
-        setTimeout(() => { window.location.href = "/signin"; }, 500);
+        if (socket) {
+          try {
+            socket.disconnect();
+          } catch (e) { }
+        }
+        try {
+          const savedTheme = localStorage.getItem('appTheme');
+          localStorage.clear();
+          if (savedTheme) {
+            localStorage.setItem('appTheme', savedTheme);
+          }
+        } catch (e) { }
+        try {
+          sessionStorage.clear();
+        } catch (e) { }
+        try {
+          window.dispatchEvent(new CustomEvent('juicy_user_logged_out', { detail: { userId: currentUserId } }));
+          window.dispatchEvent(new Event('storage'));
+        } catch (e) { }
+        navigate('/signin', { replace: true });
+        setTimeout(() => {
+          if (window.location.pathname !== '/signin') {
+            window.location.replace('/signin');
+          }
+        }, 150);
       }
     };
 
@@ -2847,6 +2893,27 @@ const ChatPage = () => {
       socket.off('logout_device', handleLogoutDevice);
     };
   }, [socket, handleReceiveMessage, user]);
+
+  // ── Instantly reflect sent friend requests in bell badge + UserProfile tab ──
+  useEffect(() => {
+    const handleSentRequest = (e) => {
+      const req = e.detail;
+      if (!req) return;
+      const currentUserId = user?._id ? String(user._id) : localStorage.getItem('userId');
+      // Only add to list if the request is directed to the current user (self-test scenario)
+      // or if receiverId matches. For real use, this shows the outgoing request preview.
+      if (req.receiverId && currentUserId && String(req.receiverId) === currentUserId) {
+        setFriendRequestsList(prev => {
+          const reqSenderId = String(req.senderId || req._id);
+          const exists = (prev || []).some(r => String(r.senderId || r._id) === reqSenderId);
+          if (exists) return prev;
+          return [req, ...(prev || [])];
+        });
+      }
+    };
+    window.addEventListener('juicy_friend_request_sent', handleSentRequest);
+    return () => window.removeEventListener('juicy_friend_request_sent', handleSentRequest);
+  }, [user]);
 
   useEffect(() => {
     if (!socket || !user || !selectedUser) return;
@@ -4172,8 +4239,20 @@ const ChatPage = () => {
 
   useEffect(() => {
     if (!selectedUser) {
-      setMessages({});
-      setUnread({});
+      setMessages(prev => {
+        // If memory already has messages for any user, keep them intact!
+        if (prev && Object.keys(prev).length > 0) {
+          return prev;
+        }
+        // Fallback: restore from localStorage if state was completely empty
+        const stored = loadMessagesFromStorage();
+        if (stored && Object.keys(stored).length > 0) {
+          messagesRef.current = stored;
+          return stored;
+        }
+        return prev;
+      });
+      // Note: unread counts are intentionally preserved so badges remain visible
     }
   }, [selectedUser]);
 
@@ -4605,6 +4684,9 @@ const ChatPage = () => {
     if (typeof window === 'undefined' || !window.visualViewport) return;
 
     const handleViewportResize = () => {
+      if (window.scrollY > 0) {
+        window.scrollTo(0, 0);
+      }
       const vv = window.visualViewport;
       const windowHeight = window.innerHeight;
 
@@ -5080,7 +5162,7 @@ const ChatPage = () => {
           {/* Tab Navigation - 3D Rounded Pill Buttons */}
           <Box sx={{ px: { xs: 0.75, sm: 1.5, md: 2 }, pb: 1.2, pt: 0.5, width: '100%', boxSizing: 'border-box' }}>
             <Tabs
-              value={bottomNav}
+              value={[0, 1, 2, 3].includes(bottomNav) ? bottomNav : false}
               onChange={(event, newValue) => { setBottomNav(newValue); }}
               textColor="primary"
               variant="fullWidth"
@@ -5230,10 +5312,9 @@ const ChatPage = () => {
           <Button key="cancel-btn" onClick={() => setSignOutDialogOpen(false)} variant="outlined" sx={{ textTransform: 'none', borderRadius: 2, borderColor: 'var(--primary-color)', color: 'var(--primary-color)' }}>Cancel</Button>
           <Button key="signout-btn" onClick={async () => {
             setSignOutDialogOpen(false);
-            localStorage.removeItem("userId");
-            localStorage.removeItem("token");
-            localStorage.removeItem("username");
-            localStorage.removeItem("profileImage");
+            const currentUserId = user?._id || localStorage.getItem('userId');
+
+            // 1. Clear native AudioRoute session
             if (typeof window !== 'undefined' && window.Capacitor) {
               const { AudioRoute } = window.Capacitor.Plugins || {};
               if (AudioRoute && typeof AudioRoute.clearSession === 'function') {
@@ -5244,8 +5325,45 @@ const ChatPage = () => {
                 }
               }
             }
-            if (socket) socket.disconnect();
-            window.location.href = "/signin";
+
+            // 2. Disconnect socket session immediately
+            if (socket) {
+              try {
+                if (currentUserId) socket.emit('logout', { userId: currentUserId });
+                socket.disconnect();
+              } catch (e) {
+                console.warn('Socket disconnect error:', e);
+              }
+            }
+
+            // 3. Clear all user localstorage & localmemory (sessionStorage)
+            try {
+              const savedTheme = localStorage.getItem('appTheme');
+              localStorage.clear();
+              if (savedTheme) {
+                localStorage.setItem('appTheme', savedTheme);
+              }
+            } catch (e) {
+              console.warn('LocalStorage clear error:', e);
+            }
+
+            try {
+              sessionStorage.clear();
+            } catch (e) { }
+
+            // 4. Dispatch logout events
+            try {
+              window.dispatchEvent(new CustomEvent('juicy_user_logged_out', { detail: { userId: currentUserId } }));
+              window.dispatchEvent(new Event('storage'));
+            } catch (e) { }
+
+            // 5. Instantly navigate to SignInPage
+            navigate('/signin', { replace: true });
+            setTimeout(() => {
+              if (window.location.pathname !== '/signin') {
+                window.location.replace('/signin');
+              }
+            }, 150);
           }} variant="contained" sx={{ bgcolor: '#d32f2f', color: '#ffffff', textTransform: 'none', borderRadius: 2, '&:hover': { bgcolor: '#b71c1c' } }}>Yes, Sign Out</Button>
         </DialogActions>
       </Dialog>
@@ -5268,9 +5386,9 @@ const ChatPage = () => {
           display: 'flex',
           flexDirection: 'column',
           pt: (isMobile && !isInChat) ? {
-            xs: 'calc(101px + env(safe-area-inset-top, 24px))',
-            sm: 'calc(109px + env(safe-area-inset-top, 24px))',
-            md: 'calc(125px + env(safe-area-inset-top, 24px))'
+            xs: 'calc(114px + env(safe-area-inset-top, 24px))',
+            sm: 'calc(118px + env(safe-area-inset-top, 24px))',
+            md: 'calc(128px + env(safe-area-inset-top, 24px))'
           } : 0,
           // merge computed background style from theme portion
         }}
@@ -5551,7 +5669,7 @@ const ChatPage = () => {
 
           {/* Mobile-only page targets (SearchPage, Settings, UserProfile, Call) if bottomNav is not 0 */}
           {isMobile && bottomNav === 1 && (
-            <Box sx={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', marginTop: 0 }}>
+            <Box sx={{ width: '100%', height: '100%', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-start', alignItems: 'stretch', overflow: 'hidden' }}>
               <Call callLogs={callLogs} onInitiateCall={handleInitiateCall} onSelectUser={handleSelectUser} />
             </Box>
           )}
@@ -5563,14 +5681,16 @@ const ChatPage = () => {
           {isMobile && bottomNav === 3 && (
             <Settings onBack={() => setBottomNav(0)} />
           )}
-          {isMobile && bottomNav === 4 && (
-            <UserProfile
-              friendRequestsList={pendingIncomingRequests}
-              onAcceptFriend={handleAcceptFriend}
-              onBlockChange={fetchBlockedStatus}
-              hideProfileCard={isNotificationView}
-              initialTab={isNotificationView ? 1 : 0}
-            />
+          {isMobile && (
+            <Box sx={{ display: bottomNav === 4 ? 'flex' : 'none', width: '100%', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+              <UserProfile
+                friendRequestsList={pendingIncomingRequests}
+                onAcceptFriend={handleAcceptFriend}
+                onBlockChange={fetchBlockedStatus}
+                hideProfileCard={isNotificationView}
+                initialTab={isNotificationView ? 1 : 0}
+              />
+            </Box>
           )}
 
           {/* Chat details pane (for active chat) or desktop splash screen */}
@@ -5711,8 +5831,8 @@ const ChatPage = () => {
                             fontSize: '1rem',
                             boxShadow: '0 2px 8px var(--primary-color-glow, rgba(255, 45, 108, 0.25))',
                             '& .MuiAvatar-img': (selectedUser.isBot || selectedUser._id === 'lovebot') ? {
-                              objectPosition: 'center 85%',
-                              transform: 'scale(1.25) translateY(-3px)'
+                              objectPosition: 'center 35%',
+                              transform: 'scale(1.25)'
                             } : {}
                           }}
                         >
@@ -5859,8 +5979,8 @@ const ChatPage = () => {
                             fontSize: '1rem',
                             boxShadow: '0 2px 8px var(--primary-color-glow, rgba(255, 45, 108, 0.2))',
                             '& .MuiAvatar-img': (selectedUser.isBot || selectedUser._id === 'lovebot') ? {
-                              objectPosition: 'center 85%',
-                              transform: 'scale(1.25) translateY(-3px)'
+                              objectPosition: 'center 35%',
+                              transform: 'scale(1.25)'
                             } : {}
                           }}
                         >
@@ -6985,7 +7105,9 @@ const ChatPage = () => {
                         onFocus={() => {
                           setShowEmojiPicker(false);
                           setShowAttachMenu(false);
+                          window.scrollTo(0, 0);
                           setTimeout(() => {
+                            window.scrollTo(0, 0);
                             if (messagesContainerRef.current) {
                               messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
                             }
@@ -7212,116 +7334,120 @@ const ChatPage = () => {
                 >
                   <Settings onBack={() => setBottomNav(0)} />
                 </Box>
-              ) : bottomNav === 4 ? (
-                <Box
-                  sx={{
-                    flex: 1,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    height: '100%',
-                    overflow: 'hidden',
-                    bgcolor: 'var(--background-color, #fff6f8)',
-                    borderLeft: isDarkTheme ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(241,220,220,0.5)',
-                  }}
-                >
-                  <UserProfile
-                    friendRequestsList={pendingIncomingRequests}
-                    onAcceptFriend={handleAcceptFriend}
-                    onBlockChange={fetchBlockedStatus}
-                    hideProfileCard={isNotificationView}
-                    initialTab={isNotificationView ? 1 : 0}
-                  />
-                </Box>
               ) : (
-                <Box
-                  sx={{
-                    flex: 1,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    bgcolor: isDarkTheme ? '#120f17' : '#fff5f8',
-                    background: isDarkTheme
-                      ? 'radial-gradient(circle at 50% 40%, rgba(255, 45, 108, 0.08) 0%, transparent 70%), #120f17'
-                      : 'radial-gradient(circle at 50% 40%, rgba(255, 92, 141, 0.12) 0%, rgba(255, 245, 248, 0.6) 65%), #fff7f9',
-                    position: 'relative',
-                    px: 4,
-                    textAlign: 'center',
-                    borderLeft: isDarkTheme ? '1px solid rgba(255, 92, 141, 0.15)' : '1px solid rgba(255, 92, 141, 0.12)',
-                    '&::before': {
-                      content: '""',
-                      position: 'absolute',
-                      inset: 0,
-                      background: 'var(--background-pattern, none)',
-                      backgroundSize: 'var(--pattern-size, 20px 20px)',
-                      opacity: 0.03,
-                      pointerEvents: 'none'
-                    }
-                  }}
-                >
+                <>
+                  {/* UserProfile — always mounted, hidden/shown instantly via CSS */}
                   <Box
                     sx={{
-                      maxWidth: 440,
-                      display: 'flex',
+                      display: bottomNav === 4 ? 'flex' : 'none',
+                      flex: 1,
                       flexDirection: 'column',
-                      alignItems: 'center',
-                      p: 4,
-                      borderRadius: '28px',
-                      bgcolor: isDarkTheme ? 'rgba(30, 24, 34, 0.8)' : 'rgba(255, 255, 255, 0.85)',
-                      backdropFilter: 'blur(20px)',
-                      WebkitBackdropFilter: 'blur(20px)',
-                      border: isDarkTheme ? '1px solid rgba(255, 92, 141, 0.25)' : '1px solid rgba(255, 92, 141, 0.18)',
-                      boxShadow: '0 16px 40px rgba(255, 45, 108, 0.1), inset 0 1px 0 rgba(255,255,255,0.8)'
+                      height: '100%',
+                      overflow: 'hidden',
+                      bgcolor: 'var(--background-color, #fff6f8)',
+                      borderLeft: isDarkTheme ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(241,220,220,0.5)',
                     }}
                   >
-                    <Box
-                      component="img"
-                      src={newJuicyLogo}
-                      alt="Juicy Web"
-                      sx={{
-                        width: 110,
-                        height: 'auto',
-                        mb: 2.5,
-                        filter: 'drop-shadow(0 8px 16px rgba(255, 45, 108, 0.25))'
-                      }}
+                    <UserProfile
+                      friendRequestsList={pendingIncomingRequests}
+                      onAcceptFriend={handleAcceptFriend}
+                      onBlockChange={fetchBlockedStatus}
+                      hideProfileCard={isNotificationView}
+                      initialTab={isNotificationView ? 1 : 0}
                     />
-                    <Typography
-                      variant="h5"
+                  </Box>
+                  {bottomNav !== 4 && (
+                    <Box
                       sx={{
-                        fontWeight: 700,
-                        color: 'var(--text-color, #000)',
-                        mb: 1,
-                        background: 'var(--primary-gradient, linear-gradient(135deg, #ff5c8d 0%, #ff2d6c 100%))',
-                        WebkitBackgroundClip: 'text',
-                        WebkitTextFillColor: 'transparent'
+                        flex: 1,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        bgcolor: isDarkTheme ? '#120f17' : '#fff5f8',
+                        background: isDarkTheme
+                          ? 'radial-gradient(circle at 50% 40%, rgba(255, 45, 108, 0.08) 0%, transparent 70%), #120f17'
+                          : 'radial-gradient(circle at 50% 40%, rgba(255, 92, 141, 0.12) 0%, rgba(255, 245, 248, 0.6) 65%), #fff7f9',
+                        position: 'relative',
+                        px: 4,
+                        textAlign: 'center',
+                        borderLeft: isDarkTheme ? '1px solid rgba(255, 92, 141, 0.15)' : '1px solid rgba(255, 92, 141, 0.12)',
+                        '&::before': {
+                          content: '""',
+                          position: 'absolute',
+                          inset: 0,
+                          background: 'var(--background-pattern, none)',
+                          backgroundSize: 'var(--pattern-size, 20px 20px)',
+                          opacity: 0.03,
+                          pointerEvents: 'none'
+                        }
                       }}
                     >
-                      Juicy for Web
-                    </Typography>
-                    <Typography sx={{ color: isDarkTheme ? '#c8b6c0' : '#6b5360', fontSize: '0.9rem', mb: 3, lineHeight: 1.6 }}>
-                      Send and receive messages with rich 3D style and vibrant vibes.<br />
-                      Smooth connection on all your devices.
-                    </Typography>
-                    <Box sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 1,
-                      px: 2,
-                      py: 0.75,
-                      borderRadius: '16px',
-                      bgcolor: isDarkTheme ? 'rgba(255, 92, 141, 0.12)' : 'rgba(255, 92, 141, 0.08)',
-                      border: '1px solid rgba(255, 92, 141, 0.2)',
-                      color: isDarkTheme ? '#ff759f' : '#ff2d6c',
-                      fontSize: '0.78rem',
-                      fontWeight: 600
-                    }}>
-                      <Box component="span" sx={{ fontSize: '0.85rem' }}>🔒</Box>
-                      <Typography variant="caption" sx={{ color: 'inherit', fontWeight: 600 }}>
-                        End-to-end encrypted
-                      </Typography>
+                      <Box
+                        sx={{
+                          maxWidth: 440,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          p: 4,
+                          borderRadius: '28px',
+                          bgcolor: isDarkTheme ? 'rgba(30, 24, 34, 0.8)' : 'rgba(255, 255, 255, 0.85)',
+                          backdropFilter: 'blur(20px)',
+                          WebkitBackdropFilter: 'blur(20px)',
+                          border: isDarkTheme ? '1px solid rgba(255, 92, 141, 0.25)' : '1px solid rgba(255, 92, 141, 0.18)',
+                          boxShadow: '0 16px 40px rgba(255, 45, 108, 0.1), inset 0 1px 0 rgba(255,255,255,0.8)'
+                        }}
+                      >
+                        <Box
+                          component="img"
+                          src={newJuicyLogo}
+                          alt="Juicy Web"
+                          sx={{
+                            width: 110,
+                            height: 'auto',
+                            mb: 2.5,
+                            filter: 'drop-shadow(0 8px 16px rgba(255, 45, 108, 0.25))'
+                          }}
+                        />
+                        <Typography
+                          variant="h5"
+                          sx={{
+                            fontWeight: 700,
+                            color: 'var(--text-color, #000)',
+                            mb: 1,
+                            background: 'var(--primary-gradient, linear-gradient(135deg, #ff5c8d 0%, #ff2d6c 100%))',
+                            WebkitBackgroundClip: 'text',
+                            WebkitTextFillColor: 'transparent'
+                          }}
+                        >
+                          Juicy for Web
+                        </Typography>
+                        <Typography sx={{ color: isDarkTheme ? '#c8b6c0' : '#6b5360', fontSize: '0.9rem', mb: 3, lineHeight: 1.6 }}>
+                          Send and receive messages with rich 3D style and vibrant vibes.<br />
+                          Smooth connection on all your devices.
+                        </Typography>
+                        <Box sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 1,
+                          px: 2,
+                          py: 0.75,
+                          borderRadius: '16px',
+                          bgcolor: isDarkTheme ? 'rgba(255, 92, 141, 0.12)' : 'rgba(255, 92, 141, 0.08)',
+                          border: '1px solid rgba(255, 92, 141, 0.2)',
+                          color: isDarkTheme ? '#ff759f' : '#ff2d6c',
+                          fontSize: '0.78rem',
+                          fontWeight: 600
+                        }}>
+                          <Box component="span" sx={{ fontSize: '0.85rem' }}>🔒</Box>
+                          <Typography variant="caption" sx={{ color: 'inherit', fontWeight: 600 }}>
+                            End-to-end encrypted
+                          </Typography>
+                        </Box>
+                      </Box>
                     </Box>
-                  </Box>
-                </Box>
+                  )}
+                </>
               )
             )
           )}
@@ -7375,11 +7501,11 @@ const ChatPage = () => {
                 width: '100%',
                 height: '100%',
                 objectFit: 'cover',
-                objectPosition: (quickProfileUser?.isBot || quickProfileUser?._id === 'lovebot') ? 'center 85%' : 'center',
-                transform: (quickProfileUser?.isBot || quickProfileUser?._id === 'lovebot') ? 'scale(1.15) translateY(-6px)' : 'none',
+                objectPosition: (quickProfileUser?.isBot || quickProfileUser?._id === 'lovebot') ? 'center 35%' : 'center',
+                transform: (quickProfileUser?.isBot || quickProfileUser?._id === 'lovebot') ? 'scale(1.15)' : 'none',
                 cursor: 'pointer',
                 transition: 'transform 0.3s ease',
-                '&:hover': { transform: (quickProfileUser?.isBot || quickProfileUser?._id === 'lovebot') ? 'scale(1.18) translateY(-6px)' : 'scale(1.03)' }
+                '&:hover': { transform: (quickProfileUser?.isBot || quickProfileUser?._id === 'lovebot') ? 'scale(1.18)' : 'scale(1.03)' }
               }}
               onClick={() => {
                 // Open the full-screen image viewer for the profile picture
@@ -7484,8 +7610,8 @@ const ChatPage = () => {
               width: 100, height: 100, mb: 2, bgcolor: 'var(--primary-color, #f8bbd0)',
               border: '3px solid var(--primary-color, #ec407a)', fontSize: 40,
               '& .MuiAvatar-img': (profileDialogUser?.isBot || profileDialogUser?._id === 'lovebot') ? {
-                objectPosition: 'center 85%',
-                transform: 'scale(1.25) translateY(-6px)'
+                objectPosition: 'center 35%',
+                transform: 'scale(1.25)'
               } : {}
             }}
           />

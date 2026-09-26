@@ -105,7 +105,7 @@ const Help = ({ onBack }) => {
 
     try {
       const endpoint = `${API_BASE_URL}/api/help/queries?mobileNumber=${encodeURIComponent(targetPhone.trim())}`;
-      const fallback = `http://localhost:5000/api/help/queries?mobileNumber=${encodeURIComponent(targetPhone.trim())}`;
+      const fallback = `https://juicyapp.in/api/help/queries?mobileNumber=${encodeURIComponent(targetPhone.trim())}`;
 
       let fetched = null;
       for (const url of [endpoint, fallback]) {
@@ -298,7 +298,7 @@ const Help = ({ onBack }) => {
       const cleanId = encodeURIComponent(identifier);
       const endpoints = [
         `${API_BASE_URL}/api/help/queries/${cleanId}`,
-        `http://localhost:5000/api/help/queries/${cleanId}`
+        `https://juicyapp.in/api/help/queries/${cleanId}`
       ];
 
       let updated = null;
@@ -360,7 +360,7 @@ const Help = ({ onBack }) => {
       const cleanId = encodeURIComponent(term);
       const endpoints = [
         `${API_BASE_URL}/api/help/queries/${cleanId}`,
-        `http://localhost:5000/api/help/queries/${cleanId}`
+        `https://juicyapp.in/api/help/queries/${cleanId}`
       ];
 
       let found = null;
@@ -462,7 +462,7 @@ const Help = ({ onBack }) => {
       let createdTicket = null;
       const endpoints = [
         `${API_BASE_URL}/api/help/submit`,
-        'http://localhost:5000/api/help/submit'
+        'https://juicyapp.in/api/help/submit'
       ];
 
       for (const endpoint of endpoints) {
