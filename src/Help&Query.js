@@ -24,7 +24,6 @@ import {
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import SearchIcon from '@mui/icons-material/Search';
-import AddIcon from '@mui/icons-material/Add';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
@@ -189,10 +188,6 @@ const HelpQuery = ({ onBack }) => {
     }
   };
 
-  // Navigate to Help page to submit a new query
-  const handleNewQuery = () => {
-    navigate('/help');
-  };
 
   // Copy Ticket ID
   const handleCopyTicketId = (ticketNumber, e) => {
@@ -571,30 +566,7 @@ const HelpQuery = ({ onBack }) => {
             </IconButton>
           </Tooltip>
 
-          <Button
-            variant="contained"
-            size="small"
-            startIcon={<AddIcon />}
-            onClick={handleNewQuery}
-            sx={{
-              borderRadius: 2.5,
-              textTransform: 'none',
-              fontWeight: 600,
-              fontSize: '0.85rem',
-              px: { xs: 1.5, sm: 2.2 },
-              py: 0.8,
-              bgcolor: 'var(--primary-color, #f06292)',
-              backgroundImage: 'var(--primary-gradient, linear-gradient(135deg, #f06292 0%, #e91e63 100%))',
-              color: '#ffffff',
-              boxShadow: '0 4px 12px rgba(240, 98, 146, 0.35)',
-              '&:hover': {
-                bgcolor: 'var(--primary-color, #f06292)',
-                boxShadow: '0 6px 16px rgba(240, 98, 146, 0.45)'
-              }
-            }}
-          >
-            New Query
-          </Button>
+
         </Box>
       </Paper>
 
@@ -879,25 +851,7 @@ const HelpQuery = ({ onBack }) => {
                 </Typography>
               </Box>
 
-              {queries.length === 0 ? (
-                <Button
-                  variant="contained"
-                  startIcon={<AddIcon />}
-                  onClick={handleNewQuery}
-                  sx={{
-                    mt: 1,
-                    borderRadius: 3,
-                    textTransform: 'none',
-                    fontWeight: 600,
-                    px: 3,
-                    py: 1.2,
-                    bgcolor: 'var(--primary-color, #f06292)',
-                    color: '#ffffff'
-                  }}
-                >
-                  Submit Your First Query
-                </Button>
-              ) : (
+              {queries.length > 0 && (
                 <Button
                   variant="outlined"
                   size="small"
