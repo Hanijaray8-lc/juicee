@@ -245,6 +245,97 @@ router.post('/messages/:messageId/delete-for-me', async (req, res) => {
 
 
 
+// ================= Forgot Password - Request (Verify Phone) =================
+// Accepts phone (with or without country code), email, or username to find the user
+router.post('/forgot-password/request', async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) {
+      return res.status(400).json({ message: 'Phone number is required.' });
+    }
+
+    // Normalize: strip all non-digit chars for flexible matching
+    const digitsOnly = phone.replace(/\D/g, '');
+
+    if (!digitsOnly || digitsOnly.length < 5) {
+      return res.status(400).json({ message: 'Invalid phone number.' });
+    }
+
+    // Build a regex that matches the phone ending with the provided digits
+    // e.g. user enters "9043275030" → matches "+919043275030"
+    const phoneRegex = new RegExp(digitsOnly.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$');
+
+    // Try to find user by phone (stored as e.g. "+919043275030")
+    let user = await User.findOne({ phone: { $regex: phoneRegex } }).select('_id username email phone');
+
+    // Fallback: treat the input as email or username
+    if (!user) {
+      user = await User.findOne({
+        $or: [
+          { email: phone.toLowerCase() },
+          { username: phone.toLowerCase() }
+        ]
+      }).select('_id username email phone');
+    }
+
+    if (!user) {
+      return res.status(404).json({ message: 'No account found with this mobile number.' });
+    }
+
+    console.log('✅ Forgot-password request verified for user:', user.username);
+    return res.status(200).json({
+      message: 'Phone verified. You may now reset your password.',
+      userId: user._id
+    });
+  } catch (err) {
+    console.error('forgot-password/request error:', err);
+    return res.status(500).json({ message: 'Server error. Please try again.' });
+  }
+});
+
+// ================= Forgot Password - Reset (Set New Password) =================
+router.post('/forgot-password/reset', async (req, res) => {
+  try {
+    const { phone, newPassword } = req.body;
+
+    if (!phone || !newPassword) {
+      return res.status(400).json({ message: 'Phone and new password are required.' });
+    }
+    if (newPassword.length < 4) {
+      return res.status(400).json({ message: 'Password must be at least 4 characters.' });
+    }
+
+    const digitsOnly = phone.replace(/\D/g, '');
+    const phoneRegex = new RegExp(digitsOnly.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$');
+
+    let user = await User.findOne({ phone: { $regex: phoneRegex } });
+
+    // Fallback: treat phone value as email or username
+    if (!user) {
+      user = await User.findOne({
+        $or: [
+          { email: phone.toLowerCase() },
+          { username: phone.toLowerCase() }
+        ]
+      });
+    }
+
+    if (!user) {
+      return res.status(404).json({ message: 'No account found with this mobile number.' });
+    }
+
+    // Update password (plain text — matches existing login comparison)
+    user.password = newPassword;
+    await user.save();
+
+    console.log('✅ Password reset successful for user:', user.username);
+    return res.status(200).json({ message: 'Password reset successfully. Please sign in.' });
+  } catch (err) {
+    console.error('forgot-password/reset error:', err);
+    return res.status(500).json({ message: 'Server error. Please try again.' });
+  }
+});
+
 // ================= Login =================
 router.post('/login', async (req, res) => {
   try {

@@ -342,6 +342,7 @@ function SignInPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [resetStatus, setResetStatus] = useState(""); // '', 'processing', 'done', 'error'
   const [resetError, setResetError] = useState("");
+  const [forgotUserId, setForgotUserId] = useState(""); // userId found by phone lookup
 
   const getFormattedForgotPhone = () => {
     let digits = forgotMobile.replace(/\D/g, '');
@@ -910,15 +911,74 @@ function SignInPage() {
     setTimeout(async () => {
       setForgotStatus("processing");
       try {
+        // --- PRIMARY: Try dedicated forgot-password endpoint ---
         const response = await fetch(`${API_BASE_URL}/api/forgot-password/request`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            phone: fullPhone
-          }),
+          body: JSON.stringify({ phone: fullPhone }),
         });
+
+        if (response.status === 404) {
+          // --- FALLBACK: Endpoint not found, look up user by phone via search API ---
+          try {
+            const searchRes = await fetch(
+              `${API_BASE_URL}/api/users/search?q=${encodeURIComponent(digitsOnly)}&userId=000000000000000000000000`,
+              { method: "GET" }
+            );
+            if (searchRes.ok) {
+              const searchData = await searchRes.json();
+              const users = Array.isArray(searchData) ? searchData : (searchData.users || []);
+              // Match by phone: strip country code from stored phone for comparison
+              const matched = users.find(u => {
+                if (!u.phone) return false;
+                const storedDigits = u.phone.replace(/\D/g, '');
+                return storedDigits === digitsOnly ||
+                  storedDigits.endsWith(digitsOnly) ||
+                  digitsOnly.endsWith(storedDigits);
+              });
+              if (matched) {
+                setForgotUserId(matched._id || "");
+                setForgotStatus("done");
+                setTimeout(() => {
+                  setForgotOpen(false);
+                  setResetOpen(true);
+                }, 800);
+                return;
+              }
+            }
+          } catch (_searchErr) {
+            // search fallback failed, try login-based check below
+          }
+
+          // --- FALLBACK 2: Try login-based check (wrong password just to test if phone user exists) ---
+          // We check if phone is the user's stored phone from localStorage (if already logged in on device)
+          const storedPhone = localStorage.getItem('phone') || '';
+          const storedUserId = localStorage.getItem('userId') || '';
+          const storedPhoneDigits = storedPhone.replace(/\D/g, '');
+          if (
+            storedUserId &&
+            storedPhoneDigits &&
+            (storedPhoneDigits === digitsOnly ||
+              storedPhoneDigits.endsWith(digitsOnly) ||
+              digitsOnly.endsWith(storedPhoneDigits))
+          ) {
+            setForgotUserId(storedUserId);
+            setForgotStatus("done");
+            setTimeout(() => {
+              setForgotOpen(false);
+              setResetOpen(true);
+            }, 800);
+            return;
+          }
+
+          setForgotStatus("error");
+          setForgotError("Mobile number not found. Please check the number and try again.");
+          return;
+        }
+
         const result = await response.json();
         if (response.ok) {
+          if (result.userId) setForgotUserId(result.userId);
           setForgotStatus("done");
           setTimeout(() => {
             setForgotOpen(false);
@@ -930,7 +990,7 @@ function SignInPage() {
         }
       } catch (err) {
         setForgotStatus("error");
-        setForgotError("Server error. Try again.");
+        setForgotError("Server error. Check your connection and try again.");
       }
     }, 800);
   };
@@ -953,14 +1013,52 @@ function SignInPage() {
 
     setTimeout(async () => {
       try {
+        // --- PRIMARY: Try dedicated forgot-password reset endpoint ---
         const response = await fetch(`${API_BASE_URL}/api/forgot-password/reset`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            phone: fullPhone,
-            newPassword,
-          }),
+          body: JSON.stringify({ phone: fullPhone, newPassword }),
         });
+
+        if (response.status === 404 && forgotUserId) {
+          // --- FALLBACK: Use profile update endpoint with found userId ---
+          try {
+            const updateRes = await fetch(`${API_BASE_URL}/api/user/${forgotUserId}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ password: newPassword }),
+            });
+            if (updateRes.ok) {
+              setResetStatus("done");
+              setTimeout(() => {
+                setResetOpen(false);
+                setNewPassword("");
+                setConfirmPassword("");
+                setForgotMobile("");
+                setForgotUserId("");
+                setResetStatus("");
+                showPopup(true, "Password reset successful! Please sign in.");
+              }, 1000);
+              return;
+            } else {
+              const updateResult = await updateRes.json().catch(() => ({}));
+              setResetStatus("error");
+              setResetError(updateResult.message || "Password reset failed. Please try again.");
+              return;
+            }
+          } catch (_updateErr) {
+            setResetStatus("error");
+            setResetError("Server error. Please try again.");
+            return;
+          }
+        }
+
+        if (response.status === 404) {
+          setResetStatus("error");
+          setResetError("Reset service unavailable. Please contact support.");
+          return;
+        }
+
         const result = await response.json();
         if (response.ok) {
           setResetStatus("done");
@@ -969,6 +1067,7 @@ function SignInPage() {
             setNewPassword("");
             setConfirmPassword("");
             setForgotMobile("");
+            setForgotUserId("");
             setResetStatus("");
             showPopup(true, "Password reset successful! Please sign in.");
           }, 1000);
