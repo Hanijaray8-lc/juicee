@@ -137,8 +137,8 @@ export default function WebScanner() {
             return;
         }
 
-        // All other tabs open in a new browser tab
-        window.open(getPageSrc(tab, anchor), '_blank', 'noopener,noreferrer');
+        // Navigate in the same tab (replace current URL)
+        window.location.href = getPageSrc(tab, anchor);
     };
 
     const WEB_BASE = 'https://web.juicyapp.in';
