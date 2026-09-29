@@ -18,7 +18,10 @@ import {
   Divider,
   Grid,
   Switch,
+  Tooltip,
+  useMediaQuery,
 } from '@mui/material';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
@@ -30,6 +33,7 @@ import SecurityIcon from "@mui/icons-material/Security";
 import { keyframes } from '@emotion/react';
 import "@fontsource/pacifico";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
+import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
 import CancelRoundedIcon from "@mui/icons-material/CancelRounded";
 import LocalPhoneIcon from "@mui/icons-material/LocalPhone";
 import Slide from "@mui/material/Slide";
@@ -254,6 +258,7 @@ const passwordRules = [
 export default function SignUpPage() {
   useSwipeBack(); // Default threshold is 80px
   const navigate = useNavigate();
+  const isDesktop = useMediaQuery('(min-width: 960px)');
 
   // --- THEME SYNC ---
   const [activeTheme, setActiveTheme] = useState(() => {
@@ -447,7 +452,16 @@ export default function SignUpPage() {
     setUsernameStatus((prev) => ({ ...prev, loading: true }));
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/api/check-username?username=${encodeURIComponent(username)}`);
+        let res;
+        try {
+          res = await fetch(`${API_BASE_URL}/api/check-username?username=${encodeURIComponent(username)}`);
+        } catch {
+          try {
+            res = await fetch(`/api/check-username?username=${encodeURIComponent(username)}`);
+          } catch {
+            res = await fetch(`http://localhost:5000/api/check-username?username=${encodeURIComponent(username)}`);
+          }
+        }
         const data = await res.json();
         if (!active) return;
         setUsernameStatus({ loading: false, exists: data.exists, checked: true });
@@ -472,6 +486,7 @@ export default function SignUpPage() {
     success: false,
     message: "",
   });
+  const [registerSuccessOpen, setRegisterSuccessOpen] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const [countrySelectOpen, setCountrySelectOpen] = useState(false);
 
@@ -710,7 +725,7 @@ export default function SignUpPage() {
       document.body.appendChild(script);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [googleClientId]);
+  }, [googleClientId, isDesktop]);
 
   const GOOGLE_WEB_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID || '821005945428-7qbipus2rfd5r10d0uoblo6pi23sd9l5.apps.googleusercontent.com';
 
@@ -967,6 +982,16 @@ For support or questions:
 
   const handleLogoLoad = () => {};
 
+  const handleBack = () => {
+    if (!isDesktop && currentStep > 1) {
+      setCurrentStep((prev) => prev - 1);
+    } else if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate('/signin');
+    }
+  };
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     if (name === "phone") {
@@ -992,8 +1017,11 @@ For support or questions:
     reader.readAsDataURL(file);
   };
 
+  const isSubmittingRef = React.useRef(false);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isSubmittingRef.current) return;
     setFieldErrors({});
 
     const requiredFields = [
@@ -1038,6 +1066,8 @@ For support or questions:
         return;
       }
 
+      isSubmittingRef.current = true;
+
       const formData = new FormData();
 
       Object.keys(form).forEach(key => {
@@ -1050,10 +1080,51 @@ For support or questions:
       formData.append('countryCode', selectedCountry.code);
       formData.append('profileImage', profileImage);
 
-      const response = await fetch(`${API_BASE_URL}/api/signup`, {
-        method: 'POST',
-        body: formData,
-      });
+      let response;
+      let lastError;
+
+      // 1. Primary attempt with API_BASE_URL
+      try {
+        response = await fetch(`${API_BASE_URL}/api/signup`, {
+          method: 'POST',
+          body: formData,
+        });
+      } catch (err) {
+        lastError = err;
+        console.warn('⚠️ Primary signup fetch failed or blocked by client:', err);
+      }
+
+      // 2. Fallback attempt: Relative path (dev proxy) if on localhost
+      if (!response && typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+        try {
+          const fallbackRes = await fetch('/api/signup', {
+            method: 'POST',
+            body: formData,
+          });
+          const ct = fallbackRes.headers.get('content-type') || '';
+          if (ct.includes('application/json')) {
+            response = fallbackRes;
+          }
+        } catch (err) {
+          console.warn('⚠️ Relative proxy fallback failed:', err);
+        }
+      }
+
+      // 3. Fallback attempt: Local backend (port 5000) if running locally
+      if (!response && typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && !API_BASE_URL.includes('5000')) {
+        try {
+          response = await fetch('http://localhost:5000/api/signup', {
+            method: 'POST',
+            body: formData,
+          });
+        } catch (err) {
+          console.warn('⚠️ Local backend (port 5000) fallback failed:', err);
+        }
+      }
+
+      if (!response) {
+        throw lastError || new Error('Signup request failed');
+      }
 
       const data = await response.json();
 
@@ -1065,9 +1136,13 @@ For support or questions:
       });
 
       if (response.ok) {
-        showPopup(true, data.message || 'Registered successfully!');
-        navigate('/signin', { replace: true });
+        setRegisterSuccessOpen(true);
+        setTimeout(() => {
+          setRegisterSuccessOpen(false);
+          navigate('/signin', { replace: true });
+        }, 2000);
       } else {
+        isSubmittingRef.current = false;
         if (response.status === 409) {
           const field = data.field || '';
           const message = data.message || 'Registration failed';
@@ -1086,17 +1161,22 @@ For support or questions:
         }
       }
     } catch (error) {
+      isSubmittingRef.current = false;
       console.error('❌ Error:', error);
-      alert('Something went wrong. Please try again.');
+      const isBlocked = error?.message?.includes('Failed to fetch') || error?.name === 'TypeError';
+      const errorMessage = isBlocked
+        ? 'Request blocked by browser extension (AdBlock / Brave Shields). Please turn off ad blocker for this site.'
+        : (error.message || 'Something went wrong. Please try again.');
+      showPopup(false, errorMessage, 4500);
     }
   };
 
   const handleClickShowPassword = () => setShowPassword((show) => !show);
   const handleClickShowConfirmPassword = () => setShowConfirmPassword((show) => !show);
 
-  const showPopup = (success, message) => {
+  const showPopup = (success, message, duration = 2500) => {
     setPopup({ open: true, success, message });
-    setTimeout(() => setPopup((p) => ({ ...p, open: false })), 2000);
+    setTimeout(() => setPopup((p) => ({ ...p, open: false })), duration);
   };
 
   const isStep1Valid = useMemo(() => {
@@ -1133,6 +1213,733 @@ For support or questions:
     return isStep1Valid && isStep2Valid && isStep3Valid;
   }, [isStep1Valid, isStep2Valid, isStep3Valid]);
 
+  // Step 1 Form Content (Reusable for Mobile & Desktop)
+  const renderStep1Content = (isDesktopView = false) => (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.75, flex: 1 }}>
+      {/* Profile Photo button and preview */}
+      <Box sx={{ textAlign: 'center', mb: 1 }}>
+        {profilePreview && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 1.5 }}>
+            <Box
+              component="img"
+              src={profilePreview}
+              alt="Profile Preview"
+              sx={{
+                width: 84,
+                height: 84,
+                borderRadius: '50%',
+                objectFit: 'cover',
+                border: `3px solid ${solidPrimary}`,
+                boxShadow: `0 6px 20px ${solidPrimary}35`,
+              }}
+            />
+          </Box>
+        )}
+        <Button
+          variant="outlined"
+          onClick={() => setProfileOpen(true)}
+          sx={{
+            borderColor: BORDER_GRAY,
+            color: solidPrimary,
+            borderRadius: '20px',
+            textTransform: 'none',
+            fontWeight: 600,
+            px: 2.5,
+            py: 0.7,
+            fontSize: '0.86rem',
+            backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : `${solidPrimary}08`,
+            transition: 'all 0.2s ease',
+            '&:hover': {
+              backgroundColor: `${solidPrimary}15`,
+              borderColor: solidPrimary,
+              transform: 'translateY(-1px)',
+            },
+          }}
+        >
+          {profilePreview ? 'Change Profile Photo' : '+ Add Profile Photo'}
+        </Button>
+      </Box>
+
+      <TextField
+        fullWidth
+        label="Full Name"
+        name="name"
+        value={form.name}
+        onChange={handleChange}
+        sx={textFieldSx}
+      />
+
+      <TextField
+        fullWidth
+        label="Username"
+        name="username"
+        value={form.username}
+        onChange={handleChange}
+        error={!!fieldErrors.username || (usernameStatus.checked && usernameStatus.exists)}
+        helperText={
+          fieldErrors.username ||
+          (usernameStatus.checked && usernameStatus.exists ? 'Username is already taken' :
+            usernameStatus.checked && !usernameStatus.exists && form.username ? 'Username is available' : '')
+        }
+        InputProps={{
+          endAdornment:
+            form.username && usernameStatus.checked ? (
+              usernameStatus.exists ? (
+                <InputAdornment position="end">
+                  <CancelRoundedIcon sx={{ color: '#ef1c1c' }} />
+                </InputAdornment>
+              ) : (
+                <InputAdornment position="end">
+                  <CheckCircleRoundedIcon sx={{ color: solidPrimary }} />
+                </InputAdornment>
+              )
+            ) : null,
+        }}
+        sx={textFieldSx}
+      />
+
+      {/* Gender Selection - 3D Styled Cards */}
+      <Box sx={{ textAlign: 'left', mt: 0.5 }}>
+        <Typography
+          sx={{
+            fontSize: '0.84rem',
+            color: TEXT_GRAY,
+            mb: 0.8,
+            ml: 0.5,
+            fontWeight: 500,
+          }}
+        >
+          Gender
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          {[
+            { value: 'Male', icon: '♂', label: 'Male' },
+            { value: 'Female', icon: '♀', label: 'Female' },
+            { value: 'Other', icon: '⚧', label: 'Other' },
+          ].map((option) => {
+            const isSelected = form.gender === option.value;
+            return (
+              <Box
+                key={option.value}
+                onClick={() =>
+                  handleChange({
+                    target: { name: 'gender', value: option.value },
+                  })
+                }
+                sx={{
+                  flex: 1,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 0.4,
+                  py: 1.2,
+                  px: 1,
+                  borderRadius: '16px',
+                  cursor: 'pointer',
+                  backgroundColor: isSelected
+                    ? (isDark ? `${solidPrimary}25` : `${solidPrimary}12`)
+                    : (isDark ? 'rgba(255,255,255,0.04)' : LIGHT_GRAY),
+                  border: `1.5px solid ${isSelected ? solidPrimary : BORDER_GRAY}`,
+                  boxShadow: isSelected
+                    ? `0 4px 16px ${solidPrimary}28`
+                    : 'none',
+                  transition: 'all 0.25s ease',
+                  '&:hover': {
+                    borderColor: solidPrimary,
+                    transform: 'translateY(-2px)',
+                  },
+                  '&:active': {
+                    transform: 'scale(0.98)',
+                  },
+                }}
+              >
+                <Typography
+                  sx={{
+                    fontSize: '1.4rem',
+                    lineHeight: 1,
+                    color: isSelected ? solidPrimary : TEXT_GRAY,
+                    transition: 'transform 0.25s ease',
+                    transform: isSelected ? 'scale(1.15)' : 'scale(1)',
+                  }}
+                >
+                  {option.icon}
+                </Typography>
+                <Typography
+                  sx={{
+                    fontSize: '0.8rem',
+                    fontWeight: isSelected ? 700 : 500,
+                    color: isSelected ? solidPrimary : TEXT_GRAY,
+                    transition: 'all 0.25s ease',
+                  }}
+                >
+                  {option.label}
+                </Typography>
+                {/* Radio dot indicator */}
+                <Box
+                  sx={{
+                    width: 14,
+                    height: 14,
+                    borderRadius: '50%',
+                    border: `2px solid ${isSelected ? solidPrimary : `rgba(${rgbText}, 0.25)`}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    mt: 0.2,
+                    transition: 'all 0.25s ease',
+                  }}
+                >
+                  <Box
+                    sx={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: '50%',
+                      backgroundColor: isSelected ? solidPrimary : 'transparent',
+                      transition: 'all 0.25s ease',
+                      transform: isSelected ? 'scale(1)' : 'scale(0)',
+                    }}
+                  />
+                </Box>
+              </Box>
+            );
+          })}
+        </Box>
+        {fieldErrors.gender && (
+          <Typography
+            sx={{
+              fontSize: '0.75rem',
+              color: '#d32f2f',
+              mt: 0.5,
+              ml: 0.5,
+            }}
+          >
+            {fieldErrors.gender}
+          </Typography>
+        )}
+      </Box>
+
+      {/* Date of Birth */}
+      <TextField
+        fullWidth
+        type="date"
+        label="Date of Birth"
+        name="dob"
+        value={form.dob}
+        onChange={handleChange}
+        InputLabelProps={{ shrink: true }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <CakeIcon sx={{ color: solidPrimary, fontSize: '1.15rem' }} />
+            </InputAdornment>
+          ),
+        }}
+        sx={textFieldSx}
+      />
+
+      {/* Bio / About Me */}
+      <TextField
+        fullWidth
+        multiline
+        rows={2}
+        label="About Me / Bio"
+        name="about"
+        placeholder="Tell friends a little about yourself or your vibe..."
+        value={form.about}
+        onChange={handleChange}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start" sx={{ alignSelf: 'flex-start', mt: 1 }}>
+              <InfoIcon sx={{ color: solidPrimary, fontSize: '1.15rem' }} />
+            </InputAdornment>
+          ),
+        }}
+        sx={{
+          ...textFieldSx,
+          '& .MuiInputBase-root': {
+            ...textFieldSx['& .MuiInputBase-root'],
+            height: 'auto',
+            minHeight: 74,
+            py: 1,
+          },
+        }}
+      />
+
+      {/* Step 1 Actions (Mobile Only) */}
+      {!isDesktopView && (
+        <Button
+          variant="contained"
+          fullWidth
+          onClick={() => setCurrentStep(2)}
+          disabled={!isStep1Valid}
+          sx={{ ...primaryButtonSx, mt: 1.5 }}
+        >
+          Next
+        </Button>
+      )}
+    </Box>
+  );
+
+  // Step 2 Form Content (Reusable for Mobile & Desktop)
+  const renderStep2Content = (isDesktopView = false) => (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.75, flex: 1, justifyContent: 'space-between' }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.75 }}>
+        <TextField
+          fullWidth
+          label="Email"
+          name="email"
+          type="email"
+          value={form.email}
+          onChange={handleChange}
+          error={!!fieldErrors.email}
+          helperText={fieldErrors.email}
+          sx={textFieldSx}
+        />
+
+        {/* Phone Number Input with Built-in Country Code */}
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+          {/* Country Code selector button */}
+          <Box
+            onClick={() => setCountrySelectOpen(true)}
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 0.5,
+              px: 1.5,
+              borderRadius: '16px',
+              backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : LIGHT_GRAY,
+              border: `1.5px solid ${BORDER_GRAY}`,
+              cursor: 'pointer',
+              minWidth: 85,
+              height: 54,
+              userSelect: 'none',
+              transition: 'all 0.2s',
+              '&:hover': { borderColor: solidPrimary, boxShadow: `0 0 0 3px ${solidPrimary}15` },
+            }}
+          >
+            <Typography sx={{ fontSize: '1.25rem', lineHeight: 1 }}>{selectedCountry.flag}</Typography>
+            <Typography sx={{ fontSize: '0.85rem', fontWeight: 600, color: INPUT_TEXT_COLOR, whiteSpace: 'nowrap' }}>
+              {selectedCountry.code}
+            </Typography>
+            <Typography sx={{ fontSize: '0.65rem', color: TEXT_GRAY }}>▼</Typography>
+          </Box>
+
+          {/* Mobile Number input */}
+          <TextField
+            fullWidth
+            label="Phone Number"
+            name="phone"
+            type="tel"
+            value={form.phone}
+            onChange={handleChange}
+            inputProps={{ maxLength: selectedCountry.dialLength, inputMode: 'numeric', pattern: '[0-9]*' }}
+            placeholder={`${selectedCountry.dialLength} digits`}
+            error={!!fieldErrors.phone}
+            helperText={fieldErrors.phone || `${selectedCountry.dialLength} digits`}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <LocalPhoneIcon sx={{ color: solidPrimary, fontSize: '1.1rem' }} />
+                </InputAdornment>
+              ),
+            }}
+            sx={textFieldSx}
+          />
+        </Box>
+
+        {/* City & Country (2 columns) */}
+        <Box sx={{ display: 'flex', gap: 1.5 }}>
+          <TextField
+            fullWidth
+            label="City"
+            name="city"
+            placeholder="e.g. Chennai"
+            value={form.city}
+            onChange={handleChange}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <LocationOnIcon sx={{ color: solidPrimary, fontSize: '1.15rem' }} />
+                </InputAdornment>
+              ),
+            }}
+            sx={textFieldSx}
+          />
+
+          <TextField
+            fullWidth
+            label="Country"
+            name="country"
+            placeholder="e.g. India"
+            value={form.country}
+            onChange={handleChange}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <PublicIcon sx={{ color: solidPrimary, fontSize: '1.15rem' }} />
+                </InputAdornment>
+              ),
+            }}
+            sx={textFieldSx}
+          />
+        </Box>
+
+        {/* Profile Discovery Visibility Switch */}
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            p: 1.5,
+            borderRadius: '16px',
+            backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : LIGHT_GRAY,
+            border: `1.5px solid ${BORDER_GRAY}`,
+            transition: 'all 0.25s ease',
+            '&:hover': {
+              borderColor: solidPrimary,
+            },
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
+            <SecurityIcon sx={{ color: form.profileVisible ? '#10b981' : '#f59e0b', fontSize: '1.35rem' }} />
+            <Box>
+              <Typography sx={{ fontSize: '0.86rem', fontWeight: 600, color: INPUT_TEXT_COLOR, lineHeight: 1.2 }}>
+                Profile Visibility
+              </Typography>
+              <Typography sx={{ fontSize: '0.72rem', color: TEXT_GRAY, mt: 0.3 }}>
+                {form.profileVisible ? 'Visible to nearby discovery & friends' : 'Hidden from discovery search'}
+              </Typography>
+            </Box>
+          </Box>
+          <Switch
+            checked={form.profileVisible}
+            onChange={(e) => setForm(prev => ({ ...prev, profileVisible: e.target.checked }))}
+            sx={{
+              '& .MuiSwitch-switchBase.Mui-checked': {
+                color: solidPrimary,
+              },
+              '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                backgroundColor: solidPrimary,
+              },
+            }}
+          />
+        </Box>
+      </Box>
+
+      {/* Step 2 Actions (Mobile Only) */}
+      {!isDesktopView && (
+        <Box sx={{ display: 'flex', gap: 1.5, mt: 1.5 }}>
+          <Button
+            variant="outlined"
+            onClick={() => setCurrentStep(1)}
+            sx={{ ...outlinedButtonSx, flex: 1 }}
+          >
+            Back
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() => setCurrentStep(3)}
+            disabled={!isStep2Valid}
+            sx={{ ...primaryButtonSx, flex: 1 }}
+          >
+            Next
+          </Button>
+        </Box>
+      )}
+
+      {/* Desktop Security Assurance Card Footer */}
+      {isDesktopView && (
+        <Box
+          sx={{
+            mt: 'auto',
+            pt: 2,
+            p: 1.5,
+            borderRadius: '16px',
+            backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : `${solidPrimary}08`,
+            border: `1px dashed ${BORDER_GRAY}`,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.2,
+          }}
+        >
+          <SecurityIcon sx={{ color: solidPrimary, fontSize: '1.3rem', flexShrink: 0 }} />
+          <Typography sx={{ fontSize: '0.78rem', color: TEXT_GRAY, lineHeight: 1.4 }}>
+            Your privacy is our priority. Your mobile & email are encrypted and never publicly exposed.
+          </Typography>
+        </Box>
+      )}
+    </Box>
+  );
+
+  // Step 3 Form Content (Reusable for Mobile & Desktop)
+  const renderStep3Content = (isDesktopView = false) => (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.75, flex: 1 }}>
+      <TextField
+        fullWidth
+        type={showPassword ? 'text' : 'password'}
+        label="Password"
+        name="password"
+        value={form.password}
+        onChange={handleChange}
+        InputProps={{
+          endAdornment: (
+            <InputAdornment position="end">
+              <IconButton
+                onClick={handleClickShowPassword}
+                edge="end"
+                sx={{
+                  color: TEXT_GRAY,
+                  transition: 'color 0.2s',
+                  '&:hover': { color: solidPrimary },
+                }}
+              >
+                {showPassword ? <VisibilityOff /> : <Visibility />}
+              </IconButton>
+            </InputAdornment>
+          ),
+        }}
+        sx={textFieldSx}
+      />
+
+      <TextField
+        fullWidth
+        type={showConfirmPassword ? 'text' : 'password'}
+        label="Confirm Password"
+        name="confirmPassword"
+        value={form.confirmPassword}
+        onChange={handleChange}
+        InputProps={{
+          endAdornment: (
+            <InputAdornment position="end">
+              <IconButton
+                onClick={handleClickShowConfirmPassword}
+                edge="end"
+                sx={{
+                  color: TEXT_GRAY,
+                  transition: 'color 0.2s',
+                  '&:hover': { color: solidPrimary },
+                }}
+              >
+                {showConfirmPassword ? <VisibilityOff /> : <Visibility />}
+              </IconButton>
+            </InputAdornment>
+          ),
+        }}
+        sx={textFieldSx}
+      />
+
+      {/* Password Rules */}
+      <Box sx={{ mt: 0.5, mb: 0.5, px: 0.5 }}>
+        {passwordRules.map((rule, idx) => {
+          const passed = rule.test(form.password);
+          return (
+            <Box key={idx} sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
+              {passed ? (
+                <CheckCircleRoundedIcon sx={{ color: solidPrimary, fontSize: 18 }} />
+              ) : (
+                <CancelRoundedIcon sx={{ color: "#ef1c1c", fontSize: 18 }} />
+              )}
+              <Typography
+                variant="caption"
+                sx={{
+                  color: passed ? solidPrimary : "#ef1c1c",
+                  fontWeight: passed ? "bold" : "normal",
+                  fontSize: { xs: '0.75rem', sm: '0.82rem' },
+                }}
+              >
+                {rule.label}
+              </Typography>
+            </Box>
+          );
+        })}
+      </Box>
+
+      {/* Terms & Conditions Checkbox */}
+      <Box sx={{ mt: 0.5 }}>
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={termsAgreed}
+              onChange={handleTermsCheckbox}
+              sx={{
+                color: TEXT_GRAY,
+                '&.Mui-checked': {
+                  color: solidPrimary,
+                },
+              }}
+            />
+          }
+          label={
+            <Typography sx={{ fontSize: '0.88rem', color: TEXT_GRAY }}>
+              I agree to the{' '}
+              <Link
+                component="button"
+                type="button"
+                variant="body2"
+                sx={{
+                  color: solidPrimary,
+                  textDecoration: 'none',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  '&:hover': {
+                    textDecoration: 'underline',
+                  }
+                }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  setTermsDialogOpen(true);
+                }}
+              >
+                Terms & Conditions
+              </Link>
+            </Typography>
+          }
+        />
+      </Box>
+
+      {/* Step 3 Actions */}
+      {!isDesktopView ? (
+        <Box sx={{ display: 'flex', gap: 1.5, mt: 1.5 }}>
+          <Button
+            variant="outlined"
+            onClick={() => setCurrentStep(2)}
+            sx={{ ...outlinedButtonSx, flex: 1 }}
+          >
+            Back
+          </Button>
+          <Button
+            type="submit"
+            variant="contained"
+            disabled={!isFormValid}
+            sx={{ ...primaryButtonSx, flex: 1 }}
+          >
+            Register
+          </Button>
+        </Box>
+      ) : (
+        <Button
+          type="submit"
+          variant="contained"
+          fullWidth
+          disabled={!isFormValid}
+          sx={{ ...primaryButtonSx, mt: 1 }}
+        >
+          Register
+        </Button>
+      )}
+
+      {/* Desktop view includes OR divider, Google button, Sign in link inside Card 3 */}
+      {isDesktopView && (
+        <>
+          {/* --- OR DIVIDER --- */}
+          <Box sx={{ display: 'flex', alignItems: 'center', my: 1.8, width: '100%' }}>
+            <Divider sx={{ flexGrow: 1, borderColor: BORDER_GRAY }} />
+            <Typography variant="body2" sx={{ px: 1.5, color: TEXT_GRAY, fontSize: '0.78rem', fontWeight: 600, letterSpacing: 0.5 }}>
+              OR
+            </Typography>
+            <Divider sx={{ flexGrow: 1, borderColor: BORDER_GRAY }} />
+          </Box>
+
+          {/* --- GOOGLE SIGN-IN BUTTON --- */}
+          <Box
+            sx={{
+              position: 'relative',
+              width: '100%',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              minHeight: 48,
+            }}
+          >
+            <Button
+              fullWidth
+              variant="outlined"
+              onClick={handleGoogleSignInClick}
+              startIcon={
+                <svg width="20" height="20" viewBox="0 0 24 24">
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                </svg>
+              }
+              sx={{
+                height: 48,
+                borderRadius: '24px',
+                textTransform: "none",
+                fontWeight: 600,
+                fontSize: "0.93rem",
+                color: INPUT_TEXT_COLOR,
+                borderColor: BORDER_GRAY,
+                backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#ffffff',
+                boxShadow: isDark ? 'none' : "0 2px 6px rgba(0,0,0,0.04)",
+                transition: "all 0.25s ease",
+                "&:hover": {
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : "#fafafa",
+                  borderColor: solidPrimary,
+                  transform: 'translateY(-1px)',
+                  boxShadow: `0 6px 16px ${solidPrimary}20`,
+                },
+              }}
+            >
+              Sign in with Google
+            </Button>
+
+            <Box
+              ref={googleBtnRef}
+              sx={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                opacity: 0.01,
+                zIndex: 2,
+                overflow: 'hidden',
+                display: (googleClientId && !(window.Capacitor?.isNativePlatform?.())) ? 'block' : 'none',
+                pointerEvents: (window.Capacitor?.isNativePlatform?.()) ? 'none' : 'auto',
+                '& iframe': {
+                  width: '100% !important',
+                  height: '100% !important',
+                  transform: 'scale(1.2)',
+                  transformOrigin: 'top left',
+                  cursor: 'pointer',
+                }
+              }}
+            />
+          </Box>
+
+          {/* --- SIGN IN LINK --- */}
+          <Grid container justifyContent="center" sx={{ mt: 2 }}>
+            <Grid item>
+              <Typography variant="body2" sx={{ color: TEXT_GRAY, fontSize: '0.88rem' }}>
+                Already have an account?{" "}
+                <Link
+                  component={RouterLink}
+                  to="/signin"
+                  variant="body2"
+                  sx={{
+                    color: solidPrimary,
+                    fontWeight: 700,
+                    textDecoration: 'none',
+                    ml: 0.5,
+                    transition: 'all 0.2s ease',
+                    '&:hover': {
+                      textDecoration: 'underline',
+                      opacity: 0.85,
+                    }
+                  }}
+                >
+                  Sign In
+                </Link>
+              </Typography>
+            </Grid>
+          </Grid>
+        </>
+      )}
+    </Box>
+  );
+
   return (
     <>
       {/* =====================================================
@@ -1144,19 +1951,58 @@ For support or questions:
           width: "100%",
           backgroundColor: activeTheme.colors.background,
           display: "flex",
-          justifyContent: "center",
+          flexDirection: "column",
           alignItems: "center",
+          justifyContent: "flex-start",
           position: "relative",
           overflowX: "hidden",
           overflowY: "auto",
-          py: { xs: 3, sm: 5 },
-          px: { xs: 2, sm: 3 },
+          py: { xs: 2.5, sm: 3.5, md: 4.5 },
+          px: { xs: 2, sm: 3, md: 4 },
           WebkitFontSmoothing: "antialiased",
           MozOsxFontSmoothing: "grayscale",
           textRendering: "optimizeLegibility",
           transition: "background-color 0.3s ease",
         }}
       >
+        {/* Desktop-only Floating Back Button */}
+        <Tooltip title={isDesktop ? "Back to Sign In" : (currentStep > 1 ? "Previous Step" : "Back")}>
+          <IconButton
+            onClick={handleBack}
+            aria-label="Back"
+            sx={{
+              display: { xs: 'none', md: 'flex' },
+              position: 'fixed',
+              top: { md: 24, lg: 32 },
+              left: { md: 24, lg: 32 },
+              zIndex: 100,
+              width: 44,
+              height: 44,
+              borderRadius: '50%',
+              backgroundColor: isDark ? 'rgba(30, 30, 30, 0.85)' : 'rgba(255, 255, 255, 0.9)',
+              backdropFilter: 'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
+              color: solidPrimary,
+              border: `1.5px solid ${isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)'}`,
+              boxShadow: isDark
+                ? '0 4px 20px rgba(0, 0, 0, 0.5)'
+                : '0 4px 16px rgba(0, 0, 0, 0.08)',
+              cursor: 'pointer',
+              transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+              '&:hover': {
+                backgroundColor: isDark ? 'rgba(45, 45, 45, 0.95)' : '#ffffff',
+                transform: 'translateY(-2px) scale(1.05)',
+                boxShadow: `0 8px 24px ${solidPrimary}35`,
+                borderColor: solidPrimary,
+              },
+              '&:active': {
+                transform: 'scale(0.96)',
+              },
+            }}
+          >
+            <ArrowBackIcon sx={{ fontSize: 24 }} />
+          </IconButton>
+        </Tooltip>
         {/* ---------------------------------------------------
             3D FLOATING ORBS & AMBIENT GLOW (JUICEE SPLASH STYLE)
             --------------------------------------------------- */}
@@ -1253,7 +2099,7 @@ For support or questions:
             ===================================================== */}
         <Container
           component="main"
-          maxWidth="xs"
+          maxWidth={false}
           sx={{
             position: 'relative',
             zIndex: 2,
@@ -1261,6 +2107,10 @@ For support or questions:
             flexDirection: 'column',
             alignItems: 'center',
             p: 0,
+            width: '100%',
+            maxWidth: isDesktop ? { md: 1050, lg: 1220, xl: 1300 } : 440,
+            mx: 'auto',
+            transition: 'max-width 0.3s ease',
           }}
         >
           {/* ---------------------------------------------------
@@ -1386,746 +2236,423 @@ For support or questions:
             Join Juicy to connect with friends
           </Typography>
 
-          {/* ---------------------------------------------------
-              PREMIUM 3D SIGNUP CARD
-              --------------------------------------------------- */}
-          <Paper
-            elevation={0}
-            sx={{
-              width: '100%',
-              borderRadius: '24px',
-              padding: { xs: 2.75, sm: 3.5 },
-              bgcolor: isDark ? '#1e1e1e' : (activeTheme.colors.surface || '#ffffff'),
-              color: INPUT_TEXT_COLOR,
-              border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)'}`,
-              boxShadow: isDark
-                ? `0 20px 40px -10px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.06), 0 8px 20px -6px ${solidPrimary}20`
-                : `0 16px 36px -8px rgba(0,0,0,0.06), 0 0 0 1px rgba(255,255,255,0.9) inset, 0 8px 24px -4px ${solidPrimary}12`,
-              animation: isLoaded ? `${cardEntrance} 0.55s ease-out 0.1s forwards` : 'none',
-              opacity: isLoaded ? 1 : 0,
-              transform: 'none',
-            }}
-          >
-            {/* Step indicator header */}
-            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 2.5 }}>
-              <Typography
+          {/* =====================================================
+              SIGNUP FORMS: DESKTOP (3 HORIZONTAL CARDS) OR MOBILE (WIZARD)
+              ===================================================== */}
+          {isDesktop ? (
+            /* --- DESKTOP VIEW: 3 SEPARATE CARDS IN HORIZONTAL VIEW --- */
+            <form onSubmit={handleSubmit} style={{ width: '100%' }}>
+              <Box
                 sx={{
-                  fontSize: '0.86rem',
-                  fontWeight: 600,
-                  color: solidPrimary,
-                  mb: 1.2,
-                  letterSpacing: 0.3,
-                  textAlign: 'center',
+                  display: 'grid',
+                  gridTemplateColumns: { md: 'repeat(3, 1fr)' },
+                  gap: { md: 2.5, lg: 3 },
+                  width: '100%',
+                  alignItems: 'stretch',
                 }}
               >
-                Step {currentStep} of 3 — {currentStep === 1 ? 'Name & Profile' : currentStep === 2 ? 'Contact & Verification' : 'Password & Security'}
-              </Typography>
-              <Box sx={{ display: 'flex', gap: 1, width: '100%', maxWidth: 260, justifyContent: 'center' }}>
-                {[1, 2, 3].map((s) => (
-                  <Box
-                    key={s}
-                    sx={{
-                      flex: 1,
-                      height: 5,
-                      borderRadius: 3,
-                      background: s === currentStep
-                        ? (isGradient ? activeTheme.colors.primary : `linear-gradient(90deg, ${solidPrimary}, ${solidPrimary}dd)`)
-                        : s < currentStep
-                        ? `${solidPrimary}70`
-                        : (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)'),
-                      boxShadow: s === currentStep ? `0 0 8px ${solidPrimary}50` : 'none',
-                      transition: 'all 0.35s ease',
-                    }}
-                  />
-                ))}
-              </Box>
-            </Box>
-
-            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%' }}>
-              {/* Step 1: Name & Profile */}
-              {currentStep === 1 && (
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.75 }}>
-                  {/* Profile Photo button and preview */}
-                  <Box sx={{ textAlign: 'center', mb: 1 }}>
-                    {profilePreview && (
-                      <Box sx={{ display: 'flex', justifyContent: 'center', mb: 1.5 }}>
-                        <Box
-                          component="img"
-                          src={profilePreview}
-                          alt="Profile Preview"
-                          sx={{
-                            width: 84,
-                            height: 84,
-                            borderRadius: '50%',
-                            objectFit: 'cover',
-                            border: `3px solid ${solidPrimary}`,
-                            boxShadow: `0 6px 20px ${solidPrimary}35`,
-                          }}
-                        />
-                      </Box>
-                    )}
-                    <Button
-                      variant="outlined"
-                      onClick={() => setProfileOpen(true)}
-                      sx={{
-                        borderColor: BORDER_GRAY,
-                        color: solidPrimary,
-                        borderRadius: '20px',
-                        textTransform: 'none',
-                        fontWeight: 600,
-                        px: 2.5,
-                        py: 0.7,
-                        fontSize: '0.86rem',
-                        backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : `${solidPrimary}08`,
-                        transition: 'all 0.2s ease',
-                        '&:hover': {
-                          backgroundColor: `${solidPrimary}15`,
-                          borderColor: solidPrimary,
-                          transform: 'translateY(-1px)',
-                        },
-                      }}
-                    >
-                      {profilePreview ? 'Change Profile Photo' : '+ Add Profile Photo'}
-                    </Button>
-                  </Box>
-
-                  <TextField
-                    fullWidth
-                    label="Full Name"
-                    name="name"
-                    value={form.name}
-                    onChange={handleChange}
-                    sx={textFieldSx}
-                  />
-
-                  <TextField
-                    fullWidth
-                    label="Username"
-                    name="username"
-                    value={form.username}
-                    onChange={handleChange}
-                    error={!!fieldErrors.username || (usernameStatus.checked && usernameStatus.exists)}
-                    helperText={
-                      fieldErrors.username ||
-                      (usernameStatus.checked && usernameStatus.exists ? 'Username is already taken' :
-                        usernameStatus.checked && !usernameStatus.exists && form.username ? 'Username is available' : '')
-                    }
-                    InputProps={{
-                      endAdornment:
-                        form.username && usernameStatus.checked ? (
-                          usernameStatus.exists ? (
-                            <InputAdornment position="end">
-                              <CancelRoundedIcon sx={{ color: '#ef1c1c' }} />
-                            </InputAdornment>
-                          ) : (
-                            <InputAdornment position="end">
-                              <CheckCircleRoundedIcon sx={{ color: solidPrimary }} />
-                            </InputAdornment>
-                          )
-                        ) : null,
-                    }}
-                    sx={textFieldSx}
-                  />
-
-                  {/* Gender Selection - 3D Styled Cards */}
-                  <Box sx={{ textAlign: 'left', mt: 0.5 }}>
-                    <Typography
-                      sx={{
-                        fontSize: '0.84rem',
-                        color: TEXT_GRAY,
-                        mb: 0.8,
-                        ml: 0.5,
-                        fontWeight: 500,
-                      }}
-                    >
-                      Gender
-                    </Typography>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                      {[
-                        { value: 'Male', icon: '♂', label: 'Male' },
-                        { value: 'Female', icon: '♀', label: 'Female' },
-                        { value: 'Other', icon: '⚧', label: 'Other' },
-                      ].map((option) => {
-                        const isSelected = form.gender === option.value;
-                        return (
-                          <Box
-                            key={option.value}
-                            onClick={() =>
-                              handleChange({
-                                target: { name: 'gender', value: option.value },
-                              })
-                            }
-                            sx={{
-                              flex: 1,
-                              display: 'flex',
-                              flexDirection: 'column',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: 0.4,
-                              py: 1.2,
-                              px: 1,
-                              borderRadius: '16px',
-                              cursor: 'pointer',
-                              backgroundColor: isSelected
-                                ? (isDark ? `${solidPrimary}25` : `${solidPrimary}12`)
-                                : (isDark ? 'rgba(255,255,255,0.04)' : LIGHT_GRAY),
-                              border: `1.5px solid ${isSelected ? solidPrimary : BORDER_GRAY}`,
-                              boxShadow: isSelected
-                                ? `0 4px 16px ${solidPrimary}28`
-                                : 'none',
-                              transition: 'all 0.25s ease',
-                              '&:hover': {
-                                borderColor: solidPrimary,
-                                transform: 'translateY(-2px)',
-                              },
-                              '&:active': {
-                                transform: 'scale(0.98)',
-                              },
-                            }}
-                          >
-                            <Typography
-                              sx={{
-                                fontSize: '1.4rem',
-                                lineHeight: 1,
-                                color: isSelected ? solidPrimary : TEXT_GRAY,
-                                transition: 'transform 0.25s ease',
-                                transform: isSelected ? 'scale(1.15)' : 'scale(1)',
-                              }}
-                            >
-                              {option.icon}
-                            </Typography>
-                            <Typography
-                              sx={{
-                                fontSize: '0.8rem',
-                                fontWeight: isSelected ? 700 : 500,
-                                color: isSelected ? solidPrimary : TEXT_GRAY,
-                                transition: 'all 0.25s ease',
-                              }}
-                            >
-                              {option.label}
-                            </Typography>
-                            {/* Radio dot indicator */}
-                            <Box
-                              sx={{
-                                width: 14,
-                                height: 14,
-                                borderRadius: '50%',
-                                border: `2px solid ${isSelected ? solidPrimary : `rgba(${rgbText}, 0.25)`}`,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                mt: 0.2,
-                                transition: 'all 0.25s ease',
-                              }}
-                            >
-                              <Box
-                                sx={{
-                                  width: 6,
-                                  height: 6,
-                                  borderRadius: '50%',
-                                  backgroundColor: isSelected ? solidPrimary : 'transparent',
-                                  transition: 'all 0.25s ease',
-                                  transform: isSelected ? 'scale(1)' : 'scale(0)',
-                                }}
-                              />
-                            </Box>
-                          </Box>
-                        );
-                      })}
-                    </Box>
-                    {fieldErrors.gender && (
-                      <Typography
+                {/* --- CARD 1: PERSONAL DETAILS --- */}
+                <Paper
+                  elevation={0}
+                  sx={{
+                    borderRadius: '24px',
+                    p: { md: 2.75, lg: 3.25 },
+                    bgcolor: isDark ? '#1e1e1e' : (activeTheme.colors.surface || '#ffffff'),
+                    color: INPUT_TEXT_COLOR,
+                    border: `1.5px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)'}`,
+                    boxShadow: isDark
+                      ? `0 20px 40px -10px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.06), 0 8px 20px -6px ${solidPrimary}20`
+                      : `0 16px 36px -8px rgba(0,0,0,0.06), 0 0 0 1px rgba(255,255,255,0.9) inset, 0 8px 24px -4px ${solidPrimary}12`,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    animation: isLoaded ? `${cardEntrance} 0.55s ease-out 0.1s forwards` : 'none',
+                    opacity: isLoaded ? 1 : 0,
+                    transition: 'all 0.28s cubic-bezier(0.16, 1, 0.3, 1)',
+                    '&:hover': {
+                      transform: 'translateY(-3px)',
+                      borderColor: `${solidPrimary}40`,
+                      boxShadow: isDark
+                        ? `0 24px 48px -10px rgba(0,0,0,0.8), 0 0 0 1.5px ${solidPrimary}40, 0 12px 28px -4px ${solidPrimary}30`
+                        : `0 20px 42px -8px rgba(0,0,0,0.1), 0 0 0 1.5px ${solidPrimary}30 inset, 0 12px 28px -4px ${solidPrimary}20`,
+                    },
+                  }}
+                >
+                  {/* Card 1 Header */}
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
+                      <Box
                         sx={{
-                          fontSize: '0.75rem',
-                          color: '#d32f2f',
-                          mt: 0.5,
-                          ml: 0.5,
+                          width: 32,
+                          height: 32,
+                          borderRadius: '50%',
+                          background: isGradient ? activeTheme.colors.primary : solidPrimary,
+                          color: '#fff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontWeight: 700,
+                          fontSize: '0.9rem',
+                          boxShadow: `0 3px 10px ${solidPrimary}40`,
                         }}
                       >
-                        {fieldErrors.gender}
-                      </Typography>
-                    )}
-                  </Box>
-
-                  {/* Date of Birth */}
-                  <TextField
-                    fullWidth
-                    type="date"
-                    label="Date of Birth"
-                    name="dob"
-                    value={form.dob}
-                    onChange={handleChange}
-                    InputLabelProps={{ shrink: true }}
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <CakeIcon sx={{ color: solidPrimary, fontSize: '1.15rem' }} />
-                        </InputAdornment>
-                      ),
-                    }}
-                    sx={textFieldSx}
-                  />
-
-                  {/* Bio / About Me */}
-                  <TextField
-                    fullWidth
-                    multiline
-                    rows={2}
-                    label="About Me / Bio"
-                    name="about"
-                    placeholder="Tell friends a little about yourself or your vibe..."
-                    value={form.about}
-                    onChange={handleChange}
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start" sx={{ alignSelf: 'flex-start', mt: 1 }}>
-                          <InfoIcon sx={{ color: solidPrimary, fontSize: '1.15rem' }} />
-                        </InputAdornment>
-                      ),
-                    }}
-                    sx={{
-                      ...textFieldSx,
-                      '& .MuiInputBase-root': {
-                        ...textFieldSx['& .MuiInputBase-root'],
-                        height: 'auto',
-                        minHeight: 74,
-                        py: 1,
-                      },
-                    }}
-                  />
-
-                  {/* Step 1 Actions */}
-                  <Button
-                    variant="contained"
-                    fullWidth
-                    onClick={() => setCurrentStep(2)}
-                    disabled={!isStep1Valid}
-                    sx={{ ...primaryButtonSx, mt: 1.5 }}
-                  >
-                    Next
-                  </Button>
-                </Box>
-              )}
-
-              {/* Step 2: Email & Phone */}
-              {currentStep === 2 && (
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.75 }}>
-                  <TextField
-                    fullWidth
-                    label="Email"
-                    name="email"
-                    type="email"
-                    value={form.email}
-                    onChange={handleChange}
-                    error={!!fieldErrors.email}
-                    helperText={fieldErrors.email}
-                    sx={textFieldSx}
-                  />
-
-                  {/* Phone Number Input with Built-in Country Code */}
-                  <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
-                    {/* Country Code selector button */}
+                        1
+                      </Box>
+                      <Box>
+                        <Typography sx={{ fontWeight: 700, fontSize: '1.02rem', color: INPUT_TEXT_COLOR, lineHeight: 1.2 }}>
+                          Personal Details
+                        </Typography>
+                        <Typography sx={{ fontSize: '0.74rem', color: TEXT_GRAY, mt: 0.2 }}>
+                          Profile & basic info
+                        </Typography>
+                      </Box>
+                    </Box>
                     <Box
-                      onClick={() => setCountrySelectOpen(true)}
                       sx={{
+                        px: 1.2,
+                        py: 0.35,
+                        borderRadius: '12px',
+                        fontSize: '0.72rem',
+                        fontWeight: 600,
+                        backgroundColor: isStep1Valid ? 'rgba(16, 185, 129, 0.12)' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'),
+                        color: isStep1Valid ? '#10b981' : TEXT_GRAY,
+                        border: `1px solid ${isStep1Valid ? 'rgba(16, 185, 129, 0.3)' : BORDER_GRAY}`,
                         display: 'flex',
                         alignItems: 'center',
                         gap: 0.5,
-                        px: 1.5,
-                        borderRadius: '16px',
-                        backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : LIGHT_GRAY,
-                        border: `1.5px solid ${BORDER_GRAY}`,
-                        cursor: 'pointer',
-                        minWidth: 85,
-                        height: 54,
-                        userSelect: 'none',
-                        transition: 'all 0.2s',
-                        '&:hover': { borderColor: solidPrimary, boxShadow: `0 0 0 3px ${solidPrimary}15` },
+                        transition: 'all 0.25s ease',
                       }}
                     >
-                      <Typography sx={{ fontSize: '1.25rem', lineHeight: 1 }}>{selectedCountry.flag}</Typography>
-                      <Typography sx={{ fontSize: '0.85rem', fontWeight: 600, color: INPUT_TEXT_COLOR, whiteSpace: 'nowrap' }}>
-                        {selectedCountry.code}
-                      </Typography>
-                      <Typography sx={{ fontSize: '0.65rem', color: TEXT_GRAY }}>▼</Typography>
+                      {isStep1Valid ? '✓ Complete' : 'Step 1 of 3'}
                     </Box>
-
-                    {/* Mobile Number input */}
-                    <TextField
-                      fullWidth
-                      label="Phone Number"
-                      name="phone"
-                      type="tel"
-                      value={form.phone}
-                      onChange={handleChange}
-                      inputProps={{ maxLength: selectedCountry.dialLength, inputMode: 'numeric', pattern: '[0-9]*' }}
-                      placeholder={`${selectedCountry.dialLength} digits`}
-                      error={!!fieldErrors.phone}
-                      helperText={fieldErrors.phone || `${selectedCountry.dialLength} digits`}
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <LocalPhoneIcon sx={{ color: solidPrimary, fontSize: '1.1rem' }} />
-                          </InputAdornment>
-                        ),
-                      }}
-                      sx={textFieldSx}
-                    />
                   </Box>
+                  <Divider sx={{ mb: 2, borderColor: BORDER_GRAY }} />
+                  {renderStep1Content(true)}
+                </Paper>
 
-                  {/* City & Country (2 columns) */}
-                  <Box sx={{ display: 'flex', gap: 1.5 }}>
-                    <TextField
-                      fullWidth
-                      label="City"
-                      name="city"
-                      placeholder="e.g. Chennai"
-                      value={form.city}
-                      onChange={handleChange}
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <LocationOnIcon sx={{ color: solidPrimary, fontSize: '1.15rem' }} />
-                          </InputAdornment>
-                        ),
-                      }}
-                      sx={textFieldSx}
-                    />
-
-                    <TextField
-                      fullWidth
-                      label="Country"
-                      name="country"
-                      placeholder="e.g. India"
-                      value={form.country}
-                      onChange={handleChange}
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <PublicIcon sx={{ color: solidPrimary, fontSize: '1.15rem' }} />
-                          </InputAdornment>
-                        ),
-                      }}
-                      sx={textFieldSx}
-                    />
-                  </Box>
-
-                  {/* Profile Discovery Visibility Switch */}
-                  <Box
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      p: 1.5,
-                      borderRadius: '16px',
-                      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : LIGHT_GRAY,
-                      border: `1.5px solid ${BORDER_GRAY}`,
-                      transition: 'all 0.25s ease',
-                      '&:hover': {
-                        borderColor: solidPrimary,
-                      },
-                    }}
-                  >
+                {/* --- CARD 2: CONTACT & LOCATION --- */}
+                <Paper
+                  elevation={0}
+                  sx={{
+                    borderRadius: '24px',
+                    p: { md: 2.75, lg: 3.25 },
+                    bgcolor: isDark ? '#1e1e1e' : (activeTheme.colors.surface || '#ffffff'),
+                    color: INPUT_TEXT_COLOR,
+                    border: `1.5px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)'}`,
+                    boxShadow: isDark
+                      ? `0 20px 40px -10px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.06), 0 8px 20px -6px ${solidPrimary}20`
+                      : `0 16px 36px -8px rgba(0,0,0,0.06), 0 0 0 1px rgba(255,255,255,0.9) inset, 0 8px 24px -4px ${solidPrimary}12`,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    animation: isLoaded ? `${cardEntrance} 0.55s ease-out 0.2s forwards` : 'none',
+                    opacity: isLoaded ? 1 : 0,
+                    transition: 'all 0.28s cubic-bezier(0.16, 1, 0.3, 1)',
+                    '&:hover': {
+                      transform: 'translateY(-3px)',
+                      borderColor: `${solidPrimary}40`,
+                      boxShadow: isDark
+                        ? `0 24px 48px -10px rgba(0,0,0,0.8), 0 0 0 1.5px ${solidPrimary}40, 0 12px 28px -4px ${solidPrimary}30`
+                        : `0 20px 42px -8px rgba(0,0,0,0.1), 0 0 0 1.5px ${solidPrimary}30 inset, 0 12px 28px -4px ${solidPrimary}20`,
+                    },
+                  }}
+                >
+                  {/* Card 2 Header */}
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
-                      <SecurityIcon sx={{ color: form.profileVisible ? '#10b981' : '#f59e0b', fontSize: '1.35rem' }} />
+                      <Box
+                        sx={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: '50%',
+                          background: isGradient ? activeTheme.colors.primary : solidPrimary,
+                          color: '#fff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontWeight: 700,
+                          fontSize: '0.9rem',
+                          boxShadow: `0 3px 10px ${solidPrimary}40`,
+                        }}
+                      >
+                        2
+                      </Box>
                       <Box>
-                        <Typography sx={{ fontSize: '0.86rem', fontWeight: 600, color: INPUT_TEXT_COLOR, lineHeight: 1.2 }}>
-                          Profile Visibility
+                        <Typography sx={{ fontWeight: 700, fontSize: '1.02rem', color: INPUT_TEXT_COLOR, lineHeight: 1.2 }}>
+                          Contact & Location
                         </Typography>
-                        <Typography sx={{ fontSize: '0.72rem', color: TEXT_GRAY, mt: 0.3 }}>
-                          {form.profileVisible ? 'Visible to nearby discovery & friends' : 'Hidden from discovery search'}
+                        <Typography sx={{ fontSize: '0.74rem', color: TEXT_GRAY, mt: 0.2 }}>
+                          Phone, email & discovery
                         </Typography>
                       </Box>
                     </Box>
-                    <Switch
-                      checked={form.profileVisible}
-                      onChange={(e) => setForm(prev => ({ ...prev, profileVisible: e.target.checked }))}
+                    <Box
                       sx={{
-                        '& .MuiSwitch-switchBase.Mui-checked': {
-                          color: solidPrimary,
-                        },
-                        '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                          backgroundColor: solidPrimary,
-                        },
+                        px: 1.2,
+                        py: 0.35,
+                        borderRadius: '12px',
+                        fontSize: '0.72rem',
+                        fontWeight: 600,
+                        backgroundColor: isStep2Valid ? 'rgba(16, 185, 129, 0.12)' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'),
+                        color: isStep2Valid ? '#10b981' : TEXT_GRAY,
+                        border: `1px solid ${isStep2Valid ? 'rgba(16, 185, 129, 0.3)' : BORDER_GRAY}`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 0.5,
+                        transition: 'all 0.25s ease',
                       }}
-                    />
-                  </Box>
-
-                  {/* Step 2 Actions */}
-                  <Box sx={{ display: 'flex', gap: 1.5, mt: 1.5 }}>
-                    <Button
-                      variant="outlined"
-                      onClick={() => setCurrentStep(1)}
-                      sx={{ ...outlinedButtonSx, flex: 1 }}
                     >
-                      Back
-                    </Button>
-                    <Button
-                      variant="contained"
-                      onClick={() => setCurrentStep(3)}
-                      disabled={!isStep2Valid}
-                      sx={{ ...primaryButtonSx, flex: 1 }}
-                    >
-                      Next
-                    </Button>
+                      {isStep2Valid ? '✓ Complete' : 'Step 2 of 3'}
+                    </Box>
                   </Box>
-                </Box>
-              )}
+                  <Divider sx={{ mb: 2, borderColor: BORDER_GRAY }} />
+                  {renderStep2Content(true)}
+                </Paper>
 
-              {/* Step 3: Security Passwords & Terms */}
-              {currentStep === 3 && (
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.75 }}>
-                  <TextField
-                    fullWidth
-                    type={showPassword ? 'text' : 'password'}
-                    label="Password"
-                    name="password"
-                    value={form.password}
-                    onChange={handleChange}
-                    InputProps={{
-                      endAdornment: (
-                        <InputAdornment position="end">
-                          <IconButton
-                            onClick={handleClickShowPassword}
-                            edge="end"
-                            sx={{
-                              color: TEXT_GRAY,
-                              transition: 'color 0.2s',
-                              '&:hover': { color: solidPrimary },
-                            }}
-                          >
-                            {showPassword ? <VisibilityOff /> : <Visibility />}
-                          </IconButton>
-                        </InputAdornment>
-                      ),
-                    }}
-                    sx={textFieldSx}
-                  />
-
-                  <TextField
-                    fullWidth
-                    type={showConfirmPassword ? 'text' : 'password'}
-                    label="Confirm Password"
-                    name="confirmPassword"
-                    value={form.confirmPassword}
-                    onChange={handleChange}
-                    InputProps={{
-                      endAdornment: (
-                        <InputAdornment position="end">
-                          <IconButton
-                            onClick={handleClickShowConfirmPassword}
-                            edge="end"
-                            sx={{
-                              color: TEXT_GRAY,
-                              transition: 'color 0.2s',
-                              '&:hover': { color: solidPrimary },
-                            }}
-                          >
-                            {showConfirmPassword ? <VisibilityOff /> : <Visibility />}
-                          </IconButton>
-                        </InputAdornment>
-                      ),
-                    }}
-                    sx={textFieldSx}
-                  />
-
-                  {/* Password Rules */}
-                  <Box sx={{ mt: 0.5, mb: 0.5, px: 0.5 }}>
-                    {passwordRules.map((rule, idx) => {
-                      const passed = rule.test(form.password);
-                      return (
-                        <Box key={idx} sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
-                          {passed ? (
-                            <CheckCircleRoundedIcon sx={{ color: solidPrimary, fontSize: 18 }} />
-                          ) : (
-                            <CancelRoundedIcon sx={{ color: "#ef1c1c", fontSize: 18 }} />
-                          )}
-                          <Typography
-                            variant="caption"
-                            sx={{
-                              color: passed ? solidPrimary : "#ef1c1c",
-                              fontWeight: passed ? "bold" : "normal",
-                              fontSize: { xs: '0.75rem', sm: '0.82rem' },
-                            }}
-                          >
-                            {rule.label}
-                          </Typography>
-                        </Box>
-                      );
-                    })}
-                  </Box>
-
-                  {/* Terms & Conditions Checkbox */}
-                  <Box sx={{ mt: 0.5 }}>
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          checked={termsAgreed}
-                          onChange={handleTermsCheckbox}
-                          sx={{
-                            color: TEXT_GRAY,
-                            '&.Mui-checked': {
-                              color: solidPrimary,
-                            },
-                          }}
-                        />
-                      }
-                      label={
-                        <Typography sx={{ fontSize: '0.88rem', color: TEXT_GRAY }}>
-                          I agree to the{' '}
-                          <Link
-                            component="button"
-                            type="button"
-                            variant="body2"
-                            sx={{
-                              color: solidPrimary,
-                              textDecoration: 'none',
-                              fontWeight: 600,
-                              cursor: 'pointer',
-                              '&:hover': {
-                                textDecoration: 'underline',
-                              }
-                            }}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              setTermsDialogOpen(true);
-                            }}
-                          >
-                            Terms & Conditions
-                          </Link>
+                {/* --- CARD 3: SECURITY & ACCESS --- */}
+                <Paper
+                  elevation={0}
+                  sx={{
+                    borderRadius: '24px',
+                    p: { md: 2.75, lg: 3.25 },
+                    bgcolor: isDark ? '#1e1e1e' : (activeTheme.colors.surface || '#ffffff'),
+                    color: INPUT_TEXT_COLOR,
+                    border: `1.5px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)'}`,
+                    boxShadow: isDark
+                      ? `0 20px 40px -10px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.06), 0 8px 20px -6px ${solidPrimary}20`
+                      : `0 16px 36px -8px rgba(0,0,0,0.06), 0 0 0 1px rgba(255,255,255,0.9) inset, 0 8px 24px -4px ${solidPrimary}12`,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    animation: isLoaded ? `${cardEntrance} 0.55s ease-out 0.3s forwards` : 'none',
+                    opacity: isLoaded ? 1 : 0,
+                    transition: 'all 0.28s cubic-bezier(0.16, 1, 0.3, 1)',
+                    '&:hover': {
+                      transform: 'translateY(-3px)',
+                      borderColor: `${solidPrimary}40`,
+                      boxShadow: isDark
+                        ? `0 24px 48px -10px rgba(0,0,0,0.8), 0 0 0 1.5px ${solidPrimary}40, 0 12px 28px -4px ${solidPrimary}30`
+                        : `0 20px 42px -8px rgba(0,0,0,0.1), 0 0 0 1.5px ${solidPrimary}30 inset, 0 12px 28px -4px ${solidPrimary}20`,
+                    },
+                  }}
+                >
+                  {/* Card 3 Header */}
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
+                      <Box
+                        sx={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: '50%',
+                          background: isGradient ? activeTheme.colors.primary : solidPrimary,
+                          color: '#fff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontWeight: 700,
+                          fontSize: '0.9rem',
+                          boxShadow: `0 3px 10px ${solidPrimary}40`,
+                        }}
+                      >
+                        3
+                      </Box>
+                      <Box>
+                        <Typography sx={{ fontWeight: 700, fontSize: '1.02rem', color: INPUT_TEXT_COLOR, lineHeight: 1.2 }}>
+                          Security & Access
                         </Typography>
-                      }
-                    />
-                  </Box>
-
-                  {/* Step 3 Actions */}
-                  <Box sx={{ display: 'flex', gap: 1.5, mt: 1.5 }}>
-                    <Button
-                      variant="outlined"
-                      onClick={() => setCurrentStep(2)}
-                      sx={{ ...outlinedButtonSx, flex: 1 }}
+                        <Typography sx={{ fontSize: '0.74rem', color: TEXT_GRAY, mt: 0.2 }}>
+                          Password & registration
+                        </Typography>
+                      </Box>
+                    </Box>
+                    <Box
+                      sx={{
+                        px: 1.2,
+                        py: 0.35,
+                        borderRadius: '12px',
+                        fontSize: '0.72rem',
+                        fontWeight: 600,
+                        backgroundColor: isStep3Valid ? 'rgba(16, 185, 129, 0.12)' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'),
+                        color: isStep3Valid ? '#10b981' : TEXT_GRAY,
+                        border: `1px solid ${isStep3Valid ? 'rgba(16, 185, 129, 0.3)' : BORDER_GRAY}`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 0.5,
+                        transition: 'all 0.25s ease',
+                      }}
                     >
-                      Back
-                    </Button>
-                    <Button
-                      type="submit"
-                      variant="contained"
-                      disabled={!isFormValid}
-                      sx={{ ...primaryButtonSx, flex: 1 }}
-                    >
-                      Register
-                    </Button>
+                      {isStep3Valid ? '✓ Complete' : 'Step 3 of 3'}
+                    </Box>
                   </Box>
-                </Box>
-              )}
+                  <Divider sx={{ mb: 2, borderColor: BORDER_GRAY }} />
+                  {renderStep3Content(true)}
+                </Paper>
+              </Box>
             </form>
-
-            {/* --- OR DIVIDER --- */}
-            <Box sx={{ display: 'flex', alignItems: 'center', my: 2, width: '100%' }}>
-              <Divider sx={{ flexGrow: 1, borderColor: BORDER_GRAY }} />
-              <Typography variant="body2" sx={{ px: 1.5, color: TEXT_GRAY, fontSize: '0.78rem', fontWeight: 600, letterSpacing: 0.5 }}>
-                OR
-              </Typography>
-              <Divider sx={{ flexGrow: 1, borderColor: BORDER_GRAY }} />
-            </Box>
-
-            {/* --- GOOGLE SIGN-IN BUTTON --- */}
-            <Box
+          ) : (
+            /* --- MOBILE VIEW: EXISTING STEP-BY-STEP SINGLE CARD WIZARD --- */
+            <Paper
+              elevation={0}
               sx={{
-                position: 'relative',
                 width: '100%',
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center',
-                minHeight: 48,
+                borderRadius: '24px',
+                padding: { xs: 2.75, sm: 3.5 },
+                bgcolor: isDark ? '#1e1e1e' : (activeTheme.colors.surface || '#ffffff'),
+                color: INPUT_TEXT_COLOR,
+                border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)'}`,
+                boxShadow: isDark
+                  ? `0 20px 40px -10px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.06), 0 8px 20px -6px ${solidPrimary}20`
+                  : `0 16px 36px -8px rgba(0,0,0,0.06), 0 0 0 1px rgba(255,255,255,0.9) inset, 0 8px 24px -4px ${solidPrimary}12`,
+                animation: isLoaded ? `${cardEntrance} 0.55s ease-out 0.1s forwards` : 'none',
+                opacity: isLoaded ? 1 : 0,
+                transform: 'none',
               }}
             >
-              <Button
-                fullWidth
-                variant="outlined"
-                onClick={handleGoogleSignInClick}
-                startIcon={
-                  <svg width="20" height="20" viewBox="0 0 24 24">
-                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
-                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
-                  </svg>
-                }
+              {/* Step indicator header */}
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 2.5 }}>
+                <Typography
+                  sx={{
+                    fontSize: '0.86rem',
+                    fontWeight: 600,
+                    color: solidPrimary,
+                    mb: 1.2,
+                    letterSpacing: 0.3,
+                    textAlign: 'center',
+                  }}
+                >
+                  Step {currentStep} of 3 — {currentStep === 1 ? 'Name & Profile' : currentStep === 2 ? 'Contact & Verification' : 'Password & Security'}
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, width: '100%', maxWidth: 260, justifyContent: 'center' }}>
+                  {[1, 2, 3].map((s) => (
+                    <Box
+                      key={s}
+                      sx={{
+                        flex: 1,
+                        height: 5,
+                        borderRadius: 3,
+                        background: s === currentStep
+                          ? (isGradient ? activeTheme.colors.primary : `linear-gradient(90deg, ${solidPrimary}, ${solidPrimary}dd)`)
+                          : s < currentStep
+                          ? `${solidPrimary}70`
+                          : (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)'),
+                        boxShadow: s === currentStep ? `0 0 8px ${solidPrimary}50` : 'none',
+                        transition: 'all 0.35s ease',
+                      }}
+                    />
+                  ))}
+                </Box>
+              </Box>
+
+              <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%' }}>
+                {currentStep === 1 && renderStep1Content(false)}
+                {currentStep === 2 && renderStep2Content(false)}
+                {currentStep === 3 && renderStep3Content(false)}
+              </form>
+
+              {/* --- OR DIVIDER --- */}
+              <Box sx={{ display: 'flex', alignItems: 'center', my: 2, width: '100%' }}>
+                <Divider sx={{ flexGrow: 1, borderColor: BORDER_GRAY }} />
+                <Typography variant="body2" sx={{ px: 1.5, color: TEXT_GRAY, fontSize: '0.78rem', fontWeight: 600, letterSpacing: 0.5 }}>
+                  OR
+                </Typography>
+                <Divider sx={{ flexGrow: 1, borderColor: BORDER_GRAY }} />
+              </Box>
+
+              {/* --- GOOGLE SIGN-IN BUTTON --- */}
+              <Box
                 sx={{
-                  height: 48,
-                  borderRadius: '24px',
-                  textTransform: "none",
-                  fontWeight: 600,
-                  fontSize: "0.93rem",
-                  color: INPUT_TEXT_COLOR,
-                  borderColor: BORDER_GRAY,
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#ffffff',
-                  boxShadow: isDark ? 'none' : "0 2px 6px rgba(0,0,0,0.04)",
-                  transition: "all 0.25s ease",
-                  "&:hover": {
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : "#fafafa",
-                    borderColor: solidPrimary,
-                    transform: 'translateY(-1px)',
-                    boxShadow: `0 6px 16px ${solidPrimary}20`,
-                  },
+                  position: 'relative',
+                  width: '100%',
+                  display: 'flex',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  minHeight: 48,
                 }}
               >
-                Sign in with Google
-              </Button>
-
-              {/* Web GSI iframe overlay — web browser only, hidden on Android. */}
-              <Box
-                ref={googleBtnRef}
-                sx={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: '100%',
-                  opacity: 0.01,
-                  zIndex: 2,
-                  overflow: 'hidden',
-                  display: (googleClientId && !(window.Capacitor?.isNativePlatform?.())) ? 'block' : 'none',
-                  pointerEvents: (window.Capacitor?.isNativePlatform?.()) ? 'none' : 'auto',
-                  '& iframe': {
-                    width: '100% !important',
-                    height: '100% !important',
-                    transform: 'scale(1.2)',
-                    transformOrigin: 'top left',
-                    cursor: 'pointer',
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  onClick={handleGoogleSignInClick}
+                  startIcon={
+                    <svg width="20" height="20" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                    </svg>
                   }
-                }}
-              />
-            </Box>
+                  sx={{
+                    height: 48,
+                    borderRadius: '24px',
+                    textTransform: "none",
+                    fontWeight: 600,
+                    fontSize: "0.93rem",
+                    color: INPUT_TEXT_COLOR,
+                    borderColor: BORDER_GRAY,
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#ffffff',
+                    boxShadow: isDark ? 'none' : "0 2px 6px rgba(0,0,0,0.04)",
+                    transition: "all 0.25s ease",
+                    "&:hover": {
+                      backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : "#fafafa",
+                      borderColor: solidPrimary,
+                      transform: 'translateY(-1px)',
+                      boxShadow: `0 6px 16px ${solidPrimary}20`,
+                    },
+                  }}
+                >
+                  Sign in with Google
+                </Button>
 
-            {/* --- SIGN IN LINK --- */}
-            <Grid container justifyContent="center" sx={{ mt: 3 }}>
-              <Grid item>
-                <Typography variant="body2" sx={{ color: TEXT_GRAY, fontSize: '0.9rem' }}>
-                  Already have an account?{" "}
-                  <Link
-                    component={RouterLink}
-                    to="/signin"
-                    variant="body2"
-                    sx={{
-                      color: solidPrimary,
-                      fontWeight: 700,
-                      textDecoration: 'none',
-                      ml: 0.5,
-                      transition: 'all 0.2s ease',
-                      '&:hover': {
-                        textDecoration: 'underline',
-                        opacity: 0.85,
-                      }
-                    }}
-                  >
-                    Sign In
-                  </Link>
-                </Typography>
+                {/* Web GSI iframe overlay — web browser only, hidden on Android. */}
+                <Box
+                  ref={googleBtnRef}
+                  sx={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    opacity: 0.01,
+                    zIndex: 2,
+                    overflow: 'hidden',
+                    display: (googleClientId && !(window.Capacitor?.isNativePlatform?.())) ? 'block' : 'none',
+                    pointerEvents: (window.Capacitor?.isNativePlatform?.()) ? 'none' : 'auto',
+                    '& iframe': {
+                      width: '100% !important',
+                      height: '100% !important',
+                      transform: 'scale(1.2)',
+                      transformOrigin: 'top left',
+                      cursor: 'pointer',
+                    }
+                  }}
+                />
+              </Box>
+
+              {/* --- SIGN IN LINK --- */}
+              <Grid container justifyContent="center" sx={{ mt: 3 }}>
+                <Grid item>
+                  <Typography variant="body2" sx={{ color: TEXT_GRAY, fontSize: '0.9rem' }}>
+                    Already have an account?{" "}
+                    <Link
+                      component={RouterLink}
+                      to="/signin"
+                      variant="body2"
+                      sx={{
+                        color: solidPrimary,
+                        fontWeight: 700,
+                        textDecoration: 'none',
+                        ml: 0.5,
+                        transition: 'all 0.2s ease',
+                        '&:hover': {
+                          textDecoration: 'underline',
+                          opacity: 0.85,
+                        }
+                      }}
+                    >
+                      Sign In
+                    </Link>
+                  </Typography>
+                </Grid>
               </Grid>
-            </Grid>
-          </Paper>
+            </Paper>
+          )}
         </Container>
       </Box>
 
@@ -2306,6 +2833,95 @@ For support or questions:
             }}
           >
             {popup.message}
+          </Typography>
+        </DialogContent>
+      </Dialog>
+
+      {/* =====================================================
+          REGISTRATION COMPLETE CENTER POPUP DIALOG (PINK TICK)
+          ===================================================== */}
+      <Dialog
+        open={registerSuccessOpen}
+        TransitionComponent={Transition}
+        keepMounted
+        BackdropProps={{
+          sx: {
+            backgroundColor: 'rgba(0, 0, 0, 0.45)',
+            backdropFilter: 'blur(6px)',
+            WebkitBackdropFilter: 'blur(6px)',
+          },
+        }}
+        PaperProps={{
+          sx: {
+            borderRadius: '28px',
+            bgcolor: WHITE,
+            color: INPUT_TEXT_COLOR,
+            border: `1.5px solid ${BORDER_GRAY}`,
+            boxShadow: `0 24px 60px rgba(0, 0, 0, 0.18), 0 0 35px rgba(255, 45, 108, 0.3)`,
+            px: { xs: 3.5, sm: 4.5 },
+            py: { xs: 3.5, sm: 4 },
+            minWidth: { xs: 290, sm: 350 },
+            maxWidth: '90vw',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            textAlign: 'center',
+            zIndex: 1600,
+          },
+        }}
+      >
+        <DialogContent
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            p: 0,
+          }}
+        >
+          {/* Centered Glowing Pink Badge with Pink Tick */}
+          <Box
+            sx={{
+              width: 76,
+              height: 76,
+              borderRadius: '50%',
+              backgroundColor: 'rgba(255, 45, 108, 0.1)',
+              border: '3px solid #ff2d6c',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 0 28px rgba(255, 45, 108, 0.35)',
+              mb: 2,
+              animation: 'popScale 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+              '@keyframes popScale': {
+                '0%': { transform: 'scale(0.4)', opacity: 0 },
+                '100%': { transform: 'scale(1)', opacity: 1 },
+              },
+            }}
+          >
+            <CheckRoundedIcon
+              sx={{
+                color: '#ff2d6c',
+                fontSize: 50,
+                stroke: '#ff2d6c',
+                strokeWidth: 1.2,
+                filter: 'drop-shadow(0 2px 6px rgba(255, 45, 108, 0.45))',
+              }}
+            />
+          </Box>
+
+          <Typography
+            sx={{
+              color: solidPrimary || '#ff2d6c',
+              fontWeight: 700,
+              fontFamily: 'Pacifico, cursive',
+              fontSize: { xs: '1.15rem', sm: '1.3rem' },
+              letterSpacing: 0.6,
+              lineHeight: 1.4,
+              textAlign: 'center',
+            }}
+          >
+            Kindly login to vibe with juicy
           </Typography>
         </DialogContent>
       </Dialog>

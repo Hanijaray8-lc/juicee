@@ -10,7 +10,6 @@ import {
   IconButton,
   Card,
   Chip,
-  Divider,
   LinearProgress,
   useTheme,
   useMediaQuery
@@ -39,14 +38,13 @@ import OpacityIcon from '@mui/icons-material/Opacity';
 import PersonAddIcon from '@mui/icons-material/PersonAdd';
 
 // Import tutorial images from Tuto folder
-import image1 from './Tuto/1.jpeg';
+import image1 from './Tuto/1.png';
 import image2 from './Tuto/2.jpeg';
 import image3 from './Tuto/3.jpeg';
 import image4 from './Tuto/4.jpeg';
 import image5 from './Tuto/5.jpeg';
 import image6 from './Tuto/6.png';
 import image7 from './Tuto/7.jpeg';
-import image8 from './Tuto/8.jpeg';
 import image9 from './Tuto/9.jpeg';
 import image10 from './Tuto/10.jpeg';
 import image11 from './Tuto/11.png';
@@ -68,16 +66,15 @@ const CATALOG_ITEMS = [
   { stepIndex: 4, emoji: '💬', title: 'Message Reactions', subtitle: 'Long-press for reactions & options', color: '#38a169', bg: 'linear-gradient(135deg,#38a169,#2f855a)' },
   { stepIndex: 5, emoji: '🤖', title: 'Jerry Bot AI', subtitle: '24/7 AI assistant for anything', color: '#6366f1', bg: 'linear-gradient(135deg,#6366f1,#8b5cf6)' },
   { stepIndex: 6, emoji: '☀️', title: 'App Theme', subtitle: 'Light, dark & vibrant palettes', color: '#8b5cf6', bg: 'linear-gradient(135deg,#8b5cf6,#d946ef)' },
-  { stepIndex: 7, emoji: '🖼️', title: 'Wallpapers', subtitle: 'Custom chat backgrounds & patterns', color: '#0284c7', bg: 'linear-gradient(135deg,#0284c7,#38bdf8)' },
-  { stepIndex: 8, emoji: '✍️', title: 'Gestures', subtitle: 'Tap logo → draw to open chats', color: '#f06292', bg: 'linear-gradient(135deg,#f06292,#ab47bc)' },
-  { stepIndex: 9, emoji: '👤', title: 'Edit Profile', subtitle: 'Avatar, bio & privacy settings', color: '#d97706', bg: 'linear-gradient(135deg,#d97706,#f59e0b)' },
-  { stepIndex: 10, emoji: '📱', title: 'Linked Devices & QR', subtitle: 'Linked devices & stranger QR scan chat', color: '#10b981', bg: 'linear-gradient(135deg,#10b981,#059669)' },
-  { stepIndex: 11, emoji: '❓', title: 'Help & Support', subtitle: 'Submit queries, report bugs & track status', color: '#ec4899', bg: 'linear-gradient(135deg,#ec4899,#f43f5e)' },
-  { stepIndex: 12, emoji: '🗑️', title: 'Delete Account', subtitle: 'Permanently remove your Juicy account', color: '#ef4444', bg: 'linear-gradient(135deg,#ef4444,#dc2626)' },
-  { stepIndex: 13, emoji: '🚫', title: 'Block User', subtitle: 'Block contacts & manage blocked list', color: '#64748b', bg: 'linear-gradient(135deg,#64748b,#475569)' },
-  { stepIndex: 14, emoji: '🖼️', title: 'Chat Background', subtitle: 'Change wallpaper & chat background style', color: '#0ea5e9', bg: 'linear-gradient(135deg,#0ea5e9,#0284c7)' },
-  { stepIndex: 15, emoji: '✨', title: 'Opacity & Transparency', subtitle: 'Increase or decrease background transparency', color: '#a855f7', bg: 'linear-gradient(135deg,#a855f7,#7c3aed)' },
-  { stepIndex: 16, emoji: '🤝', title: 'Connect with New People', subtitle: 'Search suggestions, send requests & approve friends', color: '#e52e71', bg: 'linear-gradient(135deg,#e52e71,#ff8a00)' }
+  { stepIndex: 7, emoji: '✍️', title: 'Gestures', subtitle: 'Tap logo → draw to open chats', color: '#f06292', bg: 'linear-gradient(135deg,#f06292,#ab47bc)' },
+  { stepIndex: 8, emoji: '👤', title: 'Edit Profile', subtitle: 'Avatar, bio & privacy settings', color: '#d97706', bg: 'linear-gradient(135deg,#d97706,#f59e0b)' },
+  { stepIndex: 9, emoji: '📱', title: 'Linked Devices & QR', subtitle: 'Linked devices & stranger QR scan chat', color: '#10b981', bg: 'linear-gradient(135deg,#10b981,#059669)' },
+  { stepIndex: 10, emoji: '❓', title: 'Help & Support', subtitle: 'Submit queries, report bugs & track status', color: '#ec4899', bg: 'linear-gradient(135deg,#ec4899,#f43f5e)' },
+  { stepIndex: 11, emoji: '🗑️', title: 'Delete Account', subtitle: 'Permanently remove your Juicy account', color: '#ef4444', bg: 'linear-gradient(135deg,#ef4444,#dc2626)' },
+  { stepIndex: 12, emoji: '🚫', title: 'Block User', subtitle: 'Block contacts & manage blocked list', color: '#64748b', bg: 'linear-gradient(135deg,#64748b,#475569)' },
+  { stepIndex: 13, emoji: '🖼️', title: 'Chat Background', subtitle: 'Change wallpaper & chat background style', color: '#0ea5e9', bg: 'linear-gradient(135deg,#0ea5e9,#0284c7)' },
+  { stepIndex: 14, emoji: '✨', title: 'Opacity & Transparency', subtitle: 'Increase or decrease background transparency', color: '#a855f7', bg: 'linear-gradient(135deg,#a855f7,#7c3aed)' },
+  { stepIndex: 15, emoji: '🤝', title: 'Connect with New People', subtitle: 'Search suggestions, send requests & approve friends', color: '#e52e71', bg: 'linear-gradient(135deg,#e52e71,#ff8a00)' }
 ];
 
 // Step detail data used by CatalogStepContent
@@ -137,14 +134,6 @@ const STEP_DETAIL_DATA = [
       { num: '1', badgeBg: '#8b5cf6', text: 'Go to Settings → Appearance in the app menu.' },
       { num: '2', badgeBg: '#e52e71', text: 'Select ☀️ Light Mode or 🌙 Dark Mode toggle.' },
       { num: '3', badgeBg: '#0284c7', text: 'Choose vibrant accent colors (Juicy Pink, Ocean Blue, Emerald Green, Royal Purple).' }
-    ]
-  },
-  {
-    image: image8,
-    instructions: [
-      { num: '1', badgeBg: '#0284c7', text: 'Go to Settings → Background Wallpapers.' },
-      { num: '2', badgeBg: '#ff8a00', text: 'Pick curated wallpapers or upload custom photos from your device.' },
-      { num: '3', badgeBg: '#16a34a', text: 'Adjust doodle pattern overlays and slider opacity to personalize your look!' }
     ]
   },
   {
@@ -1076,19 +1065,7 @@ export const UserGuideModal = ({
       ]
     },
     {
-      title: "8. Background Wallpapers & Patterns 🖼️",
-      subtitle: "Customize your chat background wallpapers & pattern opacity!",
-      icon: <WallpaperIcon sx={{ color: '#fff', fontSize: isMobile ? 22 : 26 }} />,
-      color: '#0284c7',
-      image: image8,
-      instructions: [
-        { num: '1', badgeBg: '#0284c7', text: 'Go to Settings → Background Wallpapers.' },
-        { num: '2', badgeBg: '#ff8a00', text: 'Pick curated wallpapers or upload custom photos from your device.' },
-        { num: '3', badgeBg: '#16a34a', text: 'Adjust doodle pattern overlays and slider opacity to personalize your look!' }
-      ]
-    },
-    {
-      title: "9. How to Set Contact Gestures ✍️",
+      title: "8. How to Set Contact Gestures ✍️",
       subtitle: "Tap the Juicy logo → Draw your gesture → Open chat instantly!",
       icon: <GestureIcon sx={{ color: '#fff', fontSize: isMobile ? 22 : 26 }} />,
       color: '#f06292',
@@ -1101,7 +1078,7 @@ export const UserGuideModal = ({
       ]
     },
     {
-      title: "10. How to Edit Profile & Bio 👤",
+      title: "9. How to Edit Profile & Bio 👤",
       subtitle: "Update profile avatar, display name, bio description & privacy!",
       icon: <AccountCircleIcon sx={{ color: '#fff', fontSize: isMobile ? 22 : 26 }} />,
       color: '#d97706',
@@ -1113,7 +1090,7 @@ export const UserGuideModal = ({
       ]
     },
     {
-      title: "11. Linked Devices & My QR Code 📱⚡",
+      title: "10. Linked Devices & My QR Code 📱⚡",
       subtitle: "Link web/desktop devices & let strangers scan your QR to chat without mobile numbers!",
       icon: <QrCodeScannerIcon sx={{ color: '#fff', fontSize: isMobile ? 22 : 26 }} />,
       color: '#10b981',
@@ -1125,7 +1102,7 @@ export const UserGuideModal = ({
       ]
     },
     {
-      title: "12. Help & Support Desk ❓💬",
+      title: "11. Help & Support Desk ❓💬",
       subtitle: "Submit support tickets, report bugs, ask queries & track live resolution status!",
       icon: <HelpOutlineIcon sx={{ color: '#fff', fontSize: isMobile ? 22 : 26 }} />,
       color: '#ec4899',
@@ -1138,7 +1115,7 @@ export const UserGuideModal = ({
     },
     ...(includeDeleteAndBlock ? [
       {
-        title: "13. How to Delete Account 🗑️",
+        title: "12. How to Delete Account 🗑️",
         subtitle: "Permanently remove your Juicy account and erase data",
         icon: <DeleteOutlineIcon sx={{ color: '#fff', fontSize: isMobile ? 22 : 26 }} />,
         color: '#ef4444',
@@ -1150,7 +1127,7 @@ export const UserGuideModal = ({
         ]
       },
       {
-        title: "14. How to Block User 🚫",
+        title: "13. How to Block User 🚫",
         subtitle: "Block contacts & manage your blocked contacts list",
         icon: <BlockIcon sx={{ color: '#fff', fontSize: isMobile ? 22 : 26 }} />,
         color: '#64748b',
@@ -1163,7 +1140,7 @@ export const UserGuideModal = ({
       }
     ] : []),
     {
-      title: includeDeleteAndBlock ? "15. How to Change Chat Background 🖼️" : "13. How to Change Chat Background 🖼️",
+      title: includeDeleteAndBlock ? "14. How to Change Chat Background 🖼️" : "12. How to Change Chat Background 🖼️",
       subtitle: "Personalize chat wallpaper with photos, gradients & solids",
       icon: <WallpaperIcon sx={{ color: '#fff', fontSize: isMobile ? 22 : 26 }} />,
       color: '#0ea5e9',
@@ -1175,7 +1152,7 @@ export const UserGuideModal = ({
       ]
     },
     {
-      title: includeDeleteAndBlock ? "16. Opacity & Transparency ✨" : "14. Opacity & Transparency ✨",
+      title: includeDeleteAndBlock ? "15. Opacity & Transparency ✨" : "13. Opacity & Transparency ✨",
       subtitle: "Increase or decrease chat wallpaper transparency in real time",
       icon: <OpacityIcon sx={{ color: '#fff', fontSize: isMobile ? 22 : 26 }} />,
       color: '#a855f7',
@@ -1187,7 +1164,7 @@ export const UserGuideModal = ({
       ]
     },
     {
-      title: includeDeleteAndBlock ? "17. How to Connect with New People 🤝" : "15. How to Connect with New People 🤝",
+      title: includeDeleteAndBlock ? "16. How to Connect with New People 🤝" : "14. How to Connect with New People 🤝",
       subtitle: "Search suggestions, send requests & approve incoming requests in Profile!",
       icon: <PersonAddIcon sx={{ color: '#fff', fontSize: isMobile ? 22 : 26 }} />,
       color: '#e52e71',

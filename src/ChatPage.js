@@ -5679,7 +5679,9 @@ const ChatPage = () => {
             </Box>
           )}
           {isMobile && bottomNav === 3 && (
-            <Settings onBack={() => setBottomNav(0)} />
+            <Box sx={{ width: '100%', height: '100%', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <Settings onBack={() => setBottomNav(0)} />
+            </Box>
           )}
           {isMobile && (
             <Box sx={{ display: bottomNav === 4 ? 'flex' : 'none', width: '100%', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
@@ -5689,6 +5691,7 @@ const ChatPage = () => {
                 onBlockChange={fetchBlockedStatus}
                 hideProfileCard={isNotificationView}
                 initialTab={isNotificationView ? 1 : 0}
+                onMessageFriend={handleSelectUser}
               />
             </Box>
           )}
@@ -7354,6 +7357,7 @@ const ChatPage = () => {
                       onBlockChange={fetchBlockedStatus}
                       hideProfileCard={isNotificationView}
                       initialTab={isNotificationView ? 1 : 0}
+                      onMessageFriend={handleSelectUser}
                     />
                   </Box>
                   {bottomNav !== 4 && (

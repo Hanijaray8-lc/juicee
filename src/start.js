@@ -4,6 +4,7 @@ import { Box, Typography } from '@mui/material';
 import { keyframes } from '@emotion/react';
 import juicyLogo from './logo/juicee2.png';
 import API_BASE_URL from './config/apiConfig';
+import '@fontsource/pacifico';
 
 // ============================================================
 // 3D SPLASH ANIMATIONS
@@ -1011,29 +1012,51 @@ const StartPage = () => {
         <Typography
           sx={{
             mt: {
-              xs: 0.5,
-              sm: 1,
-              md: 1.5,
+              xs: 0.8,
+              sm: 1.2,
+              md: 1.6,
             },
+
+            fontFamily: '"Pacifico", "Dancing Script", "Caveat", cursive',
 
             fontSize: {
-              xs: '0.78rem',
-              sm: '0.9rem',
-              md: '1rem',
+              xs: '1.05rem',
+              sm: '1.22rem',
+              md: '1.38rem',
             },
 
-            fontWeight: 500,
+            fontWeight: 400,
 
-            color:
-              activeTheme.colors.text,
-
-            opacity: 0.7,
-
-            letterSpacing: 0.5,
+            letterSpacing: '0.02em',
 
             textAlign: 'center',
 
             px: 3,
+
+            ...(isGradient
+              ? {
+                  background:
+                    activeTheme.colors.primary,
+
+                  WebkitBackgroundClip:
+                    'text',
+
+                  WebkitTextFillColor:
+                    'transparent',
+                }
+              : {
+                  background:
+                    `linear-gradient(135deg, ${activeTheme.colors.primary} 0%, #ff8a65 100%)`,
+
+                  WebkitBackgroundClip:
+                    'text',
+
+                  WebkitTextFillColor:
+                    'transparent',
+                }),
+
+            filter:
+              'drop-shadow(0 2px 10px rgba(240, 98, 146, 0.28))',
 
             animation: isLoaded
               ? `${slideUp} 0.8s ease-out 0.25s forwards`
@@ -1047,7 +1070,7 @@ const StartPage = () => {
             whiteSpace: 'normal',
           }}
         >
-          Pick up the vibe with Juicy.
+          Make a Vibe! Feel Alive!.
         </Typography>
       </Box>
 

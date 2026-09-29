@@ -34,7 +34,9 @@ import {
     Security as SecurityIcon,
     Fingerprint as FingerprintIcon,
     VerifiedUser as VerifiedIcon,
-    ArrowCircleRight as ArrowCircleRightIcon
+    ArrowCircleRight as ArrowCircleRightIcon,
+    Menu as MenuIcon,
+    Close as CloseIcon
 } from '@mui/icons-material';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
@@ -44,10 +46,113 @@ import logo5Digit from './logo/5digit.png';
 import logojuicy2 from './logo/new juicy.png';
 import juicyMascot from './bot/juicy_ai_hand_wave_3sec.gif';
 
+const NAV_FEATURES = [
+    { id: 'feature-1', icon: '💬', label: 'Message + Reaction', bg: '#fce7f3', color: '#db2777' },
+    { id: 'feature-2', icon: '📞', label: 'Voice & Video Call', bg: '#ffe4e6', color: '#e11d48' },
+    { id: 'feature-4', icon: '🌸', label: 'Daily Mood Share', bg: '#fae8ff', color: '#c026d3' },
+    { id: 'feature-5', icon: '✨', label: 'Interactive Gestures', bg: '#f3e8ff', color: '#9333ea' },
+    { id: 'feature-6', icon: '🧸', label: 'Stickers & Memes', bg: '#fce7f3', color: '#ec4899' },
+    { id: 'feature-7', icon: '🎮', label: 'In-Call Party Games', bg: '#e0e7ff', color: '#4f46e5' },
+    { id: 'feature-8', icon: '🤖', label: 'Jerry Bot AI', bg: '#ffe4e6', color: '#e11d48' },
+    { id: 'feature-9', icon: '🌈', label: 'Themes & Wallpapers', bg: '#f3e8ff', color: '#9333ea' },
+    { id: 'feature-10', icon: '🌍', label: 'Connect to People', bg: '#ffedd5', color: '#ea580c' },
+];
+
 export default function WebScanner() {
     const navigate = useNavigate();
     const socket = useSocket();
     const isMobile = useMediaQuery('(max-width: 1024px)');
+    const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+    // SPA Route & Anchor State
+    const [activeTab, setActiveTab] = useState(() => {
+        const hash = (typeof window !== 'undefined' ? window.location.hash : '') || '';
+        if (hash.includes('features')) return 'features';
+        if (hash.includes('help')) return 'help';
+        if (hash.includes('home')) return 'home';
+        return 'scanner';
+    });
+    const [currentAnchor, setCurrentAnchor] = useState(() => {
+        const hash = (typeof window !== 'undefined' ? window.location.hash : '') || '';
+        if (hash.includes('#feature-')) return 'feature-' + hash.split('#feature-')[1];
+        return '';
+    });
+
+    useEffect(() => {
+        const handleRouteSync = () => {
+            const hash = (window.location.hash || '').toLowerCase();
+            let anchor = '';
+            if (hash.includes('#feature-')) {
+                anchor = 'feature-' + hash.split('#feature-')[1];
+            }
+            if (hash.includes('features')) {
+                setActiveTab('features');
+                setCurrentAnchor(anchor);
+            } else if (hash.includes('help')) {
+                setActiveTab('help');
+                setCurrentAnchor('');
+            } else if (hash.includes('home')) {
+                setActiveTab('home');
+                setCurrentAnchor('');
+            } else if (hash.includes('scanner') || hash.includes('signin')) {
+                setActiveTab('scanner');
+                setCurrentAnchor('');
+            }
+        };
+
+        const handlePostMessage = (e) => {
+            if (e.data && e.data.type === 'JUICY_NAVIGATE') {
+                if (e.data.route) {
+                    setActiveTab(e.data.route);
+                    const anchor = e.data.anchor || '';
+                    setCurrentAnchor(anchor);
+                    const newHash = anchor ? `#/${e.data.route}#${anchor}` : `#/${e.data.route}`;
+                    try {
+                        window.history.pushState(null, '', newHash);
+                    } catch (err) {
+                        window.location.hash = newHash;
+                    }
+                }
+            }
+        };
+
+        window.addEventListener('hashchange', handleRouteSync);
+        window.addEventListener('popstate', handleRouteSync);
+        window.addEventListener('message', handlePostMessage);
+
+        return () => {
+            window.removeEventListener('hashchange', handleRouteSync);
+            window.removeEventListener('popstate', handleRouteSync);
+            window.removeEventListener('message', handlePostMessage);
+        };
+    }, []);
+
+    const handleNavClick = (tab, e, anchor = '') => {
+        if (e) e.preventDefault();
+        setMobileNavOpen(false);
+
+        // scanner tab stays in-page (QR login)
+        if (tab === 'scanner') {
+            setActiveTab('scanner');
+            return;
+        }
+
+        // All other tabs open in a new browser tab
+        window.open(getPageSrc(tab, anchor), '_blank', 'noopener,noreferrer');
+    };
+
+    const WEB_BASE = 'https://web.juicyapp.in';
+
+    const getPageSrc = (tab, anchor = '') => {
+        const fileMap = {
+            home: 'index.html',
+            features: 'Features.html',
+            help: 'Help.html'
+        };
+        const fname = fileMap[tab] || 'index.html';
+        const anchorPart = anchor ? `#${anchor}` : '';
+        return `${WEB_BASE}/${fname}${anchorPart}`;
+    };
 
     // Generate session ID on load
     const [sessionId] = useState(() => `juicy-web-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
@@ -305,7 +410,8 @@ export default function WebScanner() {
             width: '100%',
             position: 'relative',
             fontFamily: "'Poppins', sans-serif",
-            overflow: { xs: 'auto', lg: 'hidden' },
+            overflowX: 'hidden',
+            overflowY: 'auto',
             background: 'linear-gradient(135deg, #ffe8f0 0%, #fdd5e8 20%, #f8c8e0 40%, #f3b8d8 60%, #edd0ed 80%, #e8d5f5 100%)',
             backgroundSize: '400% 400%',
             animation: 'premiumGradientBG 18s ease infinite',
@@ -319,6 +425,188 @@ export default function WebScanner() {
                 '100%': { backgroundPosition: '0% 50%' }
             }
         }}>
+            {/* ── JUICY CAPSULE ISLAND & NAVBAR STYLES ── */}
+            <style>{`
+                @keyframes ambientGlow {
+                    0%, 100% {
+                        box-shadow: 0 16px 40px -5px rgba(244, 63, 94, 0.32), 0 0 25px rgba(251, 113, 133, 0.45), inset 0 1px 2px rgba(255, 255, 255, 0.9);
+                    }
+                    50% {
+                        box-shadow: 0 22px 50px -5px rgba(244, 63, 94, 0.45), 0 0 38px rgba(251, 113, 133, 0.65), inset 0 1px 2px rgba(255, 255, 255, 0.9);
+                    }
+                }
+                @keyframes floatPill {
+                    0%, 100% { transform: translateY(0); }
+                    50% { transform: translateY(-3px); }
+                }
+                @keyframes pingDot {
+                    0% { transform: scale(1); opacity: 0.8; }
+                    75%, 100% { transform: scale(2.4); opacity: 0; }
+                }
+                @keyframes mobileNavFadeIn {
+                    from { opacity: 0; transform: translateY(-8px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+                .juicy-capsule-island {
+                    backdrop-filter: blur(25px);
+                    -webkit-backdrop-filter: blur(25px);
+                    background: rgba(255, 255, 255, 0.88);
+                    border: 1.5px solid rgba(251, 207, 232, 0.95);
+                    border-radius: 9999px;
+                    animation: ambientGlow 4s ease-in-out infinite, floatPill 5s ease-in-out infinite;
+                    transition: all 0.3s ease;
+                }
+                .juicy-logo-pill {
+                    background: #ffffff;
+                    border: 2px solid rgba(251, 113, 133, 0.7);
+                    box-shadow: 0 0 25px rgba(244, 63, 94, 0.5), inset 0 1px 2px rgba(255, 255, 255, 1);
+                    border-radius: 9999px;
+                    transform: scale(1.06);
+                    transition: all 0.3s ease;
+                }
+                .juicy-logo-pill:hover {
+                    transform: scale(1.06);
+                    box-shadow: 0 0 25px rgba(244, 63, 94, 0.5);
+                    border-color: rgba(244, 63, 94, 0.7);
+                }
+                .juicy-nav-shell {
+                    padding: 10px 16px;
+                }
+                .juicy-nav-row {
+                    height: 56px;
+                }
+                .juicy-logo-img {
+                    height: 28px;
+                    width: auto;
+                    object-fit: contain;
+                    transform: scale(1.05);
+                }
+                @media (min-width: 640px) {
+                    .juicy-nav-shell { padding: 10px 24px; }
+                    .juicy-nav-row { height: 64px; }
+                    .juicy-logo-img { height: 32px; }
+                }
+                .juicy-tab-pill {
+                    background: rgba(255, 255, 255, 0.95);
+                    border: 1px solid rgba(251, 207, 232, 0.85);
+                    color: #475569;
+                    box-shadow: 0 4px 12px rgba(244, 114, 182, 0.08);
+                    border-radius: 9999px;
+                    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+                    text-decoration: none;
+                    font-weight: 700;
+                    font-size: 0.875rem;
+                    line-height: 1.25rem;
+                    padding: 8px 20px;
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    cursor: pointer;
+                }
+                .juicy-tab-pill:hover {
+                    color: #e11d48;
+                    background: #ffffff;
+                    transform: translateY(-2px);
+                    box-shadow: 0 6px 18px rgba(244, 114, 182, 0.22);
+                }
+                .juicy-features-group {
+                    position: relative;
+                }
+                .juicy-features-dropdown {
+                    position: absolute;
+                    left: 50%;
+                    transform: translateX(-50%) translateY(8px);
+                    top: 100%;
+                    padding-top: 10px;
+                    width: 270px;
+                    opacity: 0;
+                    visibility: hidden;
+                    pointer-events: none;
+                    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+                    z-index: 100;
+                }
+                .juicy-features-group:hover .juicy-features-dropdown,
+                .juicy-features-dropdown:hover {
+                    opacity: 1;
+                    visibility: visible;
+                    pointer-events: auto;
+                    transform: translateX(-50%) translateY(0);
+                }
+                .juicy-features-group:hover .juicy-chevron {
+                    transform: rotate(180deg);
+                    color: #db2777 !important;
+                }
+                .juicy-dropdown-item:hover {
+                    background-color: #fdf2f8 !important;
+                    color: #db2777 !important;
+                    transform: translateX(4px);
+                }
+                .juicy-google-play-btn {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 8px 16px;
+                    border-radius: 9999px;
+                    background: #0f172a;
+                    color: #ffffff;
+                    font-size: 0.75rem;
+                    line-height: 1rem;
+                    font-weight: 700;
+                    text-decoration: none;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+                    transition: all 0.25s ease;
+                }
+                .juicy-google-play-btn:hover {
+                    background: #000000;
+                    transform: scale(1.05);
+                    box-shadow: 0 6px 16px rgba(0,0,0,0.25);
+                }
+                .juicy-google-play-btn:active {
+                    transform: scale(0.96);
+                }
+                .juicy-tab-active {
+                    background: linear-gradient(135deg, #f43f5e 0%, #fb923c 100%) !important;
+                    color: #ffffff !important;
+                    box-shadow: 0 8px 20px -2px rgba(244, 63, 94, 0.5) !important;
+                    border-radius: 9999px !important;
+                    transform: scale(1.03) !important;
+                    text-decoration: none !important;
+                    font-weight: 800 !important;
+                    font-size: 0.875rem !important;
+                    line-height: 1.25rem !important;
+                    padding: 8px 20px !important;
+                    display: flex !important;
+                    align-items: center !important;
+                    gap: 6px !important;
+                    cursor: pointer !important;
+                    border: none !important;
+                    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+                }
+                .juicy-sunset-btn {
+                    position: relative;
+                    overflow: hidden;
+                    background: linear-gradient(135deg, #ec4899 0%, #f43f5e 50%, #f97316 100%);
+                    box-shadow: 0 8px 22px -3px rgba(244, 63, 94, 0.55), 0 0 15px rgba(249, 115, 22, 0.4);
+                    border-radius: 9999px;
+                    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                    color: #ffffff;
+                    cursor: pointer;
+                    text-decoration: none;
+                }
+                .juicy-sunset-btn:hover {
+                    transform: translateY(-2px) scale(1.04);
+                    box-shadow: 0 12px 28px -3px rgba(244, 63, 94, 0.7), 0 0 20px rgba(249, 115, 22, 0.55);
+                }
+                .juicy-sunset-btn-active {
+                    background: linear-gradient(135deg, #be185d 0%, #e11d48 50%, #ea580c 100%) !important;
+                    box-shadow: 0 0 0 2px #fff, 0 10px 25px rgba(225, 29, 72, 0.6) !important;
+                    transform: scale(1.03) !important;
+                    border-radius: 9999px !important;
+                    color: #ffffff !important;
+                    cursor: pointer !important;
+                    text-decoration: none !important;
+                }
+            `}</style>
             {/* ── AMBIENT GLOW ORBS ── */}
             <Box sx={{
                 position: 'fixed', top: -200, right: -160, width: 700, height: 700,
@@ -382,640 +670,929 @@ export default function WebScanner() {
                 </Box>
             ))}
 
-            {/* ── TOP BRAND HEADER ── */}
-            <Box sx={{
-                position: 'relative', zIndex: 10,
-                width: '100%', maxWidth: 1100,
-                px: { xs: 2, sm: 3 },
-                pt: { xs: 1.5, sm: 2 },
-                pb: { xs: 1, sm: 1.5 },
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                flexShrink: 0,
-            }}>
-                {/* Logo */}
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                    <img src={logojuicy2} alt="Juicy Web" style={{ height: 42, objectFit: 'contain', filter: 'drop-shadow(0 4px 12px rgba(236,72,153,0.3))' }} />
-                </Box>
+            {/* ── TOP CAPSULE ISLAND NAVBAR (HOME, FEATURE, HELP ONLY SET) ── */}
+            {/* ── TOP CAPSULE ISLAND NAVBAR (HOME, FEATURE, HELP ONLY SET) ── */}
+            <Box
+                component="header"
+                sx={{
+                    position: 'sticky',
+                    top: 16,
+                    zIndex: 50,
+                    width: '100%',
+                    maxWidth: 1280,
+                    px: { xs: 1.5, sm: 3, lg: 4 },
+                    boxSizing: 'border-box',
+                    mb: { xs: 1.5, sm: 2 },
+                    flexShrink: 0
+                }}
+            >
+                <nav className="juicy-capsule-island juicy-nav-shell" style={{ width: '100%', boxSizing: 'border-box' }}>
+                    <div className="juicy-nav-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
 
-                {/* Encrypted Badge */}
-                <Box sx={{
-                    display: 'flex', alignItems: 'center', gap: 0.8,
-                    px: 2, py: 0.7,
-                    borderRadius: '50px',
-                    background: 'rgba(255,255,255,0.45)',
-                    backdropFilter: 'blur(20px)',
-                    WebkitBackdropFilter: 'blur(20px)',
-                    border: '1px solid rgba(236,72,153,0.25)',
-                    boxShadow: '0 4px 20px rgba(236,72,153,0.12), inset 0 1px 0 rgba(255,255,255,0.8)',
-                    animation: 'badgePulse 3s ease-in-out infinite',
-                    '@keyframes badgePulse': {
-                        '0%,100%': { boxShadow: '0 4px 20px rgba(236,72,153,0.12), inset 0 1px 0 rgba(255,255,255,0.8)' },
-                        '50%': { boxShadow: '0 4px 28px rgba(236,72,153,0.22), inset 0 1px 0 rgba(255,255,255,0.8)' }
-                    }
-                }}>
-                    <Box sx={{ color: '#ec4899', fontSize: 14, display: 'flex', alignItems: 'center' }}>
-                        <VerifiedIcon sx={{ fontSize: 16 }} />
-                    </Box>
-                    <Typography sx={{ fontSize: '0.72rem', fontWeight: 600, color: '#be185d', letterSpacing: '0.02em' }}>
-                        End-to-End Encrypted
-                    </Typography>
-                </Box>
-            </Box>
+                        {/* Left: Exact Juicy Logo in Glowing Pill */}
+                        <a
+                            href="#/home"
+                            onClick={(e) => handleNavClick('home', e)}
+                            style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}
+                        >
+                            <div className="juicy-logo-pill" style={{ padding: '8px 20px', display: 'flex', alignItems: 'center' }}>
+                                <img src={logojuicy2} alt="Juicy Logo" className="juicy-logo-img" />
+                            </div>
+                        </a>
 
-            {/* ── MAIN CONTENT AREA ── */}
-            <Box sx={{
-                position: 'relative', zIndex: 5,
-                width: '100%', maxWidth: 1100,
-                flex: 1,
-                display: 'flex',
-                flexDirection: { xs: 'column', lg: 'row' },
-                alignItems: 'stretch',
-                gap: { xs: 2.5, lg: 2.5 },
-                px: { xs: 2, sm: 3 },
-                py: { xs: 1.5, lg: 1.5 },
-                minHeight: 0,
-            }}>
+                        {/* Middle: ONLY Three Tabs: Home, Feature, Help */}
+                        <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center', gap: '10px' }}>
+                            {/* Home Tab */}
+                            <a
+                                href="#/home"
+                                id="nav-home"
+                                onClick={(e) => handleNavClick('home', e)}
+                                className={activeTab === 'home' ? 'juicy-tab-active' : 'juicy-tab-pill'}
+                            >
+                                <span style={{ fontSize: '14px' }}>🏠</span>
+                                <span>Home</span>
+                            </a>
 
-                {/* ══ LEFT: QR GLASS CARD ══ */}
-                <Box sx={{
-                    flex: '0 0 auto',
-                    width: { xs: '100%', lg: 310 },
-                    display: 'flex', flexDirection: 'column', gap: 0,
-                }}>
-                    <Box sx={{
-                        background: 'rgba(255,255,255,0.52)',
-                        backdropFilter: 'blur(28px)',
-                        WebkitBackdropFilter: 'blur(28px)',
-                        border: '1.5px solid rgba(255,255,255,0.75)',
-                        borderRadius: '28px',
-                        boxShadow: '0 20px 60px rgba(236,72,153,0.12), 0 8px 24px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.9)',
-                        p: { xs: 3, sm: 3.5 },
-                        display: 'flex', flexDirection: 'column',
-                        height: '100%',
-                        transition: 'transform 0.3s ease, box-shadow 0.3s ease',
-                        '&:hover': {
-                            transform: 'translateY(-4px)',
-                            boxShadow: '0 28px 70px rgba(236,72,153,0.18), 0 12px 32px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.9)',
-                        }
-                    }}>
-                        {/* QR Card Header */}
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2, mb: 2.5 }}>
-                            <Box sx={{
-                                width: 36, height: 36, borderRadius: '10px',
-                                background: 'linear-gradient(135deg, #ec4899, #f43f8e)',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                boxShadow: '0 4px 14px rgba(236,72,153,0.4)'
-                            }}>
-                                <QrCodeIcon sx={{ fontSize: 20, color: '#fff' }} />
-                            </Box>
-                            <Box>
-                                <Typography sx={{ fontWeight: 700, fontSize: '0.92rem', color: '#1e1b2e', lineHeight: 1.2 }}>
-                                    Scan to Connect
-                                </Typography>
-                                <Typography sx={{ fontSize: '0.72rem', color: '#9d78a0', fontWeight: 500 }}>
-                                    Point your phone at this code
-                                </Typography>
-                            </Box>
-                        </Box>
+                            {/* Features Tab with WhatsApp-Style Dropdown */}
+                            <div className="juicy-features-group">
+                                <a
+                                    href="#/features"
+                                    id="nav-features"
+                                    onClick={(e) => handleNavClick('features', e)}
+                                    className={activeTab === 'features' ? 'juicy-tab-active' : 'juicy-tab-pill'}
+                                >
+                                    <span style={{ fontSize: '14px' }}>✨</span>
+                                    <span>Features</span>
+                                    <svg
+                                        className="juicy-chevron"
+                                        style={{ width: '14px', height: '14px', transition: 'transform 0.3s ease, color 0.3s ease', color: activeTab === 'features' ? '#ffffff' : '#64748b' }}
+                                        viewBox="0 0 20 20"
+                                        fill="currentColor"
+                                    >
+                                        <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                                    </svg>
+                                </a>
 
-                        {/* QR Code Container */}
-                        <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
-                            <Box sx={{
-                                position: 'relative',
-                                width: { xs: 210, sm: 220 }, height: { xs: 210, sm: 220 },
-                                borderRadius: '24px',
-                                background: '#ffffff',
-                                boxShadow: qrCodeValid
-                                    ? '0 8px 32px rgba(236,72,153,0.18), 0 2px 8px rgba(0,0,0,0.06), 0 0 0 1px rgba(236,72,153,0.12)'
-                                    : '0 4px 16px rgba(0,0,0,0.05)',
-                                display: 'flex', justifyContent: 'center', alignItems: 'center',
-                                p: 1.5,
-                                animation: qrCodeValid ? 'qrGlow 3s ease-in-out infinite' : 'none',
-                                '@keyframes qrGlow': {
-                                    '0%,100%': { boxShadow: '0 8px 32px rgba(236,72,153,0.18), 0 2px 8px rgba(0,0,0,0.06), 0 0 0 1px rgba(236,72,153,0.12)' },
-                                    '50%': { boxShadow: '0 12px 44px rgba(236,72,153,0.28), 0 4px 12px rgba(0,0,0,0.08), 0 0 0 1px rgba(236,72,153,0.20)' }
-                                }
-                            }}>
-                                {/* Scanning line */}
-                                {qrCodeValid && (
-                                    <Box sx={{
-                                        position: 'absolute', top: 12, left: 12, right: 12,
-                                        height: '2px',
-                                        background: 'linear-gradient(90deg, transparent, #ec4899, transparent)',
-                                        borderRadius: 1, opacity: 0.7, zIndex: 2,
-                                        animation: 'qrScanLine 2.8s ease-in-out infinite',
-                                        '@keyframes qrScanLine': {
-                                            '0%': { top: 12, opacity: 0.3 },
-                                            '50%': { opacity: 0.9 },
-                                            '100%': { top: 206, opacity: 0.3 }
-                                        }
-                                    }} />
-                                )}
-
-                                {/* Corner Brackets */}
-                                {[
-                                    { top: 8, left: 8, borderTop: '3px solid #ec4899', borderLeft: '3px solid #ec4899', borderTopLeftRadius: 10 },
-                                    { top: 8, right: 8, borderTop: '3px solid #ec4899', borderRight: '3px solid #ec4899', borderTopRightRadius: 10 },
-                                    { bottom: 8, left: 8, borderBottom: '3px solid #ec4899', borderLeft: '3px solid #ec4899', borderBottomLeftRadius: 10 },
-                                    { bottom: 8, right: 8, borderBottom: '3px solid #ec4899', borderRight: '3px solid #ec4899', borderBottomRightRadius: 10 },
-                                ].map((style, i) => (
-                                    <Box key={i} sx={{
-                                        position: 'absolute', width: 22, height: 22,
-                                        opacity: qrCodeValid ? 0.9 : 0.18,
-                                        transition: 'opacity 0.3s ease', ...style
-                                    }} />
-                                ))}
-
-                                <img
-                                    src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&color=ec4899&bgcolor=ffffff&data=${encodeURIComponent(sessionId)}`}
-                                    alt="Scan to login"
-                                    style={{ width: 180, height: 180, display: 'block', opacity: qrCodeValid ? 1 : 0.2, transition: 'opacity 0.3s ease', borderRadius: 4 }}
-                                />
-
-                                {/* Expired Overlay */}
-                                {!qrCodeValid && (
-                                    <Box sx={{
-                                        position: 'absolute', inset: 0, borderRadius: '24px',
-                                        background: 'rgba(255,255,255,0.96)',
-                                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                                        gap: 1.5, zIndex: 5, p: 2
+                                {/* WhatsApp-Style Single-Column Solid-White Features Dropdown */}
+                                <div className="juicy-features-dropdown">
+                                    <div style={{
+                                        background: '#ffffff',
+                                        border: '2px solid rgba(251, 207, 232, 0.95)',
+                                        borderRadius: '24px',
+                                        padding: '8px',
+                                        boxShadow: '0 20px 50px rgba(244, 114, 182, 0.28), 0 10px 25px rgba(0,0,0,0.10)',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '2px',
+                                        overflow: 'hidden'
                                     }}>
-                                        <Box sx={{
-                                            width: 52, height: 52, borderRadius: '50%',
-                                            background: 'linear-gradient(135deg, rgba(236,72,153,0.12), rgba(244,114,182,0.08))',
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        }}>
-                                            <RefreshIcon sx={{ fontSize: 28, color: '#ec4899' }} />
-                                        </Box>
-                                        <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', color: '#1e1b2e', textAlign: 'center' }}>
-                                            QR Code Expired
-                                        </Typography>
-                                        <Button
-                                            variant="contained"
-                                            size="small"
-                                            onClick={handleReloadQR}
-                                            startIcon={<RefreshIcon sx={{ fontSize: 15 }} />}
-                                            sx={{
-                                                background: 'linear-gradient(135deg, #ec4899, #f43f8e)',
-                                                color: '#fff', fontWeight: 600, borderRadius: '10px',
-                                                px: 2.5, py: 0.7, textTransform: 'none', fontSize: '0.82rem',
-                                                boxShadow: '0 4px 16px rgba(236,72,153,0.35)',
-                                                '&:hover': { background: 'linear-gradient(135deg, #db2777, #ec4899)', transform: 'translateY(-1px)', boxShadow: '0 6px 20px rgba(236,72,153,0.45)' }
-                                            }}
-                                        >
-                                            Refresh Code
-                                        </Button>
-                                    </Box>
-                                )}
+                                        {NAV_FEATURES.map((feat) => (
+                                            <a
+                                                key={feat.id}
+                                                href={`#/${feat.id}`}
+                                                onClick={(e) => handleNavClick('features', e, feat.id)}
+                                                className="juicy-dropdown-item"
+                                                style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '10px',
+                                                    padding: '7px 12px',
+                                                    borderRadius: '14px',
+                                                    fontSize: '0.8rem',
+                                                    fontWeight: 700,
+                                                    color: '#334155',
+                                                    textDecoration: 'none',
+                                                    transition: 'all 0.2s ease',
+                                                }}
+                                            >
+                                                <span style={{
+                                                    width: 26, height: 26, borderRadius: '8px',
+                                                    backgroundColor: feat.bg,
+                                                    color: feat.color,
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                    fontSize: '0.75rem', flexShrink: 0
+                                                }}>
+                                                    {feat.icon}
+                                                </span>
+                                                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                    {feat.label}
+                                                </span>
+                                            </a>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Help Tab */}
+                            <a
+                                href="#/help"
+                                id="nav-help"
+                                onClick={(e) => handleNavClick('help', e)}
+                                className={activeTab === 'help' ? 'juicy-tab-active' : 'juicy-tab-pill'}
+                            >
+                                <span style={{ fontSize: '14px' }}>💌</span>
+                                <span>Help</span>
+                            </a>
+                        </Box>
+
+                        {/* Right: Live Security Badge & Google Play Button & Sign In Button */}
+                        <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center', gap: 1.5 }}>
+                            {/* Live Encrypted Pill */}
+                            <Box sx={{
+                                display: 'flex', alignItems: 'center', gap: 1,
+                                px: 2, py: 1,
+                                borderRadius: '9999px',
+                                background: 'rgba(255, 255, 255, 0.95)',
+                                border: '1px solid rgba(251, 207, 232, 0.9)',
+                                boxShadow: '0 2px 10px rgba(244, 114, 182, 0.08)'
+                            }}>
+                                <Box sx={{ position: 'relative', display: 'flex', width: 8, height: 8 }}>
+                                    <Box sx={{
+                                        position: 'absolute', inset: 0, borderRadius: '50%',
+                                        bgcolor: '#34d399',
+                                        animation: 'pingDot 1.6s cubic-bezier(0, 0, 0.2, 1) infinite'
+                                    }} />
+                                    <Box sx={{
+                                        width: 8, height: 8, borderRadius: '50%',
+                                        bgcolor: '#10b981',
+                                        boxShadow: '0 0 10px #10b981, 0 0 18px rgba(16, 185, 129, 0.75)'
+                                    }} />
+                                </Box>
+                                <Typography sx={{ fontSize: '0.75rem', lineHeight: '1rem', fontWeight: 700, color: '#475569', letterSpacing: '0.025em', whiteSpace: 'nowrap' }}>
+                                    End-to-End Encrypted
+                                </Typography>
                             </Box>
-                        </Box>
 
-                        {/* 3-Step Instructions */}
-                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mb: 2.5 }}>
-                            {[
-                                { num: 1, text: 'Open ', bold: 'Juicy', text2: ' on your phone.' },
-                                { num: 2, text: 'Tap your ', bold: 'Profile Icon', text2: ' → ', bold2: 'Linked Devices' },
-                                { num: 3, text: 'Point your phone camera at this screen.' }
-                            ].map((step, idx) => (
-                                <Fade in key={idx} timeout={500 + idx * 200}>
-                                    <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
-                                        <Box sx={{
-                                            minWidth: 26, height: 26, borderRadius: '50%',
-                                            background: `linear-gradient(135deg, #ec4899 ${idx * 20}%, #a855f7)`,
-                                            color: '#fff', display: 'flex', justifyContent: 'center', alignItems: 'center',
-                                            fontSize: '0.72rem', fontWeight: 700, flexShrink: 0,
-                                            boxShadow: '0 3px 10px rgba(236,72,153,0.35)'
-                                        }}>{step.num}</Box>
-                                        <Typography variant="body2" sx={{ color: '#4b3f72', fontSize: '0.825rem', lineHeight: 1.5, pt: 0.2 }}>
-                                            {step.text}
-                                            {step.bold && <strong style={{ color: '#be185d' }}>{step.bold}</strong>}
-                                            {step.text2}
-                                            {step.bold2 && <strong style={{ color: '#be185d' }}>{step.bold2}</strong>}
-                                        </Typography>
-                                    </Box>
-                                </Fade>
-                            ))}
-                        </Box>
+                            {/* Download on Google Play Button */}
+                            <Box sx={{ display: { xs: 'none', lg: 'block' } }}>
+                                <a
+                                    href="https://play.google.com/store/apps/details?id=com.juicychat.app"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="juicy-google-play-btn"
+                                >
+                                    <svg viewBox="0 0 466 512" style={{ width: 14, height: 14, flexShrink: 0 }}>
+                                        <path fill="#EA4335" d="M199.9 237.8 1.4 470.17c7.22 24.57 30.16 41.81 55.8 41.81 11.16 0 20.93-2.79 29.3-8.37l244.16-139.46L199.9 237.8z" />
+                                        <path fill="#FBBC04" d="m433.91 205.1-104.65-60-111.61 110.22 113.01 108.83 104.64-58.6c18.14-9.77 30.7-29.3 30.7-50.23-1.4-20.93-13.95-40.46-32.09-50.22z" />
+                                        <path fill="#34A853" d="M199.42 273.45 329.27 145.1 87.9 8.37C79.53 2.79 68.36 0 57.2 0 30.7 0 6.98 18.14 1.4 41.86l198.02 231.59z" />
+                                        <path fill="#4285F4" d="M1.39 41.86C0 46.04 0 51.63 0 57.2v397.64c0 5.57 0 9.76 1.4 15.34l216.27-214.86L1.39 41.86z" />
+                                    </svg>
+                                    <span>Google Play</span>
+                                </a>
+                            </Box>
 
-                        {/* Register Link */}
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, mt: 'auto', pt: 1 }}>
-                            <Typography variant="body2" sx={{ color: '#9d78a0', fontSize: '0.82rem' }}>
-                                Don't have an account?
-                            </Typography>
-                            <Typography
-                                variant="body2"
-                                onClick={() => navigate('/signup')}
-                                sx={{
-                                    color: '#ec4899', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer',
-                                    background: 'linear-gradient(90deg, #ec4899, #a855f7)',
-                                    WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-                                    transition: 'all 0.2s ease',
-                                    '&:hover': { opacity: 0.8, textDecoration: 'underline' }
+                            {/* Sign In / Web Button */}
+                            <a
+                                href="#/scanner"
+                                onClick={(e) => handleNavClick('scanner', e)}
+                                className={activeTab === 'scanner' ? 'juicy-sunset-btn-active' : 'juicy-sunset-btn'}
+                                style={{
+                                    padding: '10px 24px',
+                                    borderRadius: '9999px',
+                                    color: '#ffffff',
+                                    fontSize: '0.875rem',
+                                    lineHeight: '1.25rem',
+                                    fontWeight: 800,
+                                    textDecoration: 'none',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px'
                                 }}
                             >
-                                Register here
-                            </Typography>
-                        </Box>
-                    </Box>
-                </Box>
-
-                {/* ══ CENTER: HERO AREA ══ */}
-                <Box sx={{
-                    flex: 1,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 2,
-                    py: { xs: 1, lg: 0 },
-                    order: { xs: -1, lg: 0 }
-                }}>
-                    {/* Hero Heading */}
-                    <Box sx={{ textAlign: 'center', mb: 1 }}>
-                        <Typography sx={{
-                            fontWeight: 800,
-                            fontSize: { xs: '1.6rem', sm: '1.9rem', md: '2.1rem', lg: '2.2rem' },
-                            lineHeight: 1.15,
-                            letterSpacing: '-0.03em',
-                            background: 'linear-gradient(135deg, #be185d 0%, #ec4899 40%, #a855f7 80%, #7c3aed 100%)',
-                            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-                            mb: 1,
-                            textShadow: 'none',
-                        }}>
-                            Use Juicy on your<br />computer
-                        </Typography>
-                        <Typography sx={{
-                            fontSize: { xs: '0.82rem', sm: '0.88rem' },
-                            color: '#7c4d8a',
-                            fontWeight: 500, lineHeight: 1.5, maxWidth: 320, mx: 'auto'
-                        }}>
-                            Scan the QR code with your phone to link this device instantly.
-                        </Typography>
-                    </Box>
-
-                    {/* 3D Device Illustration */}
-                    <Box sx={{
-                        position: 'relative',
-                        width: { xs: 240, sm: 280, lg: 300 },
-                        height: { xs: 160, sm: 190, lg: 200 },
-                        animation: 'heroFloat 5s ease-in-out infinite',
-                        '@keyframes heroFloat': {
-                            '0%,100%': { transform: 'translateY(0)' },
-                            '50%': { transform: 'translateY(-12px)' }
-                        }
-                    }}>
-                        {/* Laptop body */}
-                        <Box sx={{
-                            position: 'absolute', bottom: 0, left: '50%', transform: 'translateX(-50%)',
-                            width: '88%', height: '65%',
-                            background: 'linear-gradient(160deg, #ffffff 0%, #fce7f3 60%, #f5d0fe 100%)',
-                            borderRadius: '16px 16px 0 0',
-                            boxShadow: '0 -4px 30px rgba(236,72,153,0.12), 0 8px 40px rgba(0,0,0,0.10)',
-                            border: '1.5px solid rgba(255,255,255,0.8)',
-                            overflow: 'hidden',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center'
-                        }}>
-                            {/* Laptop screen content */}
-                            <Box sx={{
-                                width: '82%', height: '78%',
-                                background: 'linear-gradient(135deg, #fdf2f8 0%, #f5e6ff 100%)',
-                                borderRadius: '8px',
-                                border: '1px solid rgba(236,72,153,0.15)',
-                                display: 'flex', flexDirection: 'column',
-                                alignItems: 'center', justifyContent: 'center', gap: 0.8,
-                                p: 1.5
-                            }}>
-                                {/* Mock chat bubbles on screen */}
-                                <Box sx={{ width: '70%', height: 8, borderRadius: 4, background: 'linear-gradient(90deg, #ec4899, #f9a8d4)', mb: 0.5 }} />
-                                <Box sx={{ display: 'flex', gap: 0.5, alignSelf: 'flex-start', ml: 1 }}>
-                                    <Box sx={{ width: 16, height: 16, borderRadius: '50%', background: 'linear-gradient(135deg, #ec4899, #f43f8e)' }} />
-                                    <Box sx={{ width: 55, height: 16, borderRadius: 4, background: 'linear-gradient(90deg, #fce7f3, #f5d0fe)' }} />
-                                </Box>
-                                <Box sx={{ display: 'flex', gap: 0.5, alignSelf: 'flex-end', mr: 1 }}>
-                                    <Box sx={{ width: 40, height: 16, borderRadius: 4, background: 'linear-gradient(90deg, #ec4899, #a855f7)', opacity: 0.75 }} />
-                                </Box>
-                                <Box sx={{ display: 'flex', gap: 0.5, alignSelf: 'flex-start', ml: 1 }}>
-                                    <Box sx={{ width: 14, height: 14, borderRadius: '50%', background: 'linear-gradient(135deg, #a855f7, #7c3aed)' }} />
-                                    <Box sx={{ width: 48, height: 14, borderRadius: 4, background: 'linear-gradient(90deg, #f5d0fe, #ddd6fe)' }} />
-                                </Box>
-                                <LaptopIcon sx={{ fontSize: 20, color: 'rgba(236,72,153,0.25)', mt: 0.5 }} />
-                            </Box>
-                        </Box>
-                        {/* Laptop base */}
-                        <Box sx={{
-                            position: 'absolute', bottom: 0, left: '50%', transform: 'translateX(-50%)',
-                            width: '100%', height: 12,
-                            background: 'linear-gradient(180deg, #e8d5f5, #f0e0ff)',
-                            borderRadius: '0 0 8px 8px',
-                            boxShadow: '0 4px 20px rgba(0,0,0,0.10)',
-                        }} />
-
-                        {/* Phone (floating, tilted) */}
-                        <Box sx={{
-                            position: 'absolute',
-                            right: { xs: -10, sm: -20 },
-                            top: { xs: 10, sm: 0 },
-                            width: { xs: 56, sm: 70 },
-                            height: { xs: 105, sm: 130 },
-                            background: 'linear-gradient(160deg, #ffffff 0%, #fce7f3 80%, #fdf4ff 100%)',
-                            borderRadius: '16px',
-                            boxShadow: '0 12px 40px rgba(236,72,153,0.18), 0 4px 16px rgba(0,0,0,0.10)',
-                            border: '1.5px solid rgba(255,255,255,0.85)',
-                            transform: 'rotate(8deg)',
-                            animation: 'phoneWiggle 4s 1s ease-in-out infinite',
-                            overflow: 'hidden',
-                            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 0.5,
-                            '@keyframes phoneWiggle': {
-                                '0%,100%': { transform: 'rotate(8deg) translateY(0)' },
-                                '50%': { transform: 'rotate(10deg) translateY(-8px)' }
-                            }
-                        }}>
-                            {/* Phone notch */}
-                            <Box sx={{ width: 22, height: 4, borderRadius: 2, background: 'rgba(236,72,153,0.2)', position: 'absolute', top: 8 }} />
-                            <PhoneIcon sx={{ fontSize: 20, color: '#ec4899', opacity: 0.7 }} />
-                            <Box sx={{ width: 28, height: 4, borderRadius: 2, background: 'linear-gradient(90deg, #ec4899, #a855f7)', opacity: 0.5 }} />
-                            <Box sx={{ width: 20, height: 4, borderRadius: 2, background: 'rgba(236,72,153,0.2)', opacity: 0.5 }} />
+                                <span>Sign In</span>
+                                <span style={{ fontSize: '0.75rem', lineHeight: '1rem' }}>✨</span>
+                            </a>
                         </Box>
 
-                        {/* Floating connection sparkle */}
-                        <Box sx={{
-                            position: 'absolute', top: '30%', left: '50%', transform: 'translateX(-50%)',
-                            animation: 'sparkleFloat 2s ease-in-out infinite',
-                            '@keyframes sparkleFloat': {
-                                '0%,100%': { transform: 'translateX(-50%) scale(1)', opacity: 0.9 },
-                                '50%': { transform: 'translateX(-50%) scale(1.3)', opacity: 0.6 }
-                            }
-                        }}>
-                            <Box sx={{ display: 'flex', gap: 0.5 }}>
-                                {['#ec4899','#f472b6','#a855f7'].map((c,i) => (
-                                    <Box key={i} sx={{ width: 6, height: 6, borderRadius: '50%', background: c, opacity: 0.8 }} />
-                                ))}
-                            </Box>
-                        </Box>
-
-                        {/* Floating heart near phone */}
-                        <Box sx={{
-                            position: 'absolute', top: -10, right: { xs: 30, sm: 40 },
-                            animation: 'miniHeartFloat 3s 0.5s ease-in-out infinite',
-                            '@keyframes miniHeartFloat': {
-                                '0%,100%': { transform: 'translateY(0) rotate(-10deg)' },
-                                '50%': { transform: 'translateY(-14px) rotate(8deg)' }
-                            }
-                        }}>
-                            <svg viewBox="0 0 24 24" fill="#ec4899" width="20" height="20" style={{ opacity: 0.75 }}>
-                                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
-                            </svg>
-                        </Box>
-
-                        {/* Lock badge */}
-                        <Box sx={{
-                            position: 'absolute', top: 0, left: { xs: 0, sm: -10 },
-                            width: 44, height: 44, borderRadius: '50%',
-                            background: 'linear-gradient(135deg, rgba(255,255,255,0.9), rgba(253,242,248,0.9))',
-                            backdropFilter: 'blur(10px)',
-                            border: '1.5px solid rgba(236,72,153,0.2)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            boxShadow: '0 4px 16px rgba(236,72,153,0.15)',
-                            animation: 'lockFloat 6s ease-in-out infinite',
-                            '@keyframes lockFloat': {
-                                '0%,100%': { transform: 'translate(0,0) rotate(-5deg)' },
-                                '50%': { transform: 'translate(-5px,-10px) rotate(5deg)' }
-                            }
-                        }}>
-                            <LockIcon sx={{ fontSize: 20, color: '#ec4899' }} />
-                        </Box>
-                    </Box>
-
-                    {/* Mascot Robot */}
-                    <Box sx={{
-                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.8,
-                        animation: 'mascotFloat 4s ease-in-out infinite',
-                        '@keyframes mascotFloat': {
-                            '0%,100%': { transform: 'translateY(0)' },
-                            '50%': { transform: 'translateY(-10px)' }
-                        }
-                    }}>
-                        <Box sx={{
-                            width: { xs: 90, sm: 110 }, height: { xs: 90, sm: 110 },
-                            borderRadius: '50%',
-                            overflow: 'hidden',
-                            boxShadow: '0 12px 40px rgba(236,72,153,0.22), 0 4px 16px rgba(0,0,0,0.08)',
-                            border: '3px solid rgba(255,255,255,0.85)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
-                        }}>
-                            <img
-                                src={juicyMascot}
-                                alt="Jerry Bot mascot"
+                        {/* Mobile Hamburger Button */}
+                        <Box sx={{ display: { xs: 'flex', md: 'none' }, alignItems: 'center' }}>
+                            <button
+                                type="button"
+                                onClick={() => setMobileNavOpen(prev => !prev)}
+                                aria-label="Toggle navigation menu"
                                 style={{
-                                    width: '125%',
-                                    height: '125%',
-                                    objectFit: 'cover',
-                                    objectPosition: 'center 85%',
-                                    transform: 'translateY(-6px)',
-                                    borderRadius: '50%',
-                                    pointerEvents: 'none'
+                                    padding: '8px',
+                                    borderRadius: '9999px',
+                                    background: '#fdf2f8',
+                                    color: '#db2777',
+                                    border: '1px solid #fbcfe8',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    outline: 'none',
+                                    boxShadow: '0 2px 8px rgba(244,114,182,0.15)'
                                 }}
-                            />
+                            >
+                                {mobileNavOpen ? (
+                                    <CloseIcon sx={{ fontSize: 24 }} />
+                                ) : (
+                                    <MenuIcon sx={{ fontSize: 24 }} />
+                                )}
+                            </button>
                         </Box>
-                        <Box sx={{
-                            px: 1.5, py: 0.4,
-                            background: 'rgba(255,255,255,0.55)',
-                            backdropFilter: 'blur(12px)',
-                            borderRadius: '50px',
-                            border: '1px solid rgba(236,72,153,0.15)',
-                        }}>
-                            <Typography sx={{ fontSize: '0.72rem', fontWeight: 600, color: '#be185d' }}>
-                                Hi! I'm Jerry Bot 🤍
-                            </Typography>
+
+                    </div>
+                </nav>
+
+                {/* Mobile Dropdown Menu (Home, Feature, Help, Sign In) */}
+                {mobileNavOpen && (
+                    <Box sx={{
+                        mt: 1.5,
+                        width: '100%',
+                        background: 'rgba(255, 255, 255, 0.97)',
+                        backdropFilter: 'blur(20px)',
+                        WebkitBackdropFilter: 'blur(20px)',
+                        border: '1.5px solid #fbcfe8',
+                        borderRadius: '24px',
+                        p: 2,
+                        boxShadow: '0 12px 30px rgba(244, 114, 182, 0.22)',
+                        display: { xs: 'flex', md: 'none' },
+                        flexDirection: 'column',
+                        gap: 1,
+                        animation: 'mobileNavFadeIn 0.25s ease-out'
+                    }}>
+                        <a
+                            href="#/home"
+                            onClick={(e) => handleNavClick('home', e)}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '10px',
+                                padding: '10px 16px', borderRadius: '16px',
+                                fontSize: '0.88rem', fontWeight: 700,
+                                color: activeTab === 'home' ? '#ffffff' : '#334155',
+                                background: activeTab === 'home' ? 'linear-gradient(135deg, #f43f5e 0%, #fb923c 100%)' : '#fdf2f8',
+                                textDecoration: 'none'
+                            }}
+                        >
+                            <span style={{ fontSize: '16px' }}>🏠</span>
+                            <span>Home</span>
+                        </a>
+                        <a
+                            href="#/features"
+                            onClick={(e) => handleNavClick('features', e)}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '10px',
+                                padding: '10px 16px', borderRadius: '16px',
+                                fontSize: '0.88rem', fontWeight: 700,
+                                color: activeTab === 'features' ? '#ffffff' : '#334155',
+                                background: activeTab === 'features' ? 'linear-gradient(135deg, #f43f5e 0%, #fb923c 100%)' : '#fdf2f8',
+                                textDecoration: 'none'
+                            }}
+                        >
+                            <span style={{ fontSize: '16px' }}>✨</span>
+                            <span>Features</span>
+                        </a>
+                        <a
+                            href="#/help"
+                            onClick={(e) => handleNavClick('help', e)}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '10px',
+                                padding: '10px 16px', borderRadius: '16px',
+                                fontSize: '0.88rem', fontWeight: 700,
+                                color: activeTab === 'help' ? '#ffffff' : '#334155',
+                                background: activeTab === 'help' ? 'linear-gradient(135deg, #f43f5e 0%, #fb923c 100%)' : '#fdf2f8',
+                                textDecoration: 'none'
+                            }}
+                        >
+                            <span style={{ fontSize: '16px' }}>💌</span>
+                            <span>Help</span>
+                        </a>
+                        <a
+                            href="#/scanner"
+                            onClick={(e) => handleNavClick('scanner', e)}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '10px',
+                                padding: '10px 16px', borderRadius: '16px',
+                                fontSize: '0.88rem', fontWeight: 700,
+                                color: '#ffffff',
+                                background: 'linear-gradient(135deg, #ec4899 0%, #f43f5e 50%, #f97316 100%)',
+                                textDecoration: 'none'
+                            }}
+                        >
+                            <span style={{ fontSize: '16px' }}>📱</span>
+                            <span>Web Sign In</span>
+                        </a>
+                        <Box sx={{ pt: 0.5, display: 'flex', justifyContent: 'center' }}>
+                            <a
+                                href="https://play.google.com/store/apps/details?id=com.juicychat.app"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="juicy-google-play-btn"
+                                style={{ width: '100%', justifyContent: 'center', padding: '10px 16px' }}
+                            >
+                                <svg viewBox="0 0 466 512" style={{ width: 14, height: 14, flexShrink: 0 }}>
+                                    <path fill="#EA4335" d="M199.9 237.8 1.4 470.17c7.22 24.57 30.16 41.81 55.8 41.81 11.16 0 20.93-2.79 29.3-8.37l244.16-139.46L199.9 237.8z" />
+                                    <path fill="#FBBC04" d="m433.91 205.1-104.65-60-111.61 110.22 113.01 108.83 104.64-58.6c18.14-9.77 30.7-29.3 30.7-50.23-1.4-20.93-13.95-40.46-32.09-50.22z" />
+                                    <path fill="#34A853" d="M199.42 273.45 329.27 145.1 87.9 8.37C79.53 2.79 68.36 0 57.2 0 30.7 0 6.98 18.14 1.4 41.86l198.02 231.59z" />
+                                    <path fill="#4285F4" d="M1.39 41.86C0 46.04 0 51.63 0 57.2v397.64c0 5.57 0 9.76 1.4 15.34l216.27-214.86L1.39 41.86z" />
+                                </svg>
+                                <span>Google Play</span>
+                            </a>
                         </Box>
                     </Box>
-                </Box>
+                )}
+            </Box>
 
-                {/* ══ RIGHT: 5-DIGIT GLASS CARD ══ */}
-                <Box sx={{
-                    flex: '0 0 auto',
-                    width: { xs: '100%', lg: 310 },
-                    display: 'flex', flexDirection: 'column',
-                }}>
+            {/* ── MAIN CONTENT AREA: nav links open in new tab, scanner always shown ── */}
+
+            {activeTab === 'scanner' && (
+                <>
                     <Box sx={{
-                        background: 'rgba(255,255,255,0.52)',
-                        backdropFilter: 'blur(28px)',
-                        WebkitBackdropFilter: 'blur(28px)',
-                        border: '1.5px solid rgba(255,255,255,0.75)',
-                        borderRadius: '28px',
-                        boxShadow: '0 20px 60px rgba(168,85,247,0.10), 0 8px 24px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.9)',
-                        p: { xs: 3, sm: 3.5 },
-                        display: 'flex', flexDirection: 'column', alignItems: 'center',
-                        height: '100%',
-                        transition: 'transform 0.3s ease, box-shadow 0.3s ease',
-                        '&:hover': {
-                            transform: 'translateY(-4px)',
-                            boxShadow: '0 28px 70px rgba(168,85,247,0.16), 0 12px 32px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.9)',
-                        }
+                        position: 'relative', zIndex: 5,
+                        width: '100%', maxWidth: 1280,
+                        flex: 1,
+                        display: 'flex',
+                        flexDirection: { xs: 'column', lg: 'row' },
+                        alignItems: 'stretch',
+                        gap: { xs: 2.5, lg: 2.5 },
+                        px: { xs: 1.5, sm: 3, lg: 4 },
+                        py: { xs: 1.5, lg: 1.5 },
+                        minHeight: 0,
                     }}>
-                        {/* 5-digit image */}
-                        <Box sx={{ mb: 1.5, width: '100%', display: 'flex', justifyContent: 'center' }}>
-                            <img
-                                src={logo5Digit}
-                                alt="5 Digit Link"
-                                style={{ width: '100%', maxWidth: 200, height: 90, objectFit: 'contain', filter: 'drop-shadow(0 4px 14px rgba(168,85,247,0.22))' }}
-                            />
-                        </Box>
 
-                        {/* Header */}
-                        <Box sx={{ textAlign: 'center', mb: 2.5 }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, mb: 0.8 }}>
-                                <Box sx={{
-                                    width: 32, height: 32, borderRadius: '10px',
-                                    background: 'linear-gradient(135deg, #a855f7, #7c3aed)',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    boxShadow: '0 4px 14px rgba(168,85,247,0.4)'
-                                }}>
-                                    <KeyIcon sx={{ fontSize: 18, color: '#fff' }} />
-                                </Box>
-                                <Typography sx={{ fontWeight: 700, fontSize: '1.05rem', color: '#1e1b2e' }}>
-                                    Link with 5-digit code
-                                </Typography>
-                            </Box>
-                            <Typography sx={{ color: '#7c4d8a', fontSize: '0.83rem', lineHeight: 1.55, maxWidth: 250, mx: 'auto' }}>
-                                Enter the 5-digit code generated by your juicy mobile app to link this device.
-                            </Typography>
-                        </Box>
-
-                        {/* 5 Digit Input Boxes */}
-                        <Box
-                            sx={{ display: 'flex', gap: 1.2, justifyContent: 'center', mb: 3 }}
-                            onPaste={handlePaste}
-                        >
-                            {digits.map((digit, index) => (
-                                <TextField
-                                    key={index}
-                                    inputRef={digitRefs[index]}
-                                    value={digit}
-                                    disabled={awaitingConfirmation}
-                                    onChange={(e) => handleDigitChange(index, e.target.value)}
-                                    onKeyDown={(e) => handleKeyDown(index, e)}
-                                    variant="outlined"
-                                    inputProps={{
-                                        maxLength: 1,
-                                        style: {
-                                            textAlign: 'center',
-                                            fontSize: '1.5rem',
-                                            fontWeight: 800,
-                                            padding: '12px 4px',
-                                            color: '#1e1b2e',
-                                            fontFamily: "'Poppins', sans-serif",
-                                        }
-                                    }}
-                                    sx={{
-                                        width: { xs: 48, sm: 52 },
-                                        '& .MuiOutlinedInput-root': {
-                                            borderRadius: '16px',
-                                            bgcolor: digit ? 'rgba(236,72,153,0.06)' : 'rgba(255,255,255,0.7)',
-                                            backdropFilter: 'blur(8px)',
-                                            transition: 'all 0.25s cubic-bezier(0.4,0,0.2,1)',
-                                            '& fieldset': {
-                                                borderColor: digit ? '#ec4899' : 'rgba(200,160,220,0.4)',
-                                                borderWidth: digit ? '2px' : '1.5px',
-                                                transition: 'all 0.25s ease',
-                                            },
-                                            '&:hover fieldset': { borderColor: '#ec4899', borderWidth: '2px' },
-                                            '&.Mui-focused fieldset': {
-                                                borderColor: '#a855f7',
-                                                borderWidth: '2.5px',
-                                                boxShadow: '0 0 0 5px rgba(168,85,247,0.12)'
-                                            },
-                                            '&.Mui-focused': {
-                                                bgcolor: 'rgba(168,85,247,0.05)',
-                                                transform: 'translateY(-2px) scale(1.04)',
-                                                boxShadow: '0 8px 24px rgba(168,85,247,0.18)',
-                                            }
-                                        }
-                                    }}
-                                />
-                            ))}
-                        </Box>
-
-                        {/* Awaiting Confirmation */}
-                        {awaitingConfirmation && (
-                            <Fade in>
-                                <Box sx={{
-                                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.2,
-                                    p: 2, borderRadius: '16px',
-                                    background: 'linear-gradient(135deg, rgba(236,72,153,0.06), rgba(168,85,247,0.06))',
-                                    border: '1px solid rgba(236,72,153,0.15)',
-                                    width: '100%', mb: 2
-                                }}>
-                                    <Box sx={{ position: 'relative', display: 'inline-flex' }}>
-                                        <CircularProgress size={28} thickness={3} sx={{ color: '#ec4899' }} />
-                                        <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                            <PhoneIcon sx={{ fontSize: 14, color: '#ec4899' }} />
-                                        </Box>
+                        {/* ══ LEFT: QR GLASS CARD ══ */}
+                        <Box sx={{
+                            flex: '0 0 auto',
+                            width: { xs: '100%', lg: 310 },
+                            display: 'flex', flexDirection: 'column', gap: 0,
+                        }}>
+                            <Box sx={{
+                                background: 'rgba(255,255,255,0.52)',
+                                backdropFilter: 'blur(28px)',
+                                WebkitBackdropFilter: 'blur(28px)',
+                                border: '1.5px solid rgba(255,255,255,0.75)',
+                                borderRadius: '28px',
+                                boxShadow: '0 20px 60px rgba(236,72,153,0.12), 0 8px 24px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.9)',
+                                p: { xs: 3, sm: 3.5 },
+                                display: 'flex', flexDirection: 'column',
+                                height: '100%',
+                                transition: 'transform 0.3s ease, box-shadow 0.3s ease',
+                                '&:hover': {
+                                    transform: 'translateY(-4px)',
+                                    boxShadow: '0 28px 70px rgba(236,72,153,0.18), 0 12px 32px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.9)',
+                                }
+                            }}>
+                                {/* QR Card Header */}
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2, mb: 2.5 }}>
+                                    <Box sx={{
+                                        width: 36, height: 36, borderRadius: '10px',
+                                        background: 'linear-gradient(135deg, #ec4899, #f43f8e)',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        boxShadow: '0 4px 14px rgba(236,72,153,0.4)'
+                                    }}>
+                                        <QrCodeIcon sx={{ fontSize: 20, color: '#fff' }} />
                                     </Box>
-                                    <Typography sx={{ color: '#7c4d8a', textAlign: 'center', fontWeight: 600, fontSize: '0.82rem' }}>
-                                        Awaiting confirmation on your phone...
-                                    </Typography>
-                                </Box>
-                            </Fade>
-                        )}
-
-                        {/* Security Message */}
-                        {!awaitingConfirmation && (
-                            <Box sx={{ mt: 'auto', pt: 1 }}>
-                                <Box sx={{
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.8,
-                                    px: 2, py: 1,
-                                    borderRadius: '12px',
-                                    background: 'rgba(255,255,255,0.55)',
-                                    border: '1px solid rgba(236,72,153,0.12)',
-                                }}>
-                                    <SecurityIcon sx={{ fontSize: 16, color: '#a855f7' }} />
-                                    <Typography sx={{ fontSize: '0.75rem', fontWeight: 600, color: '#7c4d8a' }}>
-                                        Your connection is secure and encrypted
-                                    </Typography>
+                                    <Box>
+                                        <Typography sx={{ fontWeight: 700, fontSize: '0.92rem', color: '#1e1b2e', lineHeight: 1.2 }}>
+                                            Scan to Connect
+                                        </Typography>
+                                        <Typography sx={{ fontSize: '0.72rem', color: '#9d78a0', fontWeight: 500 }}>
+                                            Point your phone at this code
+                                        </Typography>
+                                    </Box>
                                 </Box>
 
-                                {/* Shield icons row */}
-                                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 1, mt: 1.5 }}>
-                                    {[LockIcon, FingerprintIcon, VerifiedIcon].map((Icon, i) => (
-                                        <Box key={i} sx={{
-                                            width: 28, height: 28, borderRadius: '8px',
-                                            background: 'linear-gradient(135deg, rgba(236,72,153,0.08), rgba(168,85,247,0.08))',
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                            border: '1px solid rgba(236,72,153,0.1)'
-                                        }}>
-                                            <Icon sx={{ fontSize: 15, color: '#ec4899', opacity: 0.7 }} />
-                                        </Box>
+                                {/* QR Code Container */}
+                                <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
+                                    <Box sx={{
+                                        position: 'relative',
+                                        width: { xs: 210, sm: 220 }, height: { xs: 210, sm: 220 },
+                                        borderRadius: '24px',
+                                        background: '#ffffff',
+                                        boxShadow: qrCodeValid
+                                            ? '0 8px 32px rgba(236,72,153,0.18), 0 2px 8px rgba(0,0,0,0.06), 0 0 0 1px rgba(236,72,153,0.12)'
+                                            : '0 4px 16px rgba(0,0,0,0.05)',
+                                        display: 'flex', justifyContent: 'center', alignItems: 'center',
+                                        p: 1.5,
+                                        animation: qrCodeValid ? 'qrGlow 3s ease-in-out infinite' : 'none',
+                                        '@keyframes qrGlow': {
+                                            '0%,100%': { boxShadow: '0 8px 32px rgba(236,72,153,0.18), 0 2px 8px rgba(0,0,0,0.06), 0 0 0 1px rgba(236,72,153,0.12)' },
+                                            '50%': { boxShadow: '0 12px 44px rgba(236,72,153,0.28), 0 4px 12px rgba(0,0,0,0.08), 0 0 0 1px rgba(236,72,153,0.20)' }
+                                        }
+                                    }}>
+                                        {/* Scanning line */}
+                                        {qrCodeValid && (
+                                            <Box sx={{
+                                                position: 'absolute', top: 12, left: 12, right: 12,
+                                                height: '2px',
+                                                background: 'linear-gradient(90deg, transparent, #ec4899, transparent)',
+                                                borderRadius: 1, opacity: 0.7, zIndex: 2,
+                                                animation: 'qrScanLine 2.8s ease-in-out infinite',
+                                                '@keyframes qrScanLine': {
+                                                    '0%': { top: 12, opacity: 0.3 },
+                                                    '50%': { opacity: 0.9 },
+                                                    '100%': { top: 206, opacity: 0.3 }
+                                                }
+                                            }} />
+                                        )}
+
+                                        {/* Corner Brackets */}
+                                        {[
+                                            { top: 8, left: 8, borderTop: '3px solid #ec4899', borderLeft: '3px solid #ec4899', borderTopLeftRadius: 10 },
+                                            { top: 8, right: 8, borderTop: '3px solid #ec4899', borderRight: '3px solid #ec4899', borderTopRightRadius: 10 },
+                                            { bottom: 8, left: 8, borderBottom: '3px solid #ec4899', borderLeft: '3px solid #ec4899', borderBottomLeftRadius: 10 },
+                                            { bottom: 8, right: 8, borderBottom: '3px solid #ec4899', borderRight: '3px solid #ec4899', borderBottomRightRadius: 10 },
+                                        ].map((style, i) => (
+                                            <Box key={i} sx={{
+                                                position: 'absolute', width: 22, height: 22,
+                                                opacity: qrCodeValid ? 0.9 : 0.18,
+                                                transition: 'opacity 0.3s ease', ...style
+                                            }} />
+                                        ))}
+
+                                        <img
+                                            src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&color=ec4899&bgcolor=ffffff&data=${encodeURIComponent(sessionId)}`}
+                                            alt="Scan to login"
+                                            style={{ width: 180, height: 180, display: 'block', opacity: qrCodeValid ? 1 : 0.2, transition: 'opacity 0.3s ease', borderRadius: 4 }}
+                                        />
+
+                                        {/* Expired Overlay */}
+                                        {!qrCodeValid && (
+                                            <Box sx={{
+                                                position: 'absolute', inset: 0, borderRadius: '24px',
+                                                background: 'rgba(255,255,255,0.96)',
+                                                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                                                gap: 1.5, zIndex: 5, p: 2
+                                            }}>
+                                                <Box sx={{
+                                                    width: 52, height: 52, borderRadius: '50%',
+                                                    background: 'linear-gradient(135deg, rgba(236,72,153,0.12), rgba(244,114,182,0.08))',
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                }}>
+                                                    <RefreshIcon sx={{ fontSize: 28, color: '#ec4899' }} />
+                                                </Box>
+                                                <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', color: '#1e1b2e', textAlign: 'center' }}>
+                                                    QR Code Expired
+                                                </Typography>
+                                                <Button
+                                                    variant="contained"
+                                                    size="small"
+                                                    onClick={handleReloadQR}
+                                                    startIcon={<RefreshIcon sx={{ fontSize: 15 }} />}
+                                                    sx={{
+                                                        background: 'linear-gradient(135deg, #ec4899, #f43f8e)',
+                                                        color: '#fff', fontWeight: 600, borderRadius: '10px',
+                                                        px: 2.5, py: 0.7, textTransform: 'none', fontSize: '0.82rem',
+                                                        boxShadow: '0 4px 16px rgba(236,72,153,0.35)',
+                                                        '&:hover': { background: 'linear-gradient(135deg, #db2777, #ec4899)', transform: 'translateY(-1px)', boxShadow: '0 6px 20px rgba(236,72,153,0.45)' }
+                                                    }}
+                                                >
+                                                    Refresh Code
+                                                </Button>
+                                            </Box>
+                                        )}
+                                    </Box>
+                                </Box>
+
+                                {/* 3-Step Instructions */}
+                                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, mb: 2.5 }}>
+                                    {[
+                                        { num: 1, text: 'Open ', bold: 'Juicy', text2: ' on your phone.' },
+                                        { num: 2, text: 'Tap your ', bold: 'Profile Icon', text2: ' → ', bold2: 'Linked Devices' },
+                                        { num: 3, text: 'Point your phone camera at this screen.' }
+                                    ].map((step, idx) => (
+                                        <Fade in key={idx} timeout={500 + idx * 200}>
+                                            <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
+                                                <Box sx={{
+                                                    minWidth: 26, height: 26, borderRadius: '50%',
+                                                    background: `linear-gradient(135deg, #ec4899 ${idx * 20}%, #a855f7)`,
+                                                    color: '#fff', display: 'flex', justifyContent: 'center', alignItems: 'center',
+                                                    fontSize: '0.72rem', fontWeight: 700, flexShrink: 0,
+                                                    boxShadow: '0 3px 10px rgba(236,72,153,0.35)'
+                                                }}>{step.num}</Box>
+                                                <Typography variant="body2" sx={{ color: '#4b3f72', fontSize: '0.825rem', lineHeight: 1.5, pt: 0.2 }}>
+                                                    {step.text}
+                                                    {step.bold && <strong style={{ color: '#be185d' }}>{step.bold}</strong>}
+                                                    {step.text2}
+                                                    {step.bold2 && <strong style={{ color: '#be185d' }}>{step.bold2}</strong>}
+                                                </Typography>
+                                            </Box>
+                                        </Fade>
                                     ))}
                                 </Box>
-                            </Box>
-                        )}
-                    </Box>
-                </Box>
-            </Box>
 
-            {/* ── FOOTER GLASS PILL ── */}
-            <Box sx={{
-                position: 'relative', zIndex: 10,
-                display: 'flex', alignItems: 'center', gap: 1,
-                px: 3, py: 1,
-                borderRadius: '50px',
-                background: 'rgba(255,255,255,0.5)',
-                backdropFilter: 'blur(20px)',
-                WebkitBackdropFilter: 'blur(20px)',
-                border: '1px solid rgba(236,72,153,0.18)',
-                boxShadow: '0 4px 20px rgba(236,72,153,0.08), inset 0 1px 0 rgba(255,255,255,0.9)',
-                my: 2,
-                flexShrink: 0,
-            }}>
-                <PhoneIcon sx={{ fontSize: 15, color: '#ec4899' }} />
-                <Typography sx={{ fontSize: '0.78rem', fontWeight: 500, color: '#7c4d8a' }}>
-                    Juicy Web links securely to your mobile account. Your messages stay private.
-                </Typography>
-                <LockIcon sx={{ fontSize: 14, color: '#a855f7', opacity: 0.7 }} />
-            </Box>
+                                {/* Register Link */}
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, mt: 'auto', pt: 1 }}>
+                                    <Typography variant="body2" sx={{ color: '#9d78a0', fontSize: '0.82rem' }}>
+                                        Don't have an account?
+                                    </Typography>
+                                    <Typography
+                                        variant="body2"
+                                        onClick={() => navigate('/signup')}
+                                        sx={{
+                                            color: '#ec4899', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer',
+                                            background: 'linear-gradient(90deg, #ec4899, #a855f7)',
+                                            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+                                            transition: 'all 0.2s ease',
+                                            '&:hover': { opacity: 0.8, textDecoration: 'underline' }
+                                        }}
+                                    >
+                                        Register here
+                                    </Typography>
+                                </Box>
+                            </Box>
+                        </Box>
+
+                        {/* ══ CENTER: HERO AREA ══ */}
+                        <Box sx={{
+                            flex: 1,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 2,
+                            py: { xs: 1, lg: 0 },
+                            order: { xs: -1, lg: 0 }
+                        }}>
+                            {/* Hero Heading */}
+                            <Box sx={{ textAlign: 'center', mb: 1 }}>
+                                <Typography sx={{
+                                    fontWeight: 800,
+                                    fontSize: { xs: '1.6rem', sm: '1.9rem', md: '2.1rem', lg: '2.2rem' },
+                                    lineHeight: 1.15,
+                                    letterSpacing: '-0.03em',
+                                    background: 'linear-gradient(135deg, #be185d 0%, #ec4899 40%, #a855f7 80%, #7c3aed 100%)',
+                                    WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+                                    mb: 1,
+                                    textShadow: 'none',
+                                }}>
+                                    Use Juicy on your<br />computer
+                                </Typography>
+                                <Typography sx={{
+                                    fontSize: { xs: '0.82rem', sm: '0.88rem' },
+                                    color: '#7c4d8a',
+                                    fontWeight: 500, lineHeight: 1.5, maxWidth: 320, mx: 'auto'
+                                }}>
+                                    Scan the QR code with your phone to link this device instantly.
+                                </Typography>
+                            </Box>
+
+                            {/* 3D Device Illustration */}
+                            <Box sx={{
+                                position: 'relative',
+                                width: { xs: 240, sm: 280, lg: 300 },
+                                height: { xs: 160, sm: 190, lg: 200 },
+                                animation: 'heroFloat 5s ease-in-out infinite',
+                                '@keyframes heroFloat': {
+                                    '0%,100%': { transform: 'translateY(0)' },
+                                    '50%': { transform: 'translateY(-12px)' }
+                                }
+                            }}>
+                                {/* Laptop body */}
+                                <Box sx={{
+                                    position: 'absolute', bottom: 0, left: '50%', transform: 'translateX(-50%)',
+                                    width: '88%', height: '65%',
+                                    background: 'linear-gradient(160deg, #ffffff 0%, #fce7f3 60%, #f5d0fe 100%)',
+                                    borderRadius: '16px 16px 0 0',
+                                    boxShadow: '0 -4px 30px rgba(236,72,153,0.12), 0 8px 40px rgba(0,0,0,0.10)',
+                                    border: '1.5px solid rgba(255,255,255,0.8)',
+                                    overflow: 'hidden',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                }}>
+                                    {/* Laptop screen content */}
+                                    <Box sx={{
+                                        width: '82%', height: '78%',
+                                        background: 'linear-gradient(135deg, #fdf2f8 0%, #f5e6ff 100%)',
+                                        borderRadius: '8px',
+                                        border: '1px solid rgba(236,72,153,0.15)',
+                                        display: 'flex', flexDirection: 'column',
+                                        alignItems: 'center', justifyContent: 'center', gap: 0.8,
+                                        p: 1.5
+                                    }}>
+                                        {/* Mock chat bubbles on screen */}
+                                        <Box sx={{ width: '70%', height: 8, borderRadius: 4, background: 'linear-gradient(90deg, #ec4899, #f9a8d4)', mb: 0.5 }} />
+                                        <Box sx={{ display: 'flex', gap: 0.5, alignSelf: 'flex-start', ml: 1 }}>
+                                            <Box sx={{ width: 16, height: 16, borderRadius: '50%', background: 'linear-gradient(135deg, #ec4899, #f43f8e)' }} />
+                                            <Box sx={{ width: 55, height: 16, borderRadius: 4, background: 'linear-gradient(90deg, #fce7f3, #f5d0fe)' }} />
+                                        </Box>
+                                        <Box sx={{ display: 'flex', gap: 0.5, alignSelf: 'flex-end', mr: 1 }}>
+                                            <Box sx={{ width: 40, height: 16, borderRadius: 4, background: 'linear-gradient(90deg, #ec4899, #a855f7)', opacity: 0.75 }} />
+                                        </Box>
+                                        <Box sx={{ display: 'flex', gap: 0.5, alignSelf: 'flex-start', ml: 1 }}>
+                                            <Box sx={{ width: 14, height: 14, borderRadius: '50%', background: 'linear-gradient(135deg, #a855f7, #7c3aed)' }} />
+                                            <Box sx={{ width: 48, height: 14, borderRadius: 4, background: 'linear-gradient(90deg, #f5d0fe, #ddd6fe)' }} />
+                                        </Box>
+                                        <LaptopIcon sx={{ fontSize: 20, color: 'rgba(236,72,153,0.25)', mt: 0.5 }} />
+                                    </Box>
+                                </Box>
+                                {/* Laptop base */}
+                                <Box sx={{
+                                    position: 'absolute', bottom: 0, left: '50%', transform: 'translateX(-50%)',
+                                    width: '100%', height: 12,
+                                    background: 'linear-gradient(180deg, #e8d5f5, #f0e0ff)',
+                                    borderRadius: '0 0 8px 8px',
+                                    boxShadow: '0 4px 20px rgba(0,0,0,0.10)',
+                                }} />
+
+                                {/* Phone (floating, tilted) */}
+                                <Box sx={{
+                                    position: 'absolute',
+                                    right: { xs: -10, sm: -20 },
+                                    top: { xs: 10, sm: 0 },
+                                    width: { xs: 56, sm: 70 },
+                                    height: { xs: 105, sm: 130 },
+                                    background: 'linear-gradient(160deg, #ffffff 0%, #fce7f3 80%, #fdf4ff 100%)',
+                                    borderRadius: '16px',
+                                    boxShadow: '0 12px 40px rgba(236,72,153,0.18), 0 4px 16px rgba(0,0,0,0.10)',
+                                    border: '1.5px solid rgba(255,255,255,0.85)',
+                                    transform: 'rotate(8deg)',
+                                    animation: 'phoneWiggle 4s 1s ease-in-out infinite',
+                                    overflow: 'hidden',
+                                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 0.5,
+                                    '@keyframes phoneWiggle': {
+                                        '0%,100%': { transform: 'rotate(8deg) translateY(0)' },
+                                        '50%': { transform: 'rotate(10deg) translateY(-8px)' }
+                                    }
+                                }}>
+                                    {/* Phone notch */}
+                                    <Box sx={{ width: 22, height: 4, borderRadius: 2, background: 'rgba(236,72,153,0.2)', position: 'absolute', top: 8 }} />
+                                    <PhoneIcon sx={{ fontSize: 20, color: '#ec4899', opacity: 0.7 }} />
+                                    <Box sx={{ width: 28, height: 4, borderRadius: 2, background: 'linear-gradient(90deg, #ec4899, #a855f7)', opacity: 0.5 }} />
+                                    <Box sx={{ width: 20, height: 4, borderRadius: 2, background: 'rgba(236,72,153,0.2)', opacity: 0.5 }} />
+                                </Box>
+
+                                {/* Floating connection sparkle */}
+                                <Box sx={{
+                                    position: 'absolute', top: '30%', left: '50%', transform: 'translateX(-50%)',
+                                    animation: 'sparkleFloat 2s ease-in-out infinite',
+                                    '@keyframes sparkleFloat': {
+                                        '0%,100%': { transform: 'translateX(-50%) scale(1)', opacity: 0.9 },
+                                        '50%': { transform: 'translateX(-50%) scale(1.3)', opacity: 0.6 }
+                                    }
+                                }}>
+                                    <Box sx={{ display: 'flex', gap: 0.5 }}>
+                                        {['#ec4899', '#f472b6', '#a855f7'].map((c, i) => (
+                                            <Box key={i} sx={{ width: 6, height: 6, borderRadius: '50%', background: c, opacity: 0.8 }} />
+                                        ))}
+                                    </Box>
+                                </Box>
+
+                                {/* Floating heart near phone */}
+                                <Box sx={{
+                                    position: 'absolute', top: -10, right: { xs: 30, sm: 40 },
+                                    animation: 'miniHeartFloat 3s 0.5s ease-in-out infinite',
+                                    '@keyframes miniHeartFloat': {
+                                        '0%,100%': { transform: 'translateY(0) rotate(-10deg)' },
+                                        '50%': { transform: 'translateY(-14px) rotate(8deg)' }
+                                    }
+                                }}>
+                                    <svg viewBox="0 0 24 24" fill="#ec4899" width="20" height="20" style={{ opacity: 0.75 }}>
+                                        <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+                                    </svg>
+                                </Box>
+
+                                {/* Lock badge */}
+                                <Box sx={{
+                                    position: 'absolute', top: 0, left: { xs: 0, sm: -10 },
+                                    width: 44, height: 44, borderRadius: '50%',
+                                    background: 'linear-gradient(135deg, rgba(255,255,255,0.9), rgba(253,242,248,0.9))',
+                                    backdropFilter: 'blur(10px)',
+                                    border: '1.5px solid rgba(236,72,153,0.2)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    boxShadow: '0 4px 16px rgba(236,72,153,0.15)',
+                                    animation: 'lockFloat 6s ease-in-out infinite',
+                                    '@keyframes lockFloat': {
+                                        '0%,100%': { transform: 'translate(0,0) rotate(-5deg)' },
+                                        '50%': { transform: 'translate(-5px,-10px) rotate(5deg)' }
+                                    }
+                                }}>
+                                    <LockIcon sx={{ fontSize: 20, color: '#ec4899' }} />
+                                </Box>
+                            </Box>
+
+                            {/* Mascot Robot */}
+                            <Box sx={{
+                                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.8,
+                                animation: 'mascotFloat 4s ease-in-out infinite',
+                                '@keyframes mascotFloat': {
+                                    '0%,100%': { transform: 'translateY(0)' },
+                                    '50%': { transform: 'translateY(-10px)' }
+                                }
+                            }}>
+                                <Box sx={{
+                                    width: { xs: 90, sm: 110 }, height: { xs: 90, sm: 110 },
+                                    borderRadius: '50%',
+                                    overflow: 'hidden',
+                                    boxShadow: '0 12px 40px rgba(236,72,153,0.22), 0 4px 16px rgba(0,0,0,0.08)',
+                                    border: '3px solid rgba(255,255,255,0.85)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}>
+                                    <img
+                                        src={juicyMascot}
+                                        alt="Jerry Bot mascot"
+                                        style={{
+                                            width: '125%',
+                                            height: '125%',
+                                            objectFit: 'cover',
+                                            objectPosition: 'center 85%',
+                                            transform: 'translateY(-6px)',
+                                            borderRadius: '50%',
+                                            pointerEvents: 'none'
+                                        }}
+                                    />
+                                </Box>
+                                <Box sx={{
+                                    px: 1.5, py: 0.4,
+                                    background: 'rgba(255,255,255,0.55)',
+                                    backdropFilter: 'blur(12px)',
+                                    borderRadius: '50px',
+                                    border: '1px solid rgba(236,72,153,0.15)',
+                                }}>
+                                    <Typography sx={{ fontSize: '0.72rem', fontWeight: 600, color: '#be185d' }}>
+                                        Hi! I'm Jerry Bot 🤍
+                                    </Typography>
+                                </Box>
+                            </Box>
+                        </Box>
+
+                        {/* ══ RIGHT: 5-DIGIT GLASS CARD ══ */}
+                        <Box sx={{
+                            flex: '0 0 auto',
+                            width: { xs: '100%', lg: 310 },
+                            display: 'flex', flexDirection: 'column',
+                        }}>
+                            <Box sx={{
+                                background: 'rgba(255,255,255,0.52)',
+                                backdropFilter: 'blur(28px)',
+                                WebkitBackdropFilter: 'blur(28px)',
+                                border: '1.5px solid rgba(255,255,255,0.75)',
+                                borderRadius: '28px',
+                                boxShadow: '0 20px 60px rgba(168,85,247,0.10), 0 8px 24px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.9)',
+                                p: { xs: 3, sm: 3.5 },
+                                display: 'flex', flexDirection: 'column', alignItems: 'center',
+                                height: '100%',
+                                transition: 'transform 0.3s ease, box-shadow 0.3s ease',
+                                '&:hover': {
+                                    transform: 'translateY(-4px)',
+                                    boxShadow: '0 28px 70px rgba(168,85,247,0.16), 0 12px 32px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.9)',
+                                }
+                            }}>
+                                {/* 5-digit image */}
+                                <Box sx={{ mb: 1.5, width: '100%', display: 'flex', justifyContent: 'center' }}>
+                                    <img
+                                        src={logo5Digit}
+                                        alt="5 Digit Link"
+                                        style={{ width: '100%', maxWidth: 200, height: 90, objectFit: 'contain', filter: 'drop-shadow(0 4px 14px rgba(168,85,247,0.22))' }}
+                                    />
+                                </Box>
+
+                                {/* Header */}
+                                <Box sx={{ textAlign: 'center', mb: 2.5 }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, mb: 0.8 }}>
+                                        <Box sx={{
+                                            width: 32, height: 32, borderRadius: '10px',
+                                            background: 'linear-gradient(135deg, #a855f7, #7c3aed)',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            boxShadow: '0 4px 14px rgba(168,85,247,0.4)'
+                                        }}>
+                                            <KeyIcon sx={{ fontSize: 18, color: '#fff' }} />
+                                        </Box>
+                                        <Typography sx={{ fontWeight: 700, fontSize: '1.05rem', color: '#1e1b2e' }}>
+                                            Link with 5-digit code
+                                        </Typography>
+                                    </Box>
+                                    <Typography sx={{ color: '#7c4d8a', fontSize: '0.83rem', lineHeight: 1.55, maxWidth: 250, mx: 'auto' }}>
+                                        Enter the 5-digit code generated by your juicy mobile app to link this device.
+                                    </Typography>
+                                </Box>
+
+                                {/* 5 Digit Input Boxes */}
+                                <Box
+                                    sx={{ display: 'flex', gap: 1.2, justifyContent: 'center', mb: 3 }}
+                                    onPaste={handlePaste}
+                                >
+                                    {digits.map((digit, index) => (
+                                        <TextField
+                                            key={index}
+                                            inputRef={digitRefs[index]}
+                                            value={digit}
+                                            disabled={awaitingConfirmation}
+                                            onChange={(e) => handleDigitChange(index, e.target.value)}
+                                            onKeyDown={(e) => handleKeyDown(index, e)}
+                                            variant="outlined"
+                                            inputProps={{
+                                                maxLength: 1,
+                                                style: {
+                                                    textAlign: 'center',
+                                                    fontSize: '1.5rem',
+                                                    fontWeight: 800,
+                                                    padding: '12px 4px',
+                                                    color: '#1e1b2e',
+                                                    fontFamily: "'Poppins', sans-serif",
+                                                }
+                                            }}
+                                            sx={{
+                                                width: { xs: 48, sm: 52 },
+                                                '& .MuiOutlinedInput-root': {
+                                                    borderRadius: '16px',
+                                                    bgcolor: digit ? 'rgba(236,72,153,0.06)' : 'rgba(255,255,255,0.7)',
+                                                    backdropFilter: 'blur(8px)',
+                                                    transition: 'all 0.25s cubic-bezier(0.4,0,0.2,1)',
+                                                    '& fieldset': {
+                                                        borderColor: digit ? '#ec4899' : 'rgba(200,160,220,0.4)',
+                                                        borderWidth: digit ? '2px' : '1.5px',
+                                                        transition: 'all 0.25s ease',
+                                                    },
+                                                    '&:hover fieldset': { borderColor: '#ec4899', borderWidth: '2px' },
+                                                    '&.Mui-focused fieldset': {
+                                                        borderColor: '#a855f7',
+                                                        borderWidth: '2.5px',
+                                                        boxShadow: '0 0 0 5px rgba(168,85,247,0.12)'
+                                                    },
+                                                    '&.Mui-focused': {
+                                                        bgcolor: 'rgba(168,85,247,0.05)',
+                                                        transform: 'translateY(-2px) scale(1.04)',
+                                                        boxShadow: '0 8px 24px rgba(168,85,247,0.18)',
+                                                    }
+                                                }
+                                            }}
+                                        />
+                                    ))}
+                                </Box>
+
+                                {/* Awaiting Confirmation */}
+                                {awaitingConfirmation && (
+                                    <Fade in>
+                                        <Box sx={{
+                                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1.2,
+                                            p: 2, borderRadius: '16px',
+                                            background: 'linear-gradient(135deg, rgba(236,72,153,0.06), rgba(168,85,247,0.06))',
+                                            border: '1px solid rgba(236,72,153,0.15)',
+                                            width: '100%', mb: 2
+                                        }}>
+                                            <Box sx={{ position: 'relative', display: 'inline-flex' }}>
+                                                <CircularProgress size={28} thickness={3} sx={{ color: '#ec4899' }} />
+                                                <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                    <PhoneIcon sx={{ fontSize: 14, color: '#ec4899' }} />
+                                                </Box>
+                                            </Box>
+                                            <Typography sx={{ color: '#7c4d8a', textAlign: 'center', fontWeight: 600, fontSize: '0.82rem' }}>
+                                                Awaiting confirmation on your phone...
+                                            </Typography>
+                                        </Box>
+                                    </Fade>
+                                )}
+
+                                {/* Security Message */}
+                                {!awaitingConfirmation && (
+                                    <Box sx={{ mt: 'auto', pt: 1 }}>
+                                        <Box sx={{
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.8,
+                                            px: 2, py: 1,
+                                            borderRadius: '12px',
+                                            background: 'rgba(255,255,255,0.55)',
+                                            border: '1px solid rgba(236,72,153,0.12)',
+                                        }}>
+                                            <SecurityIcon sx={{ fontSize: 16, color: '#a855f7' }} />
+                                            <Typography sx={{ fontSize: '0.75rem', fontWeight: 600, color: '#7c4d8a' }}>
+                                                Your connection is secure and encrypted
+                                            </Typography>
+                                        </Box>
+
+                                        {/* Shield icons row */}
+                                        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 1, mt: 1.5 }}>
+                                            {[LockIcon, FingerprintIcon, VerifiedIcon].map((Icon, i) => (
+                                                <Box key={i} sx={{
+                                                    width: 28, height: 28, borderRadius: '8px',
+                                                    background: 'linear-gradient(135deg, rgba(236,72,153,0.08), rgba(168,85,247,0.08))',
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                    border: '1px solid rgba(236,72,153,0.1)'
+                                                }}>
+                                                    <Icon sx={{ fontSize: 15, color: '#ec4899', opacity: 0.7 }} />
+                                                </Box>
+                                            ))}
+                                        </Box>
+                                    </Box>
+                                )}
+                            </Box>
+                        </Box>
+                    </Box>
+
+                    {/* ── FOOTER GLASS PILL ── */}
+                    <Box sx={{
+                        position: 'relative', zIndex: 10,
+                        display: 'flex', alignItems: 'center', gap: 1,
+                        px: 3, py: 1,
+                        borderRadius: '50px',
+                        background: 'rgba(255,255,255,0.5)',
+                        backdropFilter: 'blur(20px)',
+                        WebkitBackdropFilter: 'blur(20px)',
+                        border: '1px solid rgba(236,72,153,0.18)',
+                        boxShadow: '0 4px 20px rgba(236,72,153,0.08), inset 0 1px 0 rgba(255,255,255,0.9)',
+                        my: 2,
+                        flexShrink: 0,
+                    }}>
+                        <PhoneIcon sx={{ fontSize: 15, color: '#ec4899' }} />
+                        <Typography sx={{ fontSize: '0.78rem', fontWeight: 500, color: '#7c4d8a' }}>
+                            Juicy Web links securely to your mobile account. Your messages stay private.
+                        </Typography>
+                        <LockIcon sx={{ fontSize: 14, color: '#a855f7', opacity: 0.7 }} />
+                    </Box>
+                </>
+            )}
 
             {/* ── INVALID CODE DIALOG ── */}
             <Dialog

@@ -381,18 +381,24 @@ const EditProfile = ({ onBack }) => {
 
   return (
     <Box sx={{
-      height: '100dvh',
+      height: '100%',
+      minHeight: { xs: '100dvh', sm: '100%' },
+      maxHeight: '100%',
+      width: '100%',
       display: 'flex',
       flexDirection: 'column',
       bgcolor: isDark ? '#121018' : 'var(--background-color, #fffafb)',
       fontFamily: 'Poppins, sans-serif',
       overflow: 'hidden',
+      position: 'relative',
+      boxSizing: 'border-box',
     }}>
       {/* 3D Glassmorphic Top AppBar */}
       <AppBar
         position="static"
         elevation={0}
         sx={{
+          flexShrink: 0,
           bgcolor: isDark ? 'rgba(26, 24, 36, 0.88)' : 'rgba(255, 255, 255, 0.85)',
           backdropFilter: 'blur(16px)',
           WebkitBackdropFilter: 'blur(16px)',
@@ -402,6 +408,7 @@ const EditProfile = ({ onBack }) => {
             ? '0 4px 20px rgba(0, 0, 0, 0.35)'
             : '0 4px 20px rgba(229, 46, 113, 0.06)',
           zIndex: 10,
+          pt: 'env(safe-area-inset-top, 0px)',
         }}
       >
         <Toolbar sx={{ justifyContent: 'space-between', px: { xs: 1.5, sm: 3 } }}>
@@ -468,18 +475,28 @@ const EditProfile = ({ onBack }) => {
       {/* Main 3D Scrollable Workspace (No scrollbar visible) */}
       <Box sx={{
         flex: 1,
+        height: '100%',
+        minHeight: 0,
         overflowY: 'auto',
         overflowX: 'hidden',
         WebkitOverflowScrolling: 'touch',
+        overscrollBehaviorY: 'contain',
+        touchAction: 'pan-y',
         scrollbarWidth: 'none',
         msOverflowStyle: 'none',
         '&::-webkit-scrollbar': {
           display: 'none',
         },
-        pb: { xs: 12, sm: 8 },
-        minHeight: 0,
       }}>
-        <Container maxWidth="sm" sx={{ pt: { xs: 2.5, sm: 3 }, px: { xs: 2, sm: 2.5 } }}>
+        <Container
+          maxWidth="sm"
+          sx={{
+            pt: { xs: 2.5, sm: 3 },
+            px: { xs: 2, sm: 2.5 },
+            pb: 0,
+            boxSizing: 'border-box',
+          }}
+        >
 
           {/* 1. HERO 3D PROFILE CARD */}
           <Paper
@@ -1123,7 +1140,7 @@ const EditProfile = ({ onBack }) => {
           </Paper>
 
           {/* 6. PROMINENT 3D SAVE CHANGES BUTTON */}
-          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2, mt: 1 }}>
             <Button
               variant="contained"
               size="large"
@@ -1157,6 +1174,16 @@ const EditProfile = ({ onBack }) => {
               {isSaving ? 'Saving Changes...' : 'Save Changes'}
             </Button>
           </Box>
+
+          {/* Guaranteed Safe-Area Bottom Spacer for mobile scrolling */}
+          <Box
+            sx={{
+              height: { xs: 'calc(64px + env(safe-area-inset-bottom, 24px))', sm: 32 },
+              width: '100%',
+              flexShrink: 0,
+              pointerEvents: 'none',
+            }}
+          />
         </Container>
       </Box>
 

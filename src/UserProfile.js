@@ -43,6 +43,7 @@ import {
   Transgender as TransgenderIcon,
   Edit as EditIcon,
   Save as SaveIcon,
+  ChatBubbleOutline as ChatBubbleOutlineIcon,
 } from '@mui/icons-material';
 import PeopleAltIcon from '@mui/icons-material/PeopleAlt';
 import PersonAddAlt1Icon from '@mui/icons-material/PersonAddAlt1';
@@ -61,7 +62,8 @@ const UserProfile = ({
   onBlockChange,
   hideProfileCard = false,
   initialTab = 0,
-  onBack
+  onBack,
+  onMessageFriend,
 }) => {
   useSwipeBack();
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -1349,6 +1351,31 @@ const UserProfile = ({
                               />
 
                               <Box sx={{ display: 'flex', gap: 0.8, ml: 'auto', flexShrink: 0 }}>
+                                <Tooltip title="Message" arrow disableTouchListener={isMobile}>
+                                  <IconButton
+                                    size="small"
+                                    onClick={() =>
+                                      onMessageFriend &&
+                                      onMessageFriend({
+                                        _id: friend._id,
+                                        username: friend.username,
+                                        name: friend.name || friend.username,
+                                        profilePic: friend.profilePic || friend.profileImage || '',
+                                      })
+                                    }
+                                    sx={{
+                                      color: '#ec4899',
+                                      bgcolor: isDark ? 'rgba(236, 72, 153, 0.12)' : 'rgba(236, 72, 153, 0.08)',
+                                      width: isMobile ? 32 : 36,
+                                      height: isMobile ? 32 : 36,
+                                      borderRadius: '12px',
+                                      transition: 'all 0.2s ease',
+                                      '&:hover': { bgcolor: 'rgba(236, 72, 153, 0.2)', transform: 'scale(1.08)' },
+                                    }}
+                                  >
+                                    <ChatBubbleOutlineIcon fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
                                 <Tooltip title="Remove friend" arrow disableTouchListener={isMobile}>
                                   <IconButton
                                     size="small"
@@ -1508,6 +1535,31 @@ const UserProfile = ({
                                   />
 
                                   <Box sx={{ display: 'flex', gap: 0.8, ml: 'auto', flexShrink: 0 }}>
+                                    <Tooltip title="Message" arrow disableTouchListener={isMobile}>
+                                      <IconButton
+                                        size="small"
+                                        onClick={() =>
+                                          onMessageFriend &&
+                                          onMessageFriend({
+                                            _id: friend._id,
+                                            username: friend.username,
+                                            name: friend.name || friend.username,
+                                            profilePic: friend.profilePic || friend.profileImage || '',
+                                          })
+                                        }
+                                        sx={{
+                                          color: '#ec4899',
+                                          bgcolor: isDark ? 'rgba(236, 72, 153, 0.12)' : 'rgba(236, 72, 153, 0.08)',
+                                          width: isMobile ? 32 : 36,
+                                          height: isMobile ? 32 : 36,
+                                          borderRadius: '12px',
+                                          transition: 'all 0.2s ease',
+                                          '&:hover': { bgcolor: 'rgba(236, 72, 153, 0.2)', transform: 'scale(1.08)' },
+                                        }}
+                                      >
+                                        <ChatBubbleOutlineIcon fontSize="small" />
+                                      </IconButton>
+                                    </Tooltip>
                                     <Tooltip title="Remove friend" arrow disableTouchListener={isMobile}>
                                       <IconButton
                                         size="small"
