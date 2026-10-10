@@ -265,7 +265,10 @@ const Drawing = ({ open, onClose, user, selectedUser, socket, setMessages }) => 
       if (!updated[selectedUser._id]) updated[selectedUser._id] = [];
       updated[selectedUser._id].push({
         id: msgId,
+        localId: msgId,       // ✅ needed so handleReceiveMessage can match the server echo
         sender: 'You',
+        senderId: user._id,   // ✅ needed for duplicate detection
+        receiverId: selectedUser._id, // ✅ needed for fallback match
         image: dataUrl,
         type: 'doodle',
         timestamp: formatTime(new Date()),

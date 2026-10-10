@@ -206,17 +206,23 @@ export default function WebScanner() {
         if (socket && sessionId) {
             socket.emit('join_qr_room', { sessionId });
 
-            socket.on('qr_linked', (data) => {
+            // Handler for both QR scan and 5-digit code linking
+            const handleLinked = (data) => {
                 localStorage.setItem('userId', data.userId);
                 localStorage.setItem('token', data.token);
                 localStorage.setItem('username', data.username);
                 localStorage.setItem('profileImage', data.profileImage || '');
                 toast.success('Device linked successfully! 🎉');
-
+                setAwaitingConfirmation(false);
                 setTimeout(() => {
                     navigate('/chat');
                 }, 800);
-            });
+            };
+
+            // qr_linked: fires after QR scan OR after mobile confirms 5-digit code
+            socket.on('qr_linked', handleLinked);
+            // code_linked: some backends emit this separately for code-based flow
+            socket.on('code_linked', handleLinked);
 
             socket.on('link_rejected', (data) => {
                 toast.error(data.message || 'Link request was rejected by phone.');
@@ -228,6 +234,7 @@ export default function WebScanner() {
         return () => {
             if (socket) {
                 socket.off('qr_linked');
+                socket.off('code_linked');
                 socket.off('link_rejected');
             }
         };
@@ -295,15 +302,30 @@ export default function WebScanner() {
 
             const result = await response.json();
             if (response.ok) {
-                toast.success('Code accepted! Awaiting confirmation on phone.', { id: 'code-toast' });
-                setAwaitingConfirmation(true);
+                // If the backend directly returns auth tokens (no phone confirmation needed)
+                if (result.token && result.userId) {
+                    localStorage.setItem('userId', result.userId);
+                    localStorage.setItem('token', result.token);
+                    localStorage.setItem('username', result.username || '');
+                    localStorage.setItem('profileImage', result.profileImage || '');
+                    toast.success('Device linked successfully! 🎉', { id: 'code-toast' });
+                    setTimeout(() => {
+                        navigate('/chat');
+                    }, 800);
+                } else {
+                    // Backend will emit socket event (qr_linked / code_linked) after mobile confirms
+                    toast.success('Code accepted! Awaiting confirmation on your phone...', { id: 'code-toast' });
+                    setAwaitingConfirmation(true);
+                }
             } else {
                 toast.dismiss('code-toast');
                 setInvalidCodeOpen(true);
+                setDigits(['', '', '', '', '']);
             }
         } catch (err) {
             console.error(err);
             toast.error('Connection error. Failed to submit code.', { id: 'code-toast' });
+            setDigits(['', '', '', '', '']);
         } finally {
             setSubmittingCode(false);
         }

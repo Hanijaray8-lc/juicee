@@ -1725,6 +1725,8 @@ const SearchPage = () => {
                           border: isDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(125, 125, 125, 0.15)',
                           boxShadow: isDark ? '0 8px 24px rgba(0,0,0,0.35)' : '0 8px 24px rgba(0, 0, 0, 0.06)',
                           transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                          overflow: 'hidden',   // ✅ prevent card from stretching due to long names
+                          minWidth: 0,          // ✅ allow flex children to shrink below content size
                           '&:hover': {
                             transform: 'translateY(-4px)',
                             boxShadow: isDark ? '0 14px 32px rgba(0,0,0,0.45)' : '0 14px 32px rgba(0, 0, 0, 0.12)',
@@ -1736,30 +1738,32 @@ const SearchPage = () => {
                         {renderAvatar(user, 56)}
                         <Typography
                           fontWeight={700}
-                          fontSize={14}
+                          fontSize={13}
                           sx={{
                             mt: 1.5,
                             textAlign: 'center',
-                            maxWidth: '100%',
+                            width: '100%',       // ✅ constrain to card width
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             whiteSpace: 'nowrap',
-                            color: 'var(--text-color, #000000)'
+                            color: 'var(--text-color, #000000)',
+                            px: 0.5
                           }}
                         >
                           {user.name || user.username}
                         </Typography>
                         <Typography
-                          fontSize={12}
+                          fontSize={11}
                           color="var(--text-color, #000000)"
                           sx={{
                             opacity: 0.6,
                             textAlign: 'center',
                             mb: 2,
-                            maxWidth: '100%',
+                            width: '100%',       // ✅ constrain to card width
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap'
+                            whiteSpace: 'nowrap',
+                            px: 0.5
                           }}
                         >
                           @{user.username}
@@ -1782,11 +1786,13 @@ const SearchPage = () => {
                                 boxShadow: '0 6px 16px rgba(0, 0, 0, 0.3)'
                               },
                               textTransform: 'none',
-                              fontSize: '0.78rem',
+                              fontSize: '0.75rem',
                               fontWeight: 700,
                               py: 0.7,
                               boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
-                              borderRadius: '20px'
+                              borderRadius: '20px',
+                              minWidth: 0,       // ✅ allow button to shrink on small cards
+                              width: '100%'
                             }}
                             fullWidth
                           >
@@ -1801,7 +1807,16 @@ const SearchPage = () => {
                               e.stopPropagation();
                               handleCancelRequest(user._id);
                             }}
-                            sx={{ textTransform: 'none', fontSize: '0.78rem', py: 0.7, borderRadius: '20px', fontWeight: 650, borderColor: 'rgba(239, 68, 68, 0.4)' }}
+                            sx={{
+                              textTransform: 'none',
+                              fontSize: '0.75rem',
+                              py: 0.7,
+                              borderRadius: '20px',
+                              fontWeight: 650,
+                              borderColor: 'rgba(239, 68, 68, 0.4)',
+                              minWidth: 0,
+                              width: '100%'
+                            }}
                             fullWidth
                           >
                             Cancel

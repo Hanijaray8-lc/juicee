@@ -471,3 +471,13 @@
   filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.22)) !important;
   transition: filter 0.28s ease !important;
 }
+
+/* Chat message bubbles: make non-selectable to prevent native text selection, blue highlight, and callouts */
+.message-paper-swipe,
+.message-paper-swipe * {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+}

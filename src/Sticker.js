@@ -74,7 +74,7 @@ const stickerElements = [
   { id: 52, name: '🍔 Hamburger', emoji: '🍔', type: 'emoji' },
   { id: 53, name: '🍦 Soft Ice Cream', emoji: '🍦', type: 'emoji' },
   { id: 54, name: '☕ Hot Beverage', emoji: '☕', type: 'emoji' },
-  { id: 55, name: '🍻 Clinking Beer Mugs', emoji: '🍻', type: 'emoji' },
+  { id: 55, name: '🍻 Clinking Coffee Mugs', emoji: '🍻', type: 'emoji' },
   { id: 56, name: '🎮 Video Game', emoji: '🎮', type: 'emoji' },
   { id: 57, name: '⚽ Soccer Ball', emoji: '⚽', type: 'emoji' },
   { id: 58, name: '🏀 Basketball', emoji: '🏀', type: 'emoji' },
@@ -530,11 +530,15 @@ const StickerDialog = forwardRef(({ open, setOpen, selectedUser, user, socket, s
         if (!updated[selectedUser._id]) updated[selectedUser._id] = [];
         updated[selectedUser._id].push({
           id: msgId,
+          localId: msgId,             // ✅ needed so handleReceiveMessage can match the server echo
           sender: 'You',
+          senderId: user._id,         // ✅ needed for duplicate detection
+          receiverId: selectedUser._id, // ✅ needed for fallback match
           image: resizedDataUrl,
           type: 'sticker',
           timestamp: formatTime(new Date()),
           date: formatDate(new Date()),
+          createdAt: new Date().toISOString() // ✅ needed for time-window duplicate check
         });
         return updated;
       });

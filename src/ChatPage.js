@@ -92,6 +92,16 @@ import { VoiceMessageRecorder, VoiceMessagePlayer } from './VoiceMessage';
 import { getLoveBotResponse } from './LoveBot';
 import jerryBotGif from './bot/jerry.gif';
 import { GameBubble, GameSelectorDialog } from './Game';
+import { GameArena3D } from './GameArena3D';
+import { carRaceInitialData } from './Games/CarRace';
+import { battleShipInitialData } from './Games/Battle_ship';
+import { waterSortInitialData } from './Games/WaterSort';
+import { snakeLadderInitialData } from './Games/SnakeLadder';
+import { wordGameInitialData } from './Games/WordGame';
+import { spaceBattleInitialData } from './Games/SpaceBattle';
+import { jumpChickenInitialData } from './Games/jumpChicken';
+import { mathsQuizInitialData } from './Games/MathsQuiz';
+import { findTheMatchInitialData } from './Games/FindTheMatch';
 import SportsEsportsIcon from '@mui/icons-material/SportsEsports';
 import {
   saveMessagesLocally,
@@ -717,6 +727,12 @@ const ChatPage = () => {
   const [previewTextContent, setPreviewTextContent] = useState('');
   const [previewZoom, setPreviewZoom] = useState(100);
   const [gameSelectorOpen, setGameSelectorOpen] = useState(false);
+  const [activeGameData, setActiveGameData] = useState(null);
+  const activeGameDataRef = useRef(null);
+  useEffect(() => {
+    activeGameDataRef.current = activeGameData;
+  }, [activeGameData]);
+  const [gameArenaOpen, setGameArenaOpen] = useState(false);
   const [showUserGuide, setShowUserGuide] = useState(false);
   const [showCatalog, setShowCatalog] = useState(false);
 
@@ -1138,6 +1154,7 @@ const ChatPage = () => {
   // States and Handlers for Chat Message Options Menu (Reply, Edit, Delete)
   const [messageMenuAnchor, setMessageMenuAnchor] = useState(null);
   const [selectedMenuMessage, setSelectedMenuMessage] = useState(null);
+  const [forwardMessage, setForwardMessage] = useState(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editText, setEditText] = useState('');
   const [editingMessage, setEditingMessage] = useState(null);
@@ -1178,6 +1195,37 @@ const ChatPage = () => {
   const handleMessageMenuClose = () => {
     setMessageMenuAnchor(null);
     setSelectedMenuMessage(null);
+  };
+
+  const handleCopyMessage = () => {
+    if (!selectedMenuMessage) return;
+    const textToCopy = selectedMenuMessage.text || (selectedMenuMessage.image ? 'Photo' : selectedMenuMessage.audio ? 'Voice message' : selectedMenuMessage.document || 'Message');
+    try {
+      navigator.clipboard.writeText(textToCopy).then(() => {
+        toast.success('Copied to clipboard');
+      }).catch(() => {
+        const el = document.createElement('textarea');
+        el.value = textToCopy;
+        el.style.position = 'fixed';
+        el.style.opacity = '0';
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand('copy');
+        document.body.removeChild(el);
+        toast.success('Copied to clipboard');
+      });
+    } catch (err) {
+      console.warn('Copy failed:', err);
+    }
+    handleMessageMenuClose();
+  };
+
+  const handleForwardMessage = () => {
+    if (!selectedMenuMessage || selectedMenuMessage.type === 'deleted' || selectedMenuMessage.deletedForEveryone) return;
+    setForwardMessage(selectedMenuMessage);
+    setSelectedShareFriends([]);
+    setShareDialogOpen(true);
+    handleMessageMenuClose();
   };
 
   const handleReactMessage = (msg, emoji) => {
@@ -1542,9 +1590,31 @@ const ChatPage = () => {
         const jsonStr = content.indexOf('{') !== -1 ? content.slice(content.indexOf('{')) : content.substring(11);
         const gameData = JSON.parse(jsonStr);
         const gameType = gameData.gameType;
-        const gameName = gameType === 'tictactoe'
-          ? 'Tic Tac Toe'
-          : (gameType === 'truthordare' ? 'Truth or Dare' : 'Rock Paper Scissors');
+        const GAME_TITLES = {
+          tictactoe: 'Tic Tac Toe 3D',
+          fallingboxes: 'Falling Boxes 3D',
+          memorygame: 'Memory Match 3D',
+          highstriker: 'High Striker 3D',
+          dotsandboxes: 'Dots & Boxes 3D',
+          mathsquiz: 'Maths Quiz 3D',
+          findthematch: 'Find The Match 3D',
+          fruitcutting: 'Fruit Cutter',
+          fluffyjump: 'Fluffy Jump',
+          beerpong: 'Coffee Pong 3D',
+          miniarchery: 'Mini Archery',
+          pogobowling: 'Pogo Bowling 3D',
+          minigolf: 'Mini Golf 3D',
+          carrace: 'Car Race 3D',
+          battleship: 'Battleship Sea 3D',
+          watersort: 'Water Sort 3D',
+          snakeladder: 'Krakens & Ships 3D',
+          wordgame: 'Word Search 3D',
+          spacebattle: 'Space Battle 3D',
+          jumpchicken: 'Chicken Jumper 3D',
+          rps: 'Rock Paper Scissors 3D',
+          truthordare: 'Truth or Dare 3D'
+        };
+        const gameName = GAME_TITLES[gameType] || 'Arcade Game 3D';
         return `🎮 Game: ${gameName}`;
       } catch (e) {
         return '🎮 Game';
@@ -2352,8 +2422,30 @@ const ChatPage = () => {
   };
 
   const sendGameMoveMessage = (newGameData) => {
-    if (!selectedUser || !socket || !user || !user._id) return;
-    moveChatToTop(selectedUser._id);
+    if (!socket || !user || !user._id) return;
+    const myId = String(user._id);
+    const p1Id = String(newGameData.player1?.id || newGameData.player1Id || '');
+    const p2Id = String(newGameData.player2?.id || newGameData.player2Id || '');
+    const targetUserId = (myId === p1Id) ? p2Id : p1Id;
+    const targetUsername = (myId === p1Id)
+      ? (newGameData.player2?.username || selectedUser?.username || 'Player 2')
+      : (newGameData.player1?.username || selectedUser?.username || 'Player 1');
+    const conversationId = targetUserId || selectedUser?._id;
+    if (!conversationId) return;
+
+    if (newGameData.status === 'ended' || newGameData.status === 'declined') {
+      activeGameDataRef.current = null;
+      setActiveGameData(null);
+      setGameArenaOpen(false);
+    } else {
+      activeGameDataRef.current = newGameData;
+      setActiveGameData(newGameData);
+      if (newGameData.status === 'active' && newGameData.mode !== 'chat') {
+        setGameArenaOpen(true);
+      }
+    }
+
+    moveChatToTop(conversationId);
     const msgId = generateUniqueId();
     const textToSend = `JUICY_GAME:${JSON.stringify(newGameData)}`;
     const newMessage = {
@@ -2361,9 +2453,9 @@ const ChatPage = () => {
       text: textToSend,
       senderId: user._id,
       senderUsername: user.username,
-      receiverId: selectedUser._id,
-      receiverUsername: selectedUser.username,
-      roomId: [user._id, selectedUser._id].sort().join('-'),
+      receiverId: conversationId,
+      receiverUsername: targetUsername,
+      roomId: [user._id, conversationId].sort().join('-'),
       timestamp: new Date().toISOString()
     };
 
@@ -2371,20 +2463,48 @@ const ChatPage = () => {
 
     setMessages(prev => {
       const updated = { ...prev };
-      if (!updated[selectedUser._id]) updated[selectedUser._id] = [];
-      updated[selectedUser._id].push({
+      if (!updated[conversationId]) updated[conversationId] = [];
+
+      const newMsg = {
         id: msgId,
         localId: msgId,
         sender: 'You',
         senderId: user._id,
-        receiverId: selectedUser._id,
+        receiverId: conversationId,
         text: textToSend,
         timestamp: formatTime(new Date()),
         date: formatDate(new Date()),
         createdAt: new Date().toISOString(),
         read: false,
         readAt: null
-      });
+      };
+
+      // For in-chat games (mode === 'chat'): each move creates a new chat message bubble
+      if (newGameData.mode === 'chat') {
+        updated[conversationId].push(newMsg);
+      } else {
+        // For live / 3D Arena game messages: replace the existing message with the same gameId
+        // so live game state updates don't create duplicate bubbles in the chat
+        const existingGameIdx = updated[conversationId].findIndex(m => {
+          if (!m.text || !m.text.startsWith('JUICY_GAME:')) return false;
+          try {
+            const json = m.text.slice(m.text.indexOf('{'));
+            const d = JSON.parse(json);
+            return d.gameId && newGameData.gameId && String(d.gameId) === String(newGameData.gameId);
+          } catch { return false; }
+        });
+
+        if (existingGameIdx !== -1) {
+          updated[conversationId] = [
+            ...updated[conversationId].slice(0, existingGameIdx),
+            newMsg,
+            ...updated[conversationId].slice(existingGameIdx + 1)
+          ];
+        } else {
+          updated[conversationId].push(newMsg);
+        }
+      }
+
       return updated;
     });
 
@@ -2397,38 +2517,452 @@ const ChatPage = () => {
     }
   };
 
-  const handleSelectGame = (gameType) => {
+  // Challenge game types: P1 plays solo first, sends score, P2 beats it
+  const CHALLENGE_GAME_TYPES = [
+    'highstriker', 'fallingboxes', 'fruitcutting', 'fluffyjump', 'beerpong',
+    'miniarchery', 'pogobowling', 'minigolf', 'carrace', 'watersort',
+    'wordgame', 'spacebattle', 'jumpchicken'
+  ];
+
+  // Helper: extract P1 score from gameData for any challenge game
+  const extractP1Score = (gd) => {
+    if (!gd) return 0;
+    if (gd.p1Score !== undefined && gd.p1Score !== null) return Number(gd.p1Score);
+    if (gd.p1FinalScore !== undefined && gd.p1FinalScore !== null) return Number(gd.p1FinalScore);
+    if (gd.p1TotalScore !== undefined && gd.p1TotalScore !== null) return Number(gd.p1TotalScore);
+    if (gd.p1ChallengeScore !== undefined && gd.p1ChallengeScore !== null) return Number(gd.p1ChallengeScore);
+    if (gd.p1RoundWins !== undefined && gd.p1RoundWins !== null) return Number(gd.p1RoundWins);
+    if (gd.rounds && gd.rounds.length > 0 && gd.rounds[0]?.p1Score !== null && gd.rounds[0]?.p1Score !== undefined) return Number(gd.rounds[0].p1Score);
+    return 0;
+  };
+
+  // Helper: extract P2 score from gameData for any challenge game
+  const extractP2Score = (gd) => {
+    if (!gd) return 0;
+    if (gd.p2Score !== undefined && gd.p2Score !== null) return Number(gd.p2Score);
+    if (gd.p2FinalScore !== undefined && gd.p2FinalScore !== null) return Number(gd.p2FinalScore);
+    if (gd.p2TotalScore !== undefined && gd.p2TotalScore !== null) return Number(gd.p2TotalScore);
+    if (gd.p2RoundWins !== undefined && gd.p2RoundWins !== null) return Number(gd.p2RoundWins);
+    if (gd.rounds && gd.rounds.length > 0 && gd.rounds[0]?.p2Score !== null && gd.rounds[0]?.p2Score !== undefined) return Number(gd.rounds[0].p2Score);
+    return 0;
+  };
+
+  const handleCloseGameArena = () => {
+    const currentActive = activeGameDataRef.current || activeGameData;
+    if (!currentActive) { setGameArenaOpen(false); return; }
+
+    const isChallenge = CHALLENGE_GAME_TYPES.includes(currentActive.gameType);
+    if (isChallenge) {
+      // Challenge games are turn-based solo plays / challenge cards.
+      // Auto-closing or closing the arena window should NEVER emit an "ended" message,
+      // which overwrites existing round scores with null/0 and triggers false 0-0 Draw matches.
+      activeGameDataRef.current = null;
+      setActiveGameData(null);
+      setGameArenaOpen(false);
+      return;
+    }
+
+    if (currentActive.status === 'invited' || currentActive.status === 'finished') {
+      activeGameDataRef.current = null;
+      setActiveGameData(null);
+      setGameArenaOpen(false);
+      return;
+    }
+
+    if (currentActive.status === 'active') {
+      const endedGameData = {
+        ...currentActive,
+        status: 'ended',
+        endedBy: user?._id,
+        endedByUsername: user?.username
+      };
+      sendGameMoveMessage(endedGameData);
+    } else {
+      activeGameDataRef.current = null;
+      setActiveGameData(null);
+      setGameArenaOpen(false);
+    }
+  };
+
+  const handleGameMove = (newGameData) => {
+    const isChallenge = CHALLENGE_GAME_TYPES.includes(newGameData.gameType);
+    const isP1 = String(newGameData.player1?.id || newGameData.player1Id || '') === String(user?._id);
+
+    // Detect P1 phase completion in challenge games → auto-close arena, send challenge message
+    const isP1ChallengeSend = isChallenge && isP1 &&
+      (newGameData.phase === 'p2_challenge' ||
+       (newGameData.status === 'invited' && (newGameData.p1Score !== null && newGameData.p1Score !== undefined)));
+
+    if (isP1ChallengeSend) {
+      activeGameDataRef.current = null;
+      setActiveGameData(null);
+      setGameArenaOpen(false);
+      sendGameMoveMessage(newGameData);
+      return;
+    }
+
+    // Detect P2 phase completion / match finish in challenge games → auto-close arena, send finished
+    const isGameFinished = isChallenge &&
+      (newGameData.status === 'finished' ||
+       newGameData.phase === 'finished' ||
+       newGameData.p2Done === true);
+
+    if (isGameFinished) {
+      const p1Score = Number(newGameData.p1Score ?? newGameData.p1FinalScore ?? newGameData.p1TotalScore ?? newGameData.p1ChallengeScore ?? extractP1Score(newGameData) ?? 0);
+      const p2Score = Number(newGameData.p2Score ?? newGameData.p2FinalScore ?? newGameData.p2TotalScore ?? extractP2Score(newGameData) ?? 0);
+      let winnerId = newGameData.winnerId;
+      if (!winnerId || winnerId === 'null' || winnerId === 'undefined' || (winnerId === 'draw' && p1Score !== p2Score)) {
+        if (p2Score > p1Score) winnerId = newGameData.player2?.id || newGameData.player2Id;
+        else if (p1Score > p2Score) winnerId = newGameData.player1?.id || newGameData.player1Id;
+        else winnerId = 'draw';
+      }
+      const finishedData = {
+        ...newGameData,
+        status: 'finished',
+        phase: 'finished',
+        winnerId,
+        p1Score,
+        p2Score,
+        p1TotalScore: p1Score,
+        p2TotalScore: p2Score,
+        p1FinalScore: p1Score,
+        p2FinalScore: p2Score,
+      };
+      activeGameDataRef.current = null;
+      setActiveGameData(null);
+      setGameArenaOpen(false);
+      sendGameMoveMessage(finishedData);
+      return;
+    }
+
+    activeGameDataRef.current = newGameData;
+    setActiveGameData(newGameData);
+    sendGameMoveMessage(newGameData);
+  };
+
+  const handleAcceptGame = (activeData) => {
+    activeGameDataRef.current = activeData;
+    setActiveGameData(activeData);
+    if (activeData?.mode !== 'chat') {
+      setGameArenaOpen(true);
+    }
+    sendGameMoveMessage(activeData);
+  };
+
+  const handleSelectGame = (gameType, mode = 'live') => {
     setGameSelectorOpen(false);
+
+    const p1 = { id: user._id, username: user.username };
+    const p2 = { id: selectedUser._id, username: selectedUser.username };
+    const gameId = generateUniqueId();
 
     let initialGameData = {};
     if (gameType === 'tictactoe') {
       initialGameData = {
         gameType: 'tictactoe',
         status: 'invited',
-        gameId: generateUniqueId(),
-        player1: { id: user._id, username: user.username },
-        player2: { id: selectedUser._id, username: selectedUser.username }
+        gameId,
+        player1: p1,
+        player2: p2
       };
     } else if (gameType === 'truthordare') {
       initialGameData = {
         gameType: 'truthordare',
         status: 'invited',
-        gameId: generateUniqueId(),
-        player1: { id: user._id, username: user.username },
-        player2: { id: selectedUser._id, username: selectedUser.username }
+        gameId,
+        player1: p1,
+        player2: p2
       };
     } else if (gameType === 'rps') {
       initialGameData = {
         gameType: 'rps',
         status: 'invited',
-        gameId: generateUniqueId(),
+        gameId,
+        player1: p1,
+        player2: p2,
         player1Id: user._id,
         player2Id: selectedUser._id,
         player1Selected: false,
-        player2Selected: false
+        player2Selected: false,
+        scores: { [p1.id]: 0, [p2.id]: 0 },
+        p1Score: 0,
+        p2Score: 0
       };
+    } else if (gameType === 'dotsandboxes') {
+      const p1Id = String(p1?.id || user?._id || '');
+      const p2Id = String(p2?.id || selectedUser?._id || '');
+      initialGameData = {
+        gameType: 'dotsandboxes',
+        status: 'invited',
+        gameId,
+        player1: p1,
+        player2: p2,
+        player1Id: p1Id,
+        player2Id: p2Id,
+        hLines: Array(12).fill(false),
+        vLines: Array(12).fill(false),
+        boxOwners: Array(9).fill(null),
+        scores: { [p1Id]: 0, [p2Id]: 0 },
+        turnPlayerId: p1Id
+      };
+    } else if (gameType === 'memorygame') {
+      const CARD_EMOJIS = ['🍎', '🍊', '🍋', '🍇', '🍓', '🍒', '🥝', '🍑'];
+      const cards = [...CARD_EMOJIS, ...CARD_EMOJIS].map((emoji, i) => ({ id: i, emoji, matched: false }));
+      for (let i = cards.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [cards[i], cards[j]] = [cards[j], cards[i]];
+      }
+      initialGameData = {
+        gameType: 'memorygame',
+        status: 'invited',
+        gameId,
+        player1: p1,
+        player2: p2,
+        cards,
+        flipped: [],
+        matched: [],
+        scores: { [p1.id]: 0, [p2.id]: 0 },
+        turnPlayerId: p1.id
+      };
+    } else if (gameType === 'highstriker') {
+      initialGameData = {
+        gameType: 'highstriker',
+        status: 'active',
+        gameId,
+        player1: p1,
+        player2: p2,
+        rounds: [],
+        currentRound: 0,
+        p1RoundWins: 0,
+        p2RoundWins: 0,
+        phase: 'p1',
+        p1Hit: null,
+        p2Hit: null,
+        p1Score: null,
+        p2Score: null,
+        turnPlayerId: p1.id,
+        challengerId: p1.id
+      };
+    } else if (gameType === 'fallingboxes') {
+      initialGameData = {
+        gameType: 'fallingboxes',
+        status: 'active',
+        gameId,
+        player1: p1,
+        player2: p2,
+        rounds: [],
+        currentRound: 0,
+        p1TotalScore: 0,
+        p2TotalScore: 0,
+        p1Score: null,
+        p2Score: null,
+        phase: 'p1',
+        p1RoundScore: null,
+        p2RoundScore: null,
+        board: Array(6).fill(null).map(() => Array(7).fill(null)),
+        turnPlayerId: p1.id,
+        challengerId: p1.id
+      };
+    } else if (gameType === 'mathsquiz') {
+      initialGameData = {
+        ...mathsQuizInitialData(p1, p2),
+        gameId
+      };
+    } else if (gameType === 'findthematch') {
+      initialGameData = {
+        ...findTheMatchInitialData(p1, p2),
+        gameId
+      };
+    } else if (gameType === 'fruitcutting') {
+      initialGameData = {
+        gameType: 'fruitcutting',
+        status: 'active',
+        gameId,
+        player1: p1,
+        player2: p2,
+        rounds: [],
+        currentRound: 0,
+        p1TotalScore: 0,
+        p2TotalScore: 0,
+        p1Score: null,
+        p2Score: null,
+        phase: 'p1',
+        p1RoundScore: null,
+        p2RoundScore: null,
+        turnPlayerId: p1.id,
+        challengerId: p1.id
+      };
+    } else if (gameType === 'fluffyjump') {
+      initialGameData = {
+        gameType: 'fluffyjump',
+        status: 'active',
+        gameId,
+        player1: p1,
+        player2: p2,
+        rounds: [],
+        currentRound: 0,
+        p1TotalScore: 0,
+        p2TotalScore: 0,
+        p1Score: null,
+        p2Score: null,
+        phase: 'p1',
+        p1RoundScore: null,
+        p2RoundScore: null,
+        turnPlayerId: p1.id,
+        challengerId: p1.id
+      };
+    } else if (gameType === 'beerpong') {
+      initialGameData = {
+        gameType: 'beerpong',
+        status: 'active',
+        gameId,
+        player1: p1,
+        player2: p2,
+        rounds: [],
+        currentRound: 0,
+        p1TotalScore: 0,
+        p2TotalScore: 0,
+        p1Score: null,
+        p2Score: null,
+        phase: 'p1',
+        p1RoundScore: null,
+        p2RoundScore: null,
+        turnPlayerId: p1.id,
+        challengerId: p1.id
+      };
+    } else if (gameType === 'miniarchery') {
+      initialGameData = {
+        gameType: 'miniarchery',
+        status: 'active',
+        gameId,
+        player1: p1,
+        player2: p2,
+        rounds: [],
+        currentRound: 0,
+        p1TotalScore: 0,
+        p2TotalScore: 0,
+        p1Score: null,
+        p2Score: null,
+        phase: 'p1',
+        p1RoundScore: null,
+        p2RoundScore: null,
+        turnPlayerId: p1.id,
+        challengerId: p1.id
+      };
+    } else if (gameType === 'pogobowling') {
+      initialGameData = {
+        gameType: 'pogobowling',
+        status: 'active',
+        gameId,
+        player1: p1,
+        player2: p2,
+        rounds: [],
+        currentRound: 0,
+        p1TotalScore: 0,
+        p2TotalScore: 0,
+        p1Score: null,
+        p2Score: null,
+        phase: 'p1',
+        p1RoundScore: null,
+        p2RoundScore: null,
+        turnPlayerId: p1.id,
+        challengerId: p1.id
+      };
+    } else if (gameType === 'minigolf') {
+      initialGameData = {
+        gameType: 'minigolf',
+        status: 'active',
+        gameId,
+        player1: p1,
+        player2: p2,
+        rounds: [],
+        currentRound: 0,
+        p1TotalScore: 0,
+        p2TotalScore: 0,
+        p1Score: null,
+        p2Score: null,
+        phase: 'p1',
+        p1RoundScore: null,
+        p2RoundScore: null,
+        turnPlayerId: p1.id,
+        challengerId: p1.id
+      };
+    } else if (gameType === 'carrace') {
+      const initialGameData = {
+        ...carRaceInitialData(p1, p2),
+        gameId
+      };
+      setActiveGameData(initialGameData);
+      setGameArenaOpen(true);
+      return;
+    } else if (gameType === 'battleship') {
+      initialGameData = {
+        ...battleShipInitialData(p1, p2),
+        gameId
+      };
+    } else if (gameType === 'watersort') {
+      const initialGameData = {
+        ...waterSortInitialData(p1, p2),
+        gameId
+      };
+      setActiveGameData(initialGameData);
+      setGameArenaOpen(true);
+      return;
+    } else if (gameType === 'snakeladder') {
+      initialGameData = {
+        ...snakeLadderInitialData(p1, p2),
+        gameId
+      };
+    } else if (gameType === 'wordgame') {
+      const initialGameData = {
+        ...wordGameInitialData(p1, p2),
+        gameId
+      };
+      setActiveGameData(initialGameData);
+      setGameArenaOpen(true);
+      return;
+    } else if (gameType === 'spacebattle') {
+      const initialGameData = {
+        ...spaceBattleInitialData(p1, p2),
+        gameId
+      };
+      setActiveGameData(initialGameData);
+      setGameArenaOpen(true);
+      return;
+    } else if (gameType === 'jumpchicken') {
+      const initialGameData = {
+        ...jumpChickenInitialData(p1, p2),
+        gameId
+      };
+      setActiveGameData(initialGameData);
+      setGameArenaOpen(true);
+      return;
     }
 
+    // For challenge games, P1 plays first locally – don't send invite yet
+    if (CHALLENGE_GAME_TYPES.includes(initialGameData.gameType)) {
+      initialGameData.status = 'active';
+      initialGameData.turnPlayerId = p1.id;
+      initialGameData.challengerId = p1.id;
+      setActiveGameData(initialGameData);
+      setGameArenaOpen(true);
+      return;
+    }
+
+    // For Play While Chat games: stay in chat and send invite directly
+    if (mode === 'chat' || initialGameData.mode === 'chat') {
+      initialGameData.mode = 'chat';
+      activeGameDataRef.current = initialGameData;
+      setActiveGameData(initialGameData);
+      sendGameMoveMessage(initialGameData);
+      return;
+    }
+
+    // For live games (head-to-head realtime):
+    // Open GameArena3D on Player 1's screen immediately in waiting state,
+    // and send the invite message to Player 2. Both players play live in GameArena3D!
+    setActiveGameData(initialGameData);
+    setGameArenaOpen(true);
     sendGameMoveMessage(initialGameData);
   };
 
@@ -2538,6 +3072,60 @@ const ChatPage = () => {
       if (maybe) replyObj = maybe;
     }
 
+    // Handle live 3D game sync on incoming socket messages
+    if (cleanedText && cleanedText.startsWith('JUICY_GAME:')) {
+      try {
+        const jsonStr = cleanedText.indexOf('{') !== -1 ? cleanedText.slice(cleanedText.indexOf('{')) : cleanedText.substring(11);
+        const incomingGameData = JSON.parse(jsonStr);
+        const myIdStr = user ? String(user._id) : '';
+        const p1IdStr = String(incomingGameData.player1?.id || incomingGameData.player1Id || '');
+        const p2IdStr = String(incomingGameData.player2?.id || incomingGameData.player2Id || '');
+
+        if (myIdStr && (myIdStr === p1IdStr || myIdStr === p2IdStr)) {
+          const isChallengeGame = [
+            'highstriker', 'fallingboxes', 'fruitcutting', 'fluffyjump', 'beerpong',
+            'miniarchery', 'pogobowling', 'minigolf', 'carrace', 'watersort',
+            'wordgame', 'spacebattle', 'jumpchicken'
+          ].includes(incomingGameData.gameType);
+
+          const isCurrentGameActiveInArena = Boolean(
+            activeGameDataRef.current &&
+            incomingGameData.gameId &&
+            String(activeGameDataRef.current.gameId) === String(incomingGameData.gameId)
+          );
+
+          if (incomingGameData.status === 'declined' || incomingGameData.status === 'ended' || incomingGameData.status === 'closed') {
+            if (isCurrentGameActiveInArena) {
+              activeGameDataRef.current = null;
+              setActiveGameData(null);
+              setGameArenaOpen(false);
+            }
+          } else if (incomingGameData.status === 'p1_done' || (incomingGameData.status === 'invited' && isChallengeGame)) {
+            // P1 finished challenge: if arena was open for P1, close it
+            if (isCurrentGameActiveInArena) {
+              activeGameDataRef.current = incomingGameData;
+              setActiveGameData(incomingGameData);
+              setGameArenaOpen(false);
+            }
+          } else if (isCurrentGameActiveInArena) {
+            // Only update activeGameData if user is actively in GameArena3D for this game
+            activeGameDataRef.current = incomingGameData;
+            setActiveGameData(incomingGameData);
+
+            // If challenge game P2 phase logic requires closing for P1
+            const isP1 = myIdStr === p1IdStr;
+            const p2Phases = ['p2', 'p2_challenge', 'p2_racing', 'p2_sorting', 'p2_finding', 'p2_battle', 'p2_jumping'];
+            const isP1WaitingForP2 = isChallengeGame && isP1 && p2Phases.includes(incomingGameData.phase);
+            if (isP1WaitingForP2) {
+              setGameArenaOpen(false);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error parsing incoming JUICY_GAME data:', err);
+      }
+    }
+
     setMessages(prev => {
       const updated = { ...prev };
       if (!updated[otherId]) updated[otherId] = [];
@@ -2552,13 +3140,21 @@ const ChatPage = () => {
             String(m.id) === String(originalId) || String(m.localId) === String(originalId)
           );
         }
-        // Fallback: match by senderId + receiverId for messages without localId (e.g., images)
+        // Fallback: match by senderId + receiverId + content for messages without localId (e.g., images/stickers/doodles)
+        // NOTE: We must also match on content (image/audio/document) to avoid matching the WRONG pending message
         if (msgIndex === -1) {
           msgIndex = updated[otherId].findIndex(m =>
             String(m.senderId) === String(senderId) &&
             String(m.receiverId) === String(receiverId) &&
             m.id !== String(message._id) && // Make sure it's not already the DB ID
-            m.id !== msgId
+            m.id !== msgId &&
+            // Content must match too — otherwise we could grab a different image sent earlier
+            (
+              (message.image && m.image && m.image === message.image) ||
+              (message.audio && m.audio && m.audio === message.audio) ||
+              (message.document && m.document && m.document === message.document) ||
+              (!message.image && !message.audio && !message.document && !m.image && !m.audio && !m.document)
+            )
           );
         }
 
@@ -2575,18 +3171,39 @@ const ChatPage = () => {
       }
 
       // avoid duplicates by checking local ID, database ID, localId, and content signature
-      const isDuplicate = updated[otherId].some(m =>
-        (msgId && String(m.id) === String(msgId)) ||
-        (message._id && String(m.id) === String(message._id)) ||
-        (message.id && String(m.id) === String(message.id)) ||
-        (m.localId && (String(m.localId) === String(message.id) || String(m.localId) === String(message._id) || String(m.localId) === String(msgId))) ||
-        (m.text && cleanedText && String(m.senderId) === String(senderId) && m.text === cleanedText && Math.abs(new Date(m.createdAt || m.timestamp || 0).getTime() - new Date(message.timestamp || Date.now()).getTime()) < 4000)
-      );
+      const msgTimestamp = new Date(message.timestamp || Date.now()).getTime();
+      const isDuplicate = updated[otherId].some(m => {
+        // 1. ID-based checks
+        if (msgId && String(m.id) === String(msgId)) return true;
+        if (message._id && String(m.id) === String(message._id)) return true;
+        if (message.id && String(m.id) === String(message.id)) return true;
+        if (m.localId && (
+          String(m.localId) === String(message.id) ||
+          String(m.localId) === String(message._id) ||
+          String(m.localId) === String(msgId)
+        )) return true;
+
+        // 2. Content + sender + time-window check (catches images/stickers/doodles too)
+        const timeDiff = Math.abs(new Date(m.createdAt || m.timestamp || 0).getTime() - msgTimestamp);
+        if (timeDiff >= 8000) return false; // outside 8s window — definitely not a dup
+        if (String(m.senderId) !== String(senderId)) return false;
+
+        // Text messages
+        if (m.text && cleanedText && m.text === cleanedText) return true;
+        // Image messages (doodles/stickers/photos)
+        if (message.image && m.image && m.image === message.image) return true;
+        // Audio messages
+        if (message.audio && m.audio && m.audio === message.audio) return true;
+        // Document messages
+        if (message.document && m.document && m.document === message.document) return true;
+
+        return false;
+      });
       if (!isDuplicate) {
         // Move conversation to top of stable chat list on new message
         moveChatToTop(otherId);
 
-        updated[otherId].push({
+        const newEntry = {
           id: msgId,
           sender: message.senderUsername || message.sender || senderId,
           senderId,
@@ -2607,7 +3224,42 @@ const ChatPage = () => {
           createdAt: message.timestamp || new Date().toISOString(),
           read: message.read || false,
           readAt: message.readAt || null
-        });
+        };
+
+        // For incoming game messages:
+        // If mode === 'chat', each move is a new chat message bubble
+        // If live / 3D Arena game, replace existing message with same gameId to prevent duplicate bubbles
+        if (cleanedText && cleanedText.startsWith('JUICY_GAME:')) {
+          try {
+            const jsonStr = cleanedText.indexOf('{') !== -1 ? cleanedText.slice(cleanedText.indexOf('{')) : cleanedText.substring(11);
+            const incomingGd = JSON.parse(jsonStr);
+            if (incomingGd.gameId && incomingGd.mode !== 'chat') {
+              const existingIdx = updated[otherId].findIndex(m => {
+                if (!m.text || !m.text.startsWith('JUICY_GAME:')) return false;
+                try {
+                  const js = m.text.indexOf('{') !== -1 ? m.text.slice(m.text.indexOf('{')) : m.text.substring(11);
+                  const d = JSON.parse(js);
+                  return String(d.gameId) === String(incomingGd.gameId);
+                } catch { return false; }
+              });
+              if (existingIdx !== -1) {
+                updated[otherId] = [
+                  ...updated[otherId].slice(0, existingIdx),
+                  newEntry,
+                  ...updated[otherId].slice(existingIdx + 1)
+                ];
+              } else {
+                updated[otherId].push(newEntry);
+              }
+            } else {
+              updated[otherId].push(newEntry);
+            }
+          } catch {
+            updated[otherId].push(newEntry);
+          }
+        } else {
+          updated[otherId].push(newEntry);
+        }
 
         // increment unread if not currently viewing that conversation (only for received messages)
         if (!isSenderCurrentUser && (!selectedUser || String(selectedUser._id) !== otherId)) {
@@ -3848,16 +4500,94 @@ const ChatPage = () => {
     }
   };
 
+  const handleForwardToFriend = (msgToForward, targetUser) => {
+    if (!msgToForward || !targetUser || !socket || !user) return;
+    const targetUserId = String(targetUser._id);
+    moveChatToTop(targetUserId);
+
+    let cleanText = msgToForward.text || '';
+    if (cleanText) {
+      const { cleanText: cleaned } = extractAndCleanReplyMarkers(cleanText);
+      cleanText = cleaned;
+    }
+
+    const msgId = generateUniqueId();
+    const newMessage = {
+      id: msgId,
+      senderId: user._id,
+      senderUsername: user.username,
+      receiverId: targetUser._id,
+      receiverUsername: targetUser.username,
+      roomId: [user._id, targetUser._id].sort().join('-'),
+      timestamp: new Date().toISOString()
+    };
+
+    if (cleanText) newMessage.text = cleanText;
+    if (msgToForward.image) newMessage.image = msgToForward.image;
+    if (msgToForward.audio) newMessage.audio = msgToForward.audio;
+    if (msgToForward.document) newMessage.document = msgToForward.document;
+    if (msgToForward.documentData) newMessage.documentData = msgToForward.documentData;
+    if (msgToForward.contact) newMessage.contact = msgToForward.contact;
+    if (msgToForward.youtube) newMessage.youtube = msgToForward.youtube;
+    if (msgToForward.location) newMessage.location = msgToForward.location;
+    if (msgToForward.type) newMessage.type = msgToForward.type;
+
+    socket.emit('send_message', newMessage);
+
+    setMessages(prev => {
+      const updated = { ...prev };
+      if (!updated[targetUserId]) updated[targetUserId] = [];
+      const localEntry = {
+        id: msgId,
+        localId: msgId,
+        sender: 'You',
+        senderId: user._id,
+        receiverId: targetUser._id,
+        text: cleanText,
+        image: msgToForward.image || '',
+        audio: msgToForward.audio || '',
+        document: msgToForward.document || '',
+        documentData: msgToForward.documentData || '',
+        contact: msgToForward.contact || null,
+        youtube: msgToForward.youtube || null,
+        location: msgToForward.location || null,
+        type: msgToForward.type || (cleanText ? 'text' : ''),
+        timestamp: formatTime(new Date()),
+        date: formatDate(new Date()),
+        createdAt: new Date().toISOString(),
+        read: false,
+        readAt: null
+      };
+      updated[targetUserId].push(localEntry);
+      return updated;
+    });
+
+    if (selectedUser && String(selectedUser._id) === targetUserId && messagesContainerRef.current) {
+      setTimeout(() => {
+        if (messagesContainerRef.current) {
+          messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+        }
+      }, 50);
+    }
+  };
+
   const handleConfirmShare = () => {
     if (selectedShareFriends.length === 0) return;
 
-    selectedShareFriends.forEach(friend => {
-      handleSendImage(capturedImage, friend);
-    });
+    if (forwardMessage) {
+      selectedShareFriends.forEach(friend => {
+        handleForwardToFriend(forwardMessage, friend);
+      });
+      setForwardMessage(null);
+    } else if (capturedImage) {
+      selectedShareFriends.forEach(friend => {
+        handleSendImage(capturedImage, friend);
+      });
+      setImagePreviewOpen(false);
+      setCapturedImage(null);
+    }
 
     setShareDialogOpen(false);
-    setImagePreviewOpen(false);
-    setCapturedImage(null);
     setSelectedShareFriends([]);
     toast.success(`Sent to ${selectedShareFriends.length} friend${selectedShareFriends.length > 1 ? 's' : ''}`);
   };
@@ -4590,9 +5320,40 @@ const ChatPage = () => {
     const seenKeys = new Set();
     const deduplicated = [];
 
+    // For live / non-chat game messages: track the latest message per gameId so only one bubble shows per game
+    const latestGameMessages = new Map(); // gameId -> msg
+    for (const msg of rawList) {
+      if (!msg) continue;
+      if (msg.text && msg.text.startsWith('JUICY_GAME:')) {
+        try {
+          const js = msg.text.indexOf('{') !== -1 ? msg.text.slice(msg.text.indexOf('{')) : msg.text.substring(11);
+          const gd = JSON.parse(js);
+          if (gd.gameId && gd.mode !== 'chat') {
+            const existing = latestGameMessages.get(String(gd.gameId));
+            // Keep the message with the latest createdAt
+            if (!existing || new Date(msg.createdAt || msg.timestamp || 0).getTime() >= new Date(existing.createdAt || existing.timestamp || 0).getTime()) {
+              latestGameMessages.set(String(gd.gameId), msg);
+            }
+          }
+        } catch { /* fall through to normal dedup */ }
+      }
+    }
+
     for (const msg of rawList) {
       if (!msg) continue;
       if (isMessageExpired(msg.createdAt || msg.timestamp)) continue;
+
+      // For live / non-chat game messages, skip all but the latest per gameId
+      if (msg.text && msg.text.startsWith('JUICY_GAME:')) {
+        try {
+          const js = msg.text.indexOf('{') !== -1 ? msg.text.slice(msg.text.indexOf('{')) : msg.text.substring(11);
+          const gd = JSON.parse(js);
+          if (gd.gameId && gd.mode !== 'chat') {
+            const latest = latestGameMessages.get(String(gd.gameId));
+            if (latest && (msg.id || msg.localId) !== (latest.id || latest.localId)) continue;
+          }
+        } catch { /* fall through */ }
+      }
 
       const primaryKey = msg.id ? String(msg.id) : '';
       const localKey = msg.localId ? String(msg.localId) : '';
@@ -4605,11 +5366,11 @@ const ChatPage = () => {
       const timeSec = Math.floor(new Date(msg.createdAt || msg.timestamp || 0).getTime() / 4000);
       const signature = `${sender}_${content}_${timeSec}`;
 
-      if (content && seenKeys.has(signature)) continue;
+      if (content && !msg.text?.startsWith('JUICY_GAME:') && seenKeys.has(signature)) continue;
 
       if (primaryKey) seenKeys.add(primaryKey);
       if (localKey) seenKeys.add(localKey);
-      if (content) seenKeys.add(signature);
+      if (content && !msg.text?.startsWith('JUICY_GAME:')) seenKeys.add(signature);
 
       deduplicated.push(msg);
     }
@@ -4620,6 +5381,24 @@ const ChatPage = () => {
       return timeA - timeB;
     });
   }, [selectedUser, messages]);
+
+  // Map of the latest message ID for each gameId to know which bubble is currently active
+  const latestGameMsgIds = React.useMemo(() => {
+    const map = new Map();
+    for (const m of currentConversationMessages) {
+      if (m?.text && m.text.startsWith('JUICY_GAME:')) {
+        try {
+          const js = m.text.indexOf('{') !== -1 ? m.text.slice(m.text.indexOf('{')) : m.text.substring(11);
+          const gd = JSON.parse(js);
+          if (gd.gameId) {
+            const key = m.id ? String(m.id) : (m.localId ? String(m.localId) : null);
+            if (key) map.set(String(gd.gameId), key);
+          }
+        } catch {}
+      }
+    }
+    return new Set(map.values());
+  }, [currentConversationMessages]);
 
   const handleNotifBannerClick = () => {
     if (!notifBannerData) return;
@@ -6230,7 +7009,10 @@ const ChatPage = () => {
                           alignItems: (msg.senderId === user?._id || msg.sender === 'You') ? 'flex-end' : 'flex-start',
                           pr: (msg.senderId === user?._id || msg.sender === 'You') ? 2 : 0,
                           pl: (msg.senderId === user?._id || msg.sender === 'You') ? 0 : 2,
-                          overflow: 'visible'
+                          overflow: 'visible',
+                          userSelect: 'none',
+                          WebkitUserSelect: 'none',
+                          WebkitTouchCallout: 'none'
                         }}
                       >
                         <Paper
@@ -6245,6 +7027,10 @@ const ChatPage = () => {
                           onTouchStart={(e) => startLongPress(e, msg)}
                           onTouchEnd={cancelLongPress}
                           onTouchMove={cancelLongPress}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            handleMessageMenuOpen(e, msg);
+                          }}
                           onClick={(e) => {
                             if (isLongPressActive.current) {
                               e.stopPropagation();
@@ -6260,35 +7046,52 @@ const ChatPage = () => {
                           }}
 
                           sx={{
-                            p: msg.type === 'sticker' ? 0.5 : '10px 14px 8px',
-                            maxWidth: msg.document ? { xs: '85%', sm: '75%' } : '78%',
-                            borderRadius: msg.type === 'sticker'
+                            userSelect: 'none',
+                            WebkitUserSelect: 'none',
+                            MozUserSelect: 'none',
+                            msUserSelect: 'none',
+                            WebkitTouchCallout: 'none',
+                            p: msg.text?.startsWith('JUICY_GAME:') ? 0 : (msg.type === 'sticker' ? 0.5 : '10px 14px 8px'),
+                            maxWidth: msg.text?.startsWith('JUICY_GAME:')
+                              ? { xs: '78%', sm: '72%' }
+                              : (msg.document ? { xs: '85%', sm: '75%' } : '78%'),
+                            borderRadius: msg.text?.startsWith('JUICY_GAME:')
                               ? 0
-                              : ((msg.senderId === user?._id || msg.sender === 'You')
-                                ? '20px 20px 4px 20px'
-                                : '20px 20px 20px 4px'),
-                            background: msg.type === 'sticker'
+                              : (msg.type === 'sticker'
+                                ? 0
+                                : ((msg.senderId === user?._id || msg.sender === 'You')
+                                  ? '20px 20px 4px 20px'
+                                  : '20px 20px 20px 4px')),
+                            background: msg.text?.startsWith('JUICY_GAME:')
                               ? 'transparent'
-                              : ((msg.senderId === user?._id || msg.sender === 'You')
-                                ? 'var(--primary-gradient, linear-gradient(135deg, #ff5c8d 0%, #ff2d6c 100%))'
-                                : (isDarkTheme ? 'rgba(32, 26, 36, 0.95)' : '#ffffff')),
-                            color: msg.type === 'sticker'
+                              : (msg.type === 'sticker'
+                                ? 'transparent'
+                                : ((msg.senderId === user?._id || msg.sender === 'You')
+                                  ? 'var(--primary-gradient, linear-gradient(135deg, #ff5c8d 0%, #ff2d6c 100%))'
+                                  : (isDarkTheme ? 'rgba(32, 26, 36, 0.95)' : '#ffffff'))),
+                            color: msg.text?.startsWith('JUICY_GAME:')
                               ? 'inherit'
-                              : ((msg.senderId === user?._id || msg.sender === 'You')
-                                ? '#ffffff'
-                                : (isDarkTheme ? '#f3e8ee' : '#1e1a24')),
-                            border: msg.type === 'sticker'
+                              : (msg.type === 'sticker'
+                                ? 'inherit'
+                                : ((msg.senderId === user?._id || msg.sender === 'You')
+                                  ? '#ffffff'
+                                  : (isDarkTheme ? '#f3e8ee' : '#1e1a24'))),
+                            border: msg.text?.startsWith('JUICY_GAME:')
                               ? 'none'
-                              : ((msg.senderId === user?._id || msg.sender === 'You')
-                                ? '1px solid rgba(255, 255, 255, 0.18)'
-                                : (isDarkTheme ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(125, 125, 125, 0.15)')),
-                            boxShadow: msg.type === 'sticker'
+                              : (msg.type === 'sticker'
+                                ? 'none'
+                                : ((msg.senderId === user?._id || msg.sender === 'You')
+                                  ? '1px solid rgba(255, 255, 255, 0.18)'
+                                  : (isDarkTheme ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(125, 125, 125, 0.15)'))),
+                            boxShadow: msg.text?.startsWith('JUICY_GAME:')
                               ? 'none'
-                              : ((msg.senderId === user?._id || msg.sender === 'You')
-                                ? '0 6px 18px var(--primary-color-glow, rgba(255, 45, 108, 0.22)), 0 2px 6px var(--primary-color-alpha, rgba(255, 45, 108, 0.12))'
-                                : (isDarkTheme ? '0 4px 16px rgba(0, 0, 0, 0.35)' : '0 4px 16px rgba(0, 0, 0, 0.06), 0 2px 4px rgba(0,0,0,0.03)')),
+                              : (msg.type === 'sticker'
+                                ? 'none'
+                                : ((msg.senderId === user?._id || msg.sender === 'You')
+                                  ? '0 6px 18px var(--primary-color-glow, rgba(255, 45, 108, 0.22)), 0 2px 6px var(--primary-color-alpha, rgba(255, 45, 108, 0.12))'
+                                  : (isDarkTheme ? '0 4px 16px rgba(0, 0, 0, 0.35)' : '0 4px 16px rgba(0, 0, 0, 0.06), 0 2px 4px rgba(0,0,0,0.03)'))),
                             position: 'relative',
-                            overflow: 'visible',
+                            overflow: msg.text?.startsWith('JUICY_GAME:') ? 'hidden' : 'visible',
                             cursor: (detectWishType(msg.text) || detectHeartKeyword(msg.text)) ? 'pointer' : 'default',
                             transition: 'transform 0.15s ease-in-out, box-shadow 0.15s ease-in-out',
                             '&:hover': (detectWishType(msg.text) || detectHeartKeyword(msg.text)) ? {
@@ -6411,8 +7214,14 @@ const ChatPage = () => {
                                     userId={user?._id}
                                     username={user?.username}
                                     selectedUser={selectedUser}
-                                    onSendGameMessage={sendGameMoveMessage}
+                                    onSendGameMessage={handleGameMove}
                                     isDarkTheme={isDarkTheme}
+                                    isLatest={latestGameMsgIds.has(String(msg.id || msg.localId || ''))}
+                                    onOpenArena={(g) => {
+                                      setActiveGameData(g);
+                                      setGameArenaOpen(true);
+                                    }}
+                                    onAcceptGame={handleAcceptGame}
                                   />
                                 ) : (
                                   <Typography
@@ -6424,7 +7233,11 @@ const ChatPage = () => {
                                       fontStyle: msg.text === "Social media links are restricted" ? 'italic' : 'normal',
                                       wordBreak: 'break-word',
                                       lineHeight: 1.4,
-                                      whiteSpace: 'pre-wrap'
+                                      whiteSpace: 'pre-wrap',
+                                      userSelect: 'none',
+                                      WebkitUserSelect: 'none',
+                                      MozUserSelect: 'none',
+                                      msUserSelect: 'none',
                                     }}
                                   >
                                     {msg.text}
@@ -6689,7 +7502,9 @@ const ChatPage = () => {
                                 variant="caption"
                                 sx={{
                                   color: (msg.senderId === user?._id || msg.sender === 'You')
-                                    ? 'rgba(255, 255, 255, 0.75)'
+                                    ? (msg.text?.startsWith('JUICY_GAME:')
+                                        ? (isDarkTheme ? 'rgba(255, 255, 255, 0.75)' : 'rgba(0, 0, 0, 0.55)')
+                                        : 'rgba(255, 255, 255, 0.75)')
                                     : (isDarkTheme ? '#8696a0' : '#8e8e93'),
                                   fontSize: '0.65rem',
                                   mr: 0.5,
@@ -6702,7 +7517,9 @@ const ChatPage = () => {
                               variant="caption"
                               sx={{
                                 color: (msg.senderId === user?._id || msg.sender === 'You')
-                                  ? 'rgba(255, 255, 255, 0.85)'
+                                  ? (msg.text?.startsWith('JUICY_GAME:')
+                                      ? (isDarkTheme ? 'rgba(255, 255, 255, 0.85)' : 'rgba(0, 0, 0, 0.65)')
+                                      : 'rgba(255, 255, 255, 0.85)')
                                   : (isDarkTheme ? '#8696a0' : '#8e8e93'),
                                 fontSize: '0.7rem',
                                 whiteSpace: 'nowrap',
@@ -6716,9 +7533,10 @@ const ChatPage = () => {
                               const isRead = msg.read === true;
                               const isDelivered = !isTempId; // has a real MongoDB _id → delivered
 
-                              const tickColorSeen = '#ffffff';
-                              const tickColorDelivered = 'rgba(255, 255, 255, 0.75)';
-                              const tickColorSent = 'rgba(255, 255, 255, 0.75)';
+                              const isJuicyGame = msg.text?.startsWith('JUICY_GAME:');
+                              const tickColorSeen = isJuicyGame ? (isDarkTheme ? '#ffffff' : '#0284c7') : '#ffffff';
+                              const tickColorDelivered = isJuicyGame ? (isDarkTheme ? 'rgba(255, 255, 255, 0.75)' : 'rgba(0, 0, 0, 0.5)') : 'rgba(255, 255, 255, 0.75)';
+                              const tickColorSent = isJuicyGame ? (isDarkTheme ? 'rgba(255, 255, 255, 0.75)' : 'rgba(0, 0, 0, 0.5)') : 'rgba(255, 255, 255, 0.75)';
 
                               if (isRead) {
                                 // Double ticks (seen)
@@ -9728,6 +10546,19 @@ const ChatPage = () => {
         onSelectGame={handleSelectGame}
       />
 
+      {/* 3D Real-time Game Arena */}
+      <GameArena3D
+        open={gameArenaOpen}
+        onClose={handleCloseGameArena}
+        gameData={activeGameData}
+        userId={user?._id}
+        username={user?.username}
+        userAvatar={user?.profilePic || user?.image}
+        opponentUser={selectedUser}
+        onSendGameMessage={handleGameMove}
+        isDarkTheme={isDarkTheme}
+      />
+
 
 
       {/* WhatsApp-style Full-Screen Image Preview */}
@@ -10750,7 +11581,11 @@ const ChatPage = () => {
       {/* Share to Friends Dialog */}
       <ShareFriendsDialog
         open={shareDialogOpen}
-        onClose={() => setShareDialogOpen(false)}
+        onClose={() => {
+          setShareDialogOpen(false);
+          setForwardMessage(null);
+          setSelectedShareFriends([]);
+        }}
         dbFriends={dbFriends}
         selectedShareFriends={selectedShareFriends}
         setSelectedShareFriends={setSelectedShareFriends}
@@ -10758,7 +11593,7 @@ const ChatPage = () => {
         getProfileSrc={getProfileSrc}
       />
 
-      {/* Message Options Menu */}
+      {/* Message Options Menu – Full: Emoji Reactions + Copy, Reply, Forward, Edit, Delete */}
       <Menu
         anchorEl={messageMenuAnchor}
         open={Boolean(messageMenuAnchor)}
@@ -10771,59 +11606,59 @@ const ChatPage = () => {
             color: 'var(--text-color, #000)',
             mt: 0.5,
             borderRadius: 2,
-            boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
-            minWidth: 160,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.14)',
+            minWidth: 200,
+            overflow: 'hidden',
             '& .MuiMenuItem-root': {
-              fontSize: '0.875rem',
-              py: 1,
+              fontSize: '0.9rem',
+              fontWeight: 500,
+              py: 1.2,
               px: 2.5,
               display: 'flex',
               alignItems: 'center',
               gap: 1.5,
               transition: 'all 0.15s ease',
+              userSelect: 'none',
               '&:hover': {
-                bgcolor: 'rgba(240, 98, 146, 0.06)'
+                bgcolor: 'rgba(240, 98, 146, 0.07)'
               }
             }
           }
         }}
       >
-        {/* WhatsApp Reaction Row */}
+        {/* Emoji Reactions Row */}
         <Box sx={{
           display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
+          justifyContent: 'space-around',
           px: 1.5,
-          py: 0.8,
-          borderBottom: '1px solid rgba(0, 0, 0, 0.08)',
-          bgcolor: 'rgba(0, 0, 0, 0.02)',
-          gap: 0.5
+          py: 1,
+          borderBottom: '1px solid rgba(0,0,0,0.08)'
         }}>
-          {['👍', '❤️', '😂', '😮', '😢', '🙏'].map((emoji) => {
-            const hasReacted = selectedMenuMessage?.reactions?.some(r => String(r.userId) === String(user?._id) && r.emoji === emoji);
-            return (
-              <IconButton
-                key={emoji}
-                size="small"
-                onClick={() => handleReactMessage(selectedMenuMessage, emoji)}
-                sx={{
-                  fontSize: '1.25rem',
-                  p: 0.5,
-                  transition: 'transform 0.15s ease',
-                  bgcolor: hasReacted ? 'rgba(0,0,0,0.08)' : 'transparent',
-                  border: hasReacted ? '1px solid rgba(0,0,0,0.1)' : 'none',
-                  '&:hover': {
-                    transform: 'scale(1.25)',
-                    bgcolor: 'rgba(0,0,0,0.06)'
-                  }
-                }}
-              >
-                {emoji}
-              </IconButton>
-            );
-          })}
+          {['❤️','😂','😮','😢','👍','🙏'].map((emoji) => (
+            <Box
+              key={emoji}
+              onClick={() => selectedMenuMessage && handleReactMessage(selectedMenuMessage, emoji)}
+              sx={{
+                fontSize: '1.5rem',
+                cursor: 'pointer',
+                borderRadius: '50%',
+                p: 0.5,
+                transition: 'transform 0.15s ease',
+                '&:hover': { transform: 'scale(1.3)' }
+              }}
+            >
+              {emoji}
+            </Box>
+          ))}
         </Box>
 
+        {/* Copy */}
+        <MenuItem onClick={handleCopyMessage}>
+          <Box component="span" sx={{ fontSize: '1.1rem', lineHeight: 1 }}>📋</Box>
+          Copy
+        </MenuItem>
+
+        {/* Reply */}
         <MenuItem onClick={() => {
           if (selectedMenuMessage) {
             const content = selectedMenuMessage.text || (selectedMenuMessage.image ? 'Photo' : 'Message');
@@ -10842,32 +11677,33 @@ const ChatPage = () => {
           }
           handleMessageMenuClose();
         }}>
+          <Box component="span" sx={{ fontSize: '1.1rem', lineHeight: 1 }}>↩️</Box>
           Reply
         </MenuItem>
 
-        {selectedMenuMessage && (String(selectedMenuMessage.senderId) === String(user?._id) || selectedMenuMessage.sender === 'You') && selectedMenuMessage.text && (() => {
-          const msgTime = new Date(selectedMenuMessage.createdAt || selectedMenuMessage.timestamp || 0).getTime();
-          const isWithin15Min = !isNaN(msgTime) && (Date.now() - msgTime <= 15 * 60 * 1000);
-          return isWithin15Min ? (
-            <MenuItem onClick={handleEditClick}>
-              Edit
-            </MenuItem>
-          ) : null;
-        })()}
+        {/* Forward */}
+        <MenuItem onClick={handleForwardMessage}>
+          <Box component="span" sx={{ fontSize: '1.1rem', lineHeight: 1 }}>↪️</Box>
+          Forward
+        </MenuItem>
 
-        <MenuItem onClick={handleDeleteForMe}>
+        {/* Edit */}
+        <MenuItem onClick={handleEditClick}>
+          <Box component="span" sx={{ fontSize: '1.1rem', lineHeight: 1 }}>✏️</Box>
+          Edit
+        </MenuItem>
+
+        {/* Delete for Me */}
+        <MenuItem onClick={handleDeleteForMe} sx={{ color: 'error.main' }}>
+          <Box component="span" sx={{ fontSize: '1.1rem', lineHeight: 1 }}>🗑️</Box>
           Delete for Me
         </MenuItem>
 
-        {selectedMenuMessage && (String(selectedMenuMessage.senderId) === String(user?._id) || selectedMenuMessage.sender === 'You') && (() => {
-          const msgTime = new Date(selectedMenuMessage.createdAt || selectedMenuMessage.timestamp || 0).getTime();
-          const isWithin15Min = !isNaN(msgTime) && (Date.now() - msgTime <= 15 * 60 * 1000);
-          return isWithin15Min ? (
-            <MenuItem onClick={handleDeleteForEveryone} sx={{ color: '#d32f2f' }}>
-              Delete for Everyone
-            </MenuItem>
-          ) : null;
-        })()}
+        {/* Delete for Everyone */}
+        <MenuItem onClick={handleDeleteForEveryone} sx={{ color: 'error.main' }}>
+          <Box component="span" sx={{ fontSize: '1.1rem', lineHeight: 1 }}>❌</Box>
+          Delete for Everyone
+        </MenuItem>
       </Menu>
 
       {/* Edit Message Dialog */}

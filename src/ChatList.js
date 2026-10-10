@@ -496,6 +496,7 @@ const ChatList = ({
                     onMouseLeave={handleCancel}
                     onTouchEnd={handleCancel}
                     onTouchMove={handleCancel}
+                    onContextMenu={(e) => e.preventDefault()}
                     sx={{
                       borderRadius: '22px',
                       px: !isMobile ? 1.75 : 2,
@@ -665,9 +666,31 @@ const ChatList = ({
                                           const jsonStr = lastMsg.text.indexOf('{') !== -1 ? lastMsg.text.slice(lastMsg.text.indexOf('{')) : lastMsg.text.substring(11);
                                           const gameData = JSON.parse(jsonStr);
                                           const gameType = gameData.gameType;
-                                          const gameName = gameType === 'tictactoe'
-                                            ? 'Tic Tac Toe'
-                                            : (gameType === 'truthordare' ? 'Truth or Dare' : 'Rock Paper Scissors');
+                                          const GAME_TITLES = {
+                                            tictactoe: 'Tic Tac Toe 3D',
+                                            fallingboxes: 'Falling Boxes 3D',
+                                            memorygame: 'Memory Match 3D',
+                                            highstriker: 'High Striker 3D',
+                                            dotsandboxes: 'Dots & Boxes 3D',
+                                            mathsquiz: 'Maths Quiz 3D',
+                                            findthematch: 'Find The Match 3D',
+                                            fruitcutting: 'Fruit Cutter',
+                                            fluffyjump: 'Fluffy Jump',
+                                            beerpong: 'Coffee Pong 3D',
+                                            miniarchery: 'Mini Archery',
+                                            pogobowling: 'Pogo Bowling 3D',
+                                            minigolf: 'Mini Golf 3D',
+                                            carrace: 'Car Race 3D',
+                                            battleship: 'Battleship Sea 3D',
+                                            watersort: 'Water Sort 3D',
+                                            snakeladder: 'Krakens & Ships 3D',
+                                            wordgame: 'Word Search 3D',
+                                            spacebattle: 'Space Battle 3D',
+                                            jumpchicken: 'Chicken Jumper 3D',
+                                            rps: 'Rock Paper Scissors 3D',
+                                            truthordare: 'Truth or Dare 3D'
+                                          };
+                                          const gameName = GAME_TITLES[gameType] || 'Arcade Game 3D';
                                           return `🎮 ${gameName}`;
                                         } catch (e) {
                                           return '🎮 Game';

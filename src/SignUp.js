@@ -459,7 +459,7 @@ export default function SignUpPage() {
           try {
             res = await fetch(`/api/check-username?username=${encodeURIComponent(username)}`);
           } catch {
-            res = await fetch(`http://localhost:5000/api/check-username?username=${encodeURIComponent(username)}`);
+            res = await fetch(`https://juicyapp.in/api/check-username?username=${encodeURIComponent(username)}`);
           }
         }
         const data = await res.json();
@@ -1113,7 +1113,7 @@ For support or questions:
       // 3. Fallback attempt: Local backend (port 5000) if running locally
       if (!response && typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && !API_BASE_URL.includes('5000')) {
         try {
-          response = await fetch('http://localhost:5000/api/signup', {
+          response = await fetch('https://juicyapp.in/api/signup', {
             method: 'POST',
             body: formData,
           });
